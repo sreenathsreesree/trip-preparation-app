@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-nativ
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import { selectionFeedback } from '@/lib/haptics';
-import { colors, radii, spacing } from '@/theme';
+import { colors, radii, spacing, springs } from '@/theme';
 
 import { AppText } from './AppText';
 
@@ -43,7 +43,7 @@ export function SegmentedControl<T extends string>({
       measuredWidth.current = segmentWidth;
       indicatorX.set(target);
     } else {
-      indicatorX.set(withSpring(target, { damping: 20, stiffness: 240 }));
+      indicatorX.set(withSpring(target, springs.indicator));
     }
   }, [index, segmentWidth, indicatorX]);
 
@@ -56,7 +56,7 @@ export function SegmentedControl<T extends string>({
       style={styles.track}
       accessibilityRole="tablist"
       accessibilityLabel={accessibilityLabel}
-      onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width - 8)}
+      onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width - 10)}
     >
       {width > 0 ? (
         <Animated.View style={[styles.indicator, { width: segmentWidth }, indicatorStyle]} />
@@ -78,7 +78,7 @@ export function SegmentedControl<T extends string>({
             }}
             style={styles.segment}
           >
-            <AppText variant="captionStrong" tone={selected ? 'textOnAccent' : 'textSecondary'}>
+            <AppText variant="captionStrong" tone={selected ? 'textOnAccent' : 'textSecondary'} numberOfLines={1}>
               {option.label}
             </AppText>
           </Pressable>
@@ -110,6 +110,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 36,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.xs,
   },
 });

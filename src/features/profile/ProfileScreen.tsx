@@ -14,6 +14,7 @@ interface StorageStats {
   trips: number;
   items: number;
   templates: number;
+  inventory: number;
   schemaVersion: number;
 }
 
@@ -40,14 +41,15 @@ export function ProfileScreen() {
       let cancelled = false;
       getRepositories()
         .then(async (repos) => {
-          const [trips, items, templates, schemaVersion] = await Promise.all([
+          const [trips, items, templates, inventory, schemaVersion] = await Promise.all([
             repos.trips.count(),
             repos.countTasks(),
             repos.templates.list().then((list) => list.length),
+            repos.inventory.countItems(),
             repos.schemaVersion(),
           ]);
           if (!cancelled) {
-            setStats({ trips, items, templates, schemaVersion });
+            setStats({ trips, items, templates, inventory, schemaVersion });
             setError(null);
           }
         })
@@ -97,6 +99,8 @@ export function ProfileScreen() {
               <InfoRow label="Trip checklist tasks" value={stats ? String(stats.items) : '…'} />
               <View style={styles.divider} />
               <InfoRow label="Checklist templates" value={stats ? String(stats.templates) : '…'} />
+              <View style={styles.divider} />
+              <InfoRow label="Inventory items" value={stats ? String(stats.inventory) : '…'} testID="profile-inventory-count" />
               <View style={styles.divider} />
               <InfoRow label="Database schema" value={stats ? `v${stats.schemaVersion}` : '…'} />
             </>

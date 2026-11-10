@@ -36,7 +36,7 @@ describe('migration 2: trip management and checklists', () => {
   beforeEach(async () => {
     db = openTestDatabase();
     await seedV1(db);
-    const result = await migrate(db, migrations);
+    const result = await migrate(db, migrations.slice(0, 2));
     expect(result.applied).toEqual(['trip_management_and_checklists']);
   });
 

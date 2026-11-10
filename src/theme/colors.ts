@@ -54,6 +54,27 @@ export const colors = {
   dangerSoft: withAlpha('#F28B7D', 0.14),
 
   overlay: withAlpha('#0E1318', 0.72),
+
+  // Supporting status hues for inventory and shopping states.
+  violet: '#B8A6F2',
+  teal: '#6FD6C2',
+  neutral: '#8A949C',
 } as const;
+
+/**
+ * Colours a user can pick for an inventory category. The chosen hex value is
+ * stored with the category, so existing entries must never change.
+ */
+export const categoryPalette = [
+  palette.signalLime,
+  palette.glacierBlue,
+  palette.trailAmber,
+  colors.danger,
+  colors.violet,
+  colors.teal,
+  '#D9C49A',
+  '#8FCB4A',
+  palette.iceWhite,
+] as const;
 
 export type ColorToken = keyof typeof colors;

@@ -119,7 +119,10 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    minWidth: 0,
     minHeight: sizes.inputHeight,
+    // Web: the shell already shows focus; hide the browser's inner outline.
+    outlineWidth: 0,
     color: colors.textPrimary,
     fontFamily: fontFamilies.body,
     fontSize: 16,

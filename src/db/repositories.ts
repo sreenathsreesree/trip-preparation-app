@@ -1,3 +1,8 @@
+import { createInventoryRepository } from '@/features/inventory/inventoryRepository';
+import { createPackingRepository } from '@/features/packing/packingRepository';
+import { createPreferencesRepository } from '@/features/packing/preferencesRepository';
+import { createPurchaseRepository } from '@/features/packing/purchaseRepository';
+import { createRecommendationRepository } from '@/features/packing/recommendationRepository';
 import { createChecklistRepository } from '@/features/preparation/checklistRepository';
 import { createTemplateRepository } from '@/features/preparation/templateRepository';
 import { createTripRepository } from '@/features/trips/tripRepository';
@@ -16,6 +21,11 @@ export async function getRepositories() {
     trips: createTripRepository(db, { createId }),
     checklists: createChecklistRepository(db, { createId }),
     templates: createTemplateRepository(db, { createId }),
+    inventory: createInventoryRepository(db, { createId }),
+    packing: createPackingRepository(db, { createId }),
+    recommendations: createRecommendationRepository(db, { createId }),
+    purchases: createPurchaseRepository(db, { createId }),
+    preferences: createPreferencesRepository(db),
     schemaVersion: () => getSchemaVersion(db),
     countTasks: async () => {
       const row = await db.getFirstAsync<{ count: number }>(

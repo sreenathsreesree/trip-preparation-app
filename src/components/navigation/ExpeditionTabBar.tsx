@@ -6,7 +6,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 import { AppText } from '@/components/ui/AppText';
 import { Icon } from '@/components/ui/Icon';
 import { selectionFeedback } from '@/lib/haptics';
-import { colors, radii, sizes, spacing } from '@/theme';
+import { colors, radii, sizes, spacing, springs } from '@/theme';
 import type { IconName } from '@/theme/icons';
 
 export interface TabIconSet {
@@ -44,7 +44,7 @@ export function ExpeditionTabBar({
       measuredWidth.current = tabWidth;
       indicatorX.set(target);
     } else {
-      indicatorX.set(withSpring(target, { damping: 20, stiffness: 220 }));
+      indicatorX.set(withSpring(target, springs.indicator));
     }
   }, [state.index, tabWidth, indicatorX]);
 

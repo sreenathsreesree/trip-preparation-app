@@ -1,6 +1,7 @@
 import type { Database, SqlValue } from '@/db/types';
 import type { IdFactory } from '@/lib/id';
 
+import { closeTripReservations, copyPacking, revalidateTripReservations } from '../packing/packingRepository';
 import { copyChecklist, insertPlan } from '../preparation/checklistRepository';
 import { tripOwner, type ChecklistPlan } from '../preparation/model';
 import { statsFromRow } from '../preparation/readiness';
@@ -237,11 +238,25 @@ export function createTripRepository(
 
   async function setTimestampColumn(id: string, column: 'completed_at' | 'archived_at', on: boolean) {
     const timestamp = now().toISOString();
-    const result = await db.runAsync(
-      `UPDATE trips SET ${column} = ?, updated_at = ? WHERE id = ?`,
-      [on ? timestamp : null, timestamp, id],
-    );
-    if (result.changes === 0) throw new TripDataError('That trip no longer exists.');
+    await db.withTransactionAsync(async () => {
+      const result = await db.runAsync(`UPDATE trips SET ${column} = ?, updated_at = ? WHERE id = ?`, [
+        on ? timestamp : null,
+        timestamp,
+        id,
+      ]);
+      if (result.changes === 0) throw new TripDataError('That trip no longer exists.');
+      if (on) {
+        // Completing or archiving (cancelling) a trip frees the inventory it held.
+        await closeTripReservations(
+          db,
+          id,
+          timestamp,
+          column === 'completed_at'
+            ? 'Reservations were released when the trip was completed. Confirm again to reserve.'
+            : 'Reservations were released when the trip was archived. Confirm again to reserve.',
+        );
+      }
+    });
     return mustGet(id);
   }
 
@@ -314,6 +329,9 @@ export function createTripRepository(
         if (result.changes === 0) throw new TripDataError('That trip no longer exists.');
         await syncChildren('trip_destinations', id, input.destinations, timestamp);
         await syncChildren('trip_travellers', id, input.travellers, timestamp);
+        // Keep purchase history readable and reservations valid for the new dates.
+        await db.runAsync('UPDATE purchase_items SET trip_name = ? WHERE trip_id = ?', [input.name.trim(), id]);
+        await revalidateTripReservations(db, id, timestamp);
       });
       return mustGet(id);
     },
@@ -357,6 +375,15 @@ export function createTripRepository(
         await copyChecklist(db, tripOwner(id), tripOwner(copyId), { createId: deps.createId, timestamp }, {
           keepProvenance: true,
         });
+        // Packing list copies are unpacked and unreserved (draft); travellers map by position.
+        const copied = await db.getAllAsync<{ id: string }>(
+          'SELECT id FROM trip_travellers WHERE trip_id = ? ORDER BY position',
+          [copyId],
+        );
+        const travellerMap = new Map(
+          source.travellers.flatMap((t, index) => (copied[index] ? [[t.id, copied[index].id] as const] : [])),
+        );
+        await copyPacking(db, deps.createId, id, copyId, travellerMap, timestamp);
       });
       return mustGet(copyId);
     },
@@ -366,9 +393,15 @@ export function createTripRepository(
     setArchived: (id, archived) => setTimestampColumn(id, 'archived_at', archived),
 
     async remove(id) {
-      // Destinations, travellers, sections and (via sections) tasks cascade.
-      const result = await db.runAsync('DELETE FROM trips WHERE id = ?', [id]);
-      return result.changes > 0;
+      // Destinations, travellers, checklists and packing entries cascade. Reservations are
+      // closed first (kept as history); purchase items keep their trip name snapshot.
+      let removed = false;
+      await db.withTransactionAsync(async () => {
+        await closeTripReservations(db, id, now().toISOString(), null);
+        const result = await db.runAsync('DELETE FROM trips WHERE id = ?', [id]);
+        removed = result.changes > 0;
+      });
+      return removed;
     },
 
     async deletionImpact(id) {

@@ -7,7 +7,7 @@ vehicle readiness, preparation tasks, shopping and home-departure checks. India 
 market; the architecture is ready for global expansion.
 
 Built with Expo SDK 58, React Native 0.88, TypeScript, Expo Router, expo-sqlite, Zustand,
-Reanimated 4, Gesture Handler 3 and Expo Image.
+Reanimated 4, Gesture Handler 3, Expo Image, expo-image-picker and expo-file-system.
 
 ## Getting started
 
@@ -32,18 +32,23 @@ npm start          # Expo dev server — press i (iOS), a (Android) or w (web)
 | --- | --- |
 | `npm run typecheck` | `tsc --noEmit` (strict, `noUncheckedIndexedAccess`) |
 | `npm run lint` | `expo lint` (ESLint 9 flat config, `eslint-config-expo`) |
-| `npm test` | Jest (`jest-expo` preset) — domain, readiness, migrations (incl. v1 → v2 data upgrade), repositories, templates and stores |
+| `npm test` | Jest (`jest-expo` preset) — domain, readiness, migrations (incl. v1 → v2 and v2 → v3 data upgrades), repositories, templates, inventory, packing, reservations, recommendation rules and purchases |
 | `npm run check` | All three of the above |
 | `npm run build:web` | Static web export to `dist/` |
-| `npm run e2e:web` | Browser smoke test against `dist/`, or a running server via `BASE_URL` (needs Playwright + Chromium installed separately) |
+| `npm run e2e:web` | Browser smoke test (trips, checklists, templates) against `dist/`, or a running server via `BASE_URL` (needs Playwright + Chromium installed separately) |
+| `npm run e2e:inventory` | Browser test of inventory, packing, reservations, suggestions, shopping and luggage (same requirements) |
 | `npm run doctor` | `expo-doctor` (needs network access to Expo's API) |
 | `npm run build:android:dev` | EAS cloud build of the Android development APK (needs an Expo account) |
 | `npm run build:android:preview` | EAS cloud build of a standalone Android APK |
 
 Repository and migration tests run against a **real SQLite engine** (Node's built-in
 `node:sqlite`, Node 22.3+), including a cold-restart test that closes and reopens a database file.
-The web smoke test drives the exported app at a 360 px phone width through trip creation, editing,
-checklist and template flows, a full browser restart and deletion.
+Both browser tests drive the exported app at a 360 px phone width and include a full browser restart
+to check persistence: the smoke test covers trip creation, editing, checklist and template flows and
+deletion; the inventory test covers categories, items, the three inventory views, packing two
+overlapping trips, reservation conflicts, suggestions (accept/skip/regenerate), the shopping list,
+bags and deleting a trip while keeping its shopping history. Set `SCREENSHOT_DIR` to keep
+screenshots.
 
 ## Features
 
@@ -89,11 +94,57 @@ checklist and template flows, a full browser restart and deletion.
 - **Open essentials are highlighted** on the dashboard (tickable in place), on section cards and in
   section lists; section-level progress everywhere; updates instantly when tasks change.
 
+**Personal inventory** (Inventory tab)
+
+- **Inventory items are your belongings**, recorded once and reused on every trip: name, description,
+  picture, brand, model, quantity, weight, condition and storage location. Create, edit, duplicate,
+  archive/restore and delete (with a confirmation that explains trip lists keep their own entries).
+- **Categories** — 11 starter categories (Clothing, Footwear, Toiletries, Electronics, Documents,
+  Medicines and first aid, Travel accessories, Camping and outdoor, Photography, Food and essentials,
+  Miscellaneous) plus your own, one level of subcategories, each with an icon, colour, order and an
+  optional cover image. Deleting a category keeps its items (they become uncategorised).
+- **Three synchronised views** of the same data and filters: **Folders** (category folders with item
+  counts and picture mosaics), **Gallery** (image grid) and **List** (details with inline quantity
+  adjustment). Search by name/brand/model/location/category, filter by status and sort.
+- **Statuses**: Available, Reserved and Packed (derived from trips), Borrowed (lent out), Damaged and
+  Archived.
+- **Pictures, honestly labelled** — priority is: your photo (camera or library) → an illustration you
+  picked from the built-in library → a suggested illustration **only after you tap "Use it"** →
+  the category icon. Illustrations are generic icons and are labelled "not a photo"; no product photo
+  is ever assigned automatically. Photos are copied into the app's private storage on the device.
+
+**Packing** (trip dashboard → Packing)
+
+- **Packing entries are trip-specific decisions.** An entry may point at an inventory item but owns
+  its own name, category, quantity, traveller, bag, notes and packed state; removing it never touches
+  the inventory, and deleting an inventory item leaves trip entries as one-time items.
+- Add items **from the inventory** (showing how many are free for the trip's dates; damaged or lent-out
+  items cannot be picked) or as **one-time items**; adjust quantities, assign travellers, put entries
+  in bags, tick them off, filter by traveller.
+- **Reservations** — a draft list reserves nothing. *Confirm list* reserves the inventory for the
+  trip's dates; overlapping trips can never hold more units than you own (checked inside the
+  transaction), and damaged, lent-out or archived items cannot be reserved. Conflicts are explained
+  item by item. Removing an entry releases its reservation; *Back to draft*, completing, archiving or
+  deleting the trip closes them; moving a trip onto clashing dates returns it to draft with a reason.
+- **Luggage** — Main suitcase, Cabin bag, Backpack, Daypack, Camera bag or a custom bag, optionally
+  per traveller; item counts, packed progress and a weight estimate that only adds known weights and
+  says when items have none.
+- **Suggestions** — a transparent, deterministic rules engine (no AI, no network) using trip length,
+  destinations (cold/high-altitude/beach places), season, travellers (adult/child), transport,
+  category, activities, accommodation, laundry and your packing style. Each suggestion shows the item,
+  quantity, priority, reason, category, traveller and whether you own it. Nothing is added until you
+  accept it; accepting an item already on the list links it instead of duplicating it. *Check for
+  changes* previews what regenerating would change (new, updated, no longer suggested, skipped) and
+  applies only after you confirm; your list, quantities and skipped suggestions are preserved.
+- **Shopping list** — per trip and across trips (Inventory → Shopping list): add items or send
+  suggestions, mark them purchased, already owned, borrowing or skipped; then add a purchase to the
+  inventory and/or the trip's list (never auto-packed). Duplicates are prevented, and history is kept
+  when a trip is deleted.
+
 **Everything else**
 
-- Tabs: Home (next-trip hero, countdown, stats incl. open essentials), Trips, Inventory (clearly
-  marked as not yet available — no fake controls), Checklists (upcoming trips and templates) and
-  Profile (on-device storage stats, schema version, app version).
+- Tabs: Home (next-trip hero, countdown, stats incl. open essentials), Trips, Inventory, Checklists
+  (upcoming trips and templates) and Profile (on-device storage stats, schema version, app version).
 - Loading, empty, error (with retry) and confirmation states throughout; a root error boundary.
 
 ## Architecture
@@ -105,7 +156,9 @@ src/
     (tabs)/               Home, Trips, Inventory, Checklists, Profile + custom tab bar
     trips/new.tsx         Create Trip flow (modal)
     trips/[tripId]/       Dashboard, edit, sections (manage + [sectionId]), tasks/[taskId],
-                          templates (apply), save-template
+                          templates (apply), save-template, packing (index, add, entry/, bag/)
+    inventory/            item (new, [itemId], [itemId]/edit), category/[categoryId],
+                          categories (index, new, [categoryId]), shopping
     templates/            new, [templateId] (editor, edit, sections, tasks/[taskId])
   components/
     ui/                   Design-system primitives (AppText, Button, Card, TextField, …)
@@ -121,11 +174,14 @@ src/
     trips/                Model, validation, repository, stores (trips, form draft), hooks, components
     preparation/          Checklist engine: model + merge, readiness, starter checklist, checklist and
                           template repositories, stores, components (also used by templates)
-    home/ inventory/ profile/
-  lib/                    Dates, ids, haptics, confirm dialog, errors
+    inventory/            Inventory model, repository, store, screens and views
+    packing/              Packing entries, luggage, reservations, recommendation rules, purchases,
+                          preferences: models, repositories, store, screens
+    home/ profile/
+  lib/                    Dates, ids, haptics, confirm dialog, errors, image storage
   theme/                  Colour, typography, spacing/radii tokens, navigation theme
 test/                     Node SQLite adapter and fixtures used by tests
-e2e/                      Web smoke test
+e2e/                      Browser tests (shared harness, smoke test, inventory & packing test)
 ```
 
 **Data flow:** screens → Zustand stores → repositories → `Database` interface → expo-sqlite.
@@ -162,6 +218,28 @@ Key decisions:
   maintained by the repository.
 - **Tabs** use `expo-router/js-tabs` (SDK 58's replacement for the deprecated root `Tabs` export)
   with a custom `ExpeditionTabBar`.
+- **Schema v3** (`0003_inventory_and_packing`) adds `inventory_categories` (seeded with the starter
+  categories, identified by `system_key`), `inventory_items`, `trip_packing` (per-trip profile and
+  confirmation), `trip_luggage`, `packing_entries`, `inventory_reservations`,
+  `packing_recommendations`, `purchase_items` and `user_preferences`. It only creates tables, so v2
+  data is untouched (covered by a v2 → v3 upgrade test).
+- **InventoryItem vs PackingEntry** are separate tables and types. Entries copy the item's name and
+  category when added and reference it with `ON DELETE SET NULL`; trip quantities never change the
+  inventory quantity.
+- **Reservations are rows**, created only when a list is confirmed, and checked with a
+  write-then-verify-then-rollback pattern inside one transaction so concurrent changes cannot
+  over-book. Inventory status (reserved/packed) is derived from active, not-yet-ended reservations and
+  the packed state of the entries they cover, rather than stored.
+- **Recommendations** are a pure function (`generateSuggestions`) over a rule table, each rule with a
+  stable key, scope (trip / each traveller / adults / children), condition, quantity, priority and
+  reason; inventory matching is whole-word. Decisions are stored per trip and key, and
+  `planRegeneration` is a pure diff, so the engine is fully unit-tested and can later be swapped or
+  augmented without changing the UI.
+- **Purchases** snapshot the trip name and keep `trip_id` as `SET NULL`, so shopping history survives
+  trip deletion; a partial unique index prevents duplicate open entries per trip.
+- **Images** are stored as `file://` copies in the app's document directory on Android/iOS (data URIs
+  on web); built-in illustrations use `library:<key>` URIs that map to icons. Orphaned photos are
+  deleted when an item or category no longer references them.
 
 ## Design system — Expedition Tech
 
@@ -176,7 +254,9 @@ Dark-first palette defined in `src/theme/colors.ts`:
 | Ice White | `#E8EDF0` |
 | Trail Amber | `#F2B85B` |
 
-Components consume semantic tokens (`colors.surface`, `colors.accent`, …) rather than raw hex.
+Components consume semantic tokens (`colors.surface`, `colors.accent`, …) rather than raw hex;
+category colours come from `categoryPalette`, and animated indicators share `springs.indicator`
+(Reanimated 4 springs always specify `mass`, whose default is now 4).
 Headings use **Space Grotesk**, body text **Inter** (both bundled via `@expo-google-fonts`).
 The topographic contour artwork (`assets/images/topo-pattern.svg`) is generated by
 `node scripts/generate-topo-pattern.mjs` and rendered with Expo Image. The provisional app icon,
@@ -185,5 +265,6 @@ Android adaptive/monochrome icon layers, splash image and favicon are generated 
 
 ## Not yet built
 
-Inventory, AI recommendations, weather, accounts and cloud sync, household sharing, reminders and
-notifications, and localisation are planned for later milestones.
+AI recommendations and image recognition, weather, external shopping integrations, accounts and
+cloud sync, household sharing, subscriptions, reminders and notifications, and localisation are
+planned for later milestones.

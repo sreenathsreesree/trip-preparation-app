@@ -3,132 +3,47 @@
 //   npx expo export --platform web --output-dir dist
 //   npm run e2e:web
 //
-// Serves dist/ with the cross-origin isolation headers web SQLite needs and
-// drives the app in a small-phone viewport: create a multi-stop trip, edit it,
+// Drives the app in a small-phone viewport: create a multi-stop trip, edit it,
 // work the checklist (priorities, details, reorder), build a template, apply
 // and re-apply it, duplicate/complete/archive/restore trips, then fully restart
 // the browser (same profile) to check persistence, and finally delete a trip.
-//
-// Requires Playwright with Chromium to be resolvable (`require('playwright')`);
-// it is intentionally not a project dependency. Set SCREENSHOT_DIR to save
-// screenshots, or BASE_URL to test an already-running server (e.g. `npm run web`).
+// See harness.mjs for the server, browser and assertion helpers.
 
-import { createReadStream, existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
-import { createServer } from 'node:http';
-import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
-import { extname, join, normalize, resolve } from 'node:path';
+import {
+  BASE,
+  byId,
+  check,
+  EXTERNAL_BASE,
+  iso,
+  launch,
+  run,
+  setStep,
+  shot,
+  text,
+  waitText,
+  within,
+} from './harness.mjs';
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  console.error('Playwright is not installed. Install it (with Chromium) to run this smoke test.');
-  process.exit(2);
-}
-
-const DIST = resolve(process.cwd(), 'dist');
-const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR;
-const EXTERNAL_BASE = process.env.BASE_URL?.replace(/\/$/, '');
-if (!EXTERNAL_BASE && !existsSync(join(DIST, 'index.html'))) {
-  console.error('dist/ not found. Run: npx expo export --platform web --output-dir dist');
-  process.exit(2);
-}
-
-const TYPES = {
-  '.html': 'text/html',
-  '.js': 'text/javascript',
-  '.wasm': 'application/wasm',
-  '.json': 'application/json',
-  '.ttf': 'font/ttf',
-  '.png': 'image/png',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-};
-
-const server = createServer((req, res) => {
-  const url = new URL(req.url ?? '/', 'http://localhost');
-  let file = normalize(join(DIST, decodeURIComponent(url.pathname)));
-  if (!file.startsWith(DIST) || !existsSync(file) || statSync(file).isDirectory()) {
-    file = join(DIST, 'index.html'); // single-page app fallback
-  }
-  res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  res.setHeader('Content-Type', TYPES[extname(file)] ?? 'application/octet-stream');
-  createReadStream(file).pipe(res);
-});
-let BASE = EXTERNAL_BASE;
-if (!BASE) {
-  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
-  BASE = `http://127.0.0.1:${server.address().port}`;
-}
-
-const profile = mkdtempSync(join(tmpdir(), 'trip-prep-e2e-'));
-// Small Android phone.
-const viewport = { width: 360, height: 780 };
-const pad = (n) => String(n).padStart(2, '0');
-const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const now = new Date();
 const start = new Date(now.getFullYear(), now.getMonth() + 1, 5);
 const end = new Date(now.getFullYear(), now.getMonth() + 1, 9);
 
-let step = 'start';
-/** The open browser session, so failures can be captured and cleaned up. */
-const session = { context: null, page: null };
-async function launch() {
-  const context = await chromium.launchPersistentContext(profile, { viewport });
-  session.context = context;
-  context.setDefaultTimeout(15_000);
-  const page = context.pages()[0] ?? (await context.newPage());
-  const errors = [];
-  page.on('pageerror', (error) => errors.push(error.message));
-  // Confirmation dialogs (delete) are accepted; the message is recorded.
-  const dialogs = [];
-  page.on('dialog', (dialog) => {
-    dialogs.push(dialog.message());
-    void dialog.accept();
-  });
-  session.page = page;
-  return { context, page, errors, dialogs };
-}
-async function shot(page, name) {
-  if (SCREENSHOT_DIR) await page.screenshot({ path: join(SCREENSHOT_DIR, `${name}.png`) });
-}
-function check(condition, message) {
-  if (!condition) throw new Error(`Assertion failed at "${step}": ${message}`);
-  console.log(`  ✓ ${message}`);
-}
-const byId = (page, id) => page.getByTestId(id);
-/** Text inside a specific screen (other screens can stay mounted, hidden, in the DOM on web). */
-const within = (page, screenId, value, options) => byId(page, screenId).getByText(value, options).first();
-const text = async (page, id) => (await byId(page, id).first().innerText()).trim();
-async function waitText(page, id, predicate, timeout = 10_000) {
-  const deadline = Date.now() + timeout;
-  let last = '';
-  while (Date.now() < deadline) {
-    last = await text(page, id).catch(() => '');
-    if (predicate(last)) return last;
-    await page.waitForTimeout(100);
-  }
-  throw new Error(`Timed out at "${step}" waiting on ${id} (last value: "${last}")`);
-}
 async function openTripActions(page, action) {
   await byId(page, 'trip-actions').click();
   await byId(page, `sheet-action-${action}`).click();
 }
 
-try {
+await run('Web smoke test', async () => {
   // ---------------------------------------------------------------- Session 1
   let { context, page, errors, dialogs } = await launch();
-  step = 'home (empty)';
+  setStep('home (empty)');
   await page.goto(BASE);
   await byId(page, 'home-empty').waitFor({ timeout: 60_000 });
   const isolated = await page.evaluate(() => globalThis.crossOriginIsolated);
   if (EXTERNAL_BASE) console.log(`  · cross-origin isolated: ${isolated}`);
   else check(isolated, 'page is cross-origin isolated');
 
-  step = 'create: basics with three stops';
+  setStep('create: basics with three stops');
   await byId(page, 'home-plan-trip').click();
   await byId(page, 'trip-name-input').waitFor();
   await byId(page, 'wizard-next').click();
@@ -146,7 +61,7 @@ try {
   await shot(page, '01-create-basics');
   await byId(page, 'wizard-next').click();
 
-  step = 'create: dates and travellers';
+  setStep('create: dates and travellers');
   await byId(page, 'trip-calendar-next-month').click();
   await byId(page, `calendar-day-${iso(start)}`).click();
   await byId(page, `calendar-day-${iso(end)}`).click();
@@ -159,12 +74,12 @@ try {
   await shot(page, '02-create-when');
   await byId(page, 'wizard-next').click();
 
-  step = 'create: transport';
+  setStep('create: transport');
   await byId(page, 'transport-car').click();
   await shot(page, '03-create-how');
   await byId(page, 'wizard-create').click();
 
-  step = 'dashboard';
+  setStep('dashboard');
   await byId(page, 'trip-dashboard').waitFor();
   const tripUrl = page.url();
   const tripPath = new URL(tripUrl).pathname;
@@ -180,12 +95,12 @@ try {
   check(true, 'six standard sections for a car trip');
   await shot(page, '04-dashboard');
 
-  step = 'tick an essential from the readiness panel';
+  setStep('tick an essential from the readiness panel');
   await page.locator('[data-testid="readiness-panel"] [data-testid^="task-check-"]').first().click();
   const readiness1 = await waitText(page, 'readiness-percent', (v) => v !== readiness0);
   check(true, `readiness updates immediately (${readiness0} → ${readiness1})`);
 
-  step = 'section: add, edit details, reorder';
+  setStep('section: add, edit details, reorder');
   await byId(page, 'section-card-packing').click();
   await byId(page, 'section-screen-packing').waitFor();
   const packing0 = await text(page, 'section-progress-text');
@@ -216,7 +131,7 @@ try {
   await page.waitForTimeout(600); // let layout animations settle
   await shot(page, '06-section');
 
-  step = 'edit trip details';
+  setStep('edit trip details');
   await page.goto(tripUrl);
   await byId(page, 'trip-dashboard').waitFor();
   const completionBeforeEdit = await waitText(page, 'completion-percent', (v) => v.length > 0);
@@ -236,7 +151,7 @@ try {
     'editing details leaves the checklist untouched',
   );
 
-  step = 'create a template';
+  setStep('create a template');
   await page.goto(`${BASE}/checklists`);
   await byId(page, 'checklists-screen').waitFor();
   await byId(page, 'segment-templates').click();
@@ -257,7 +172,7 @@ try {
   const templateUrl = page.url();
   check(true, 'template with a section and an essential task');
 
-  step = 'apply template to the trip';
+  setStep('apply template to the trip');
   await page.goto(tripUrl);
   await byId(page, 'trip-dashboard').waitFor();
   await byId(page, 'apply-templates').click();
@@ -268,7 +183,7 @@ try {
   check((await text(page, 'apply-result')).includes('Added 1 task'), 'template tasks copied into the trip');
   await shot(page, '09-apply-result');
 
-  step = 'edit template; trip is unaffected until re-applied';
+  setStep('edit template; trip is unaffected until re-applied');
   await page.goto(templateUrl);
   await byId(page, 'template-editor').waitFor();
   await byId(page, 'add-task-Gear-input').fill('Microspikes');
@@ -293,7 +208,7 @@ try {
     `re-applying adds only the missing task ("${reapply.replace(/\s+/g, ' ')}")`,
   );
 
-  step = 'duplicate, complete, archive, restore';
+  setStep('duplicate, complete, archive, restore');
   await page.goto(tripUrl);
   await byId(page, 'trip-dashboard').waitFor();
   const originalCompletion = await waitText(page, 'completion-percent', (v) => v.length > 0);
@@ -341,7 +256,7 @@ try {
   await context.close();
 
   // ---------------------------------------------- Session 2: full restart
-  step = 'after restart';
+  setStep('after restart');
   ({ context, page, errors, dialogs } = await launch());
   await page.goto(`${BASE}/trips`);
   await byId(page, 'trips-screen').waitFor({ timeout: 60_000 });
@@ -369,7 +284,7 @@ try {
   check(true, 'template persisted');
   await shot(page, '11-template-after-restart');
 
-  step = 'delete with confirmation';
+  setStep('delete with confirmation');
   await page.goto(copyUrl);
   await byId(page, 'trip-dashboard').waitFor();
   await openTripActions(page, 'delete');
@@ -390,13 +305,4 @@ try {
   check(errors.length === 0, `no uncaught page errors after restart (${errors.join(' | ') || 'none'})`);
   await context.close();
 
-  console.log('\nWeb smoke test passed.');
-} catch (error) {
-  console.error(`\nWeb smoke test FAILED: ${error.message}`);
-  if (session.page) await shot(session.page, 'failure').catch(() => undefined);
-  process.exitCode = 1;
-} finally {
-  await session.context?.close().catch(() => undefined);
-  if (server.listening) server.close();
-  rmSync(profile, { recursive: true, force: true });
-}
+});

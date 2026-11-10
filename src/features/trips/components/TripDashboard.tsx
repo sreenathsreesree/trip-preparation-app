@@ -20,6 +20,7 @@ import { formatDate, formatDateRange } from '@/lib/dates';
 import { toErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing } from '@/theme';
 
+import { PackingSummaryCard } from '../../packing/components/PackingSummaryCard';
 import { useChecklistStore } from '../../preparation/checklistStore';
 import { ReadinessPanel } from '../../preparation/components/ReadinessPanel';
 import { SectionCard } from '../../preparation/components/SectionCard';
@@ -151,6 +152,8 @@ function DashboardBody({ trip }: { trip: TripSummary }) {
       </View>
 
       {actionError ? <Notice tone="danger" title="Something went wrong" message={actionError} /> : null}
+
+      <PackingSummaryCard tripId={trip.id} />
 
       {needsVehicle ? (
         <Notice

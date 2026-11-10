@@ -86,6 +86,18 @@ export default function RootLayout() {
             <Stack.Screen name="trips/[tripId]/tasks/[taskId]" options={{ presentation: 'modal' }} />
             <Stack.Screen name="trips/[tripId]/templates" options={{ presentation: 'modal' }} />
             <Stack.Screen name="trips/[tripId]/save-template" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="trips/[tripId]/packing/index" />
+            <Stack.Screen name="trips/[tripId]/packing/add" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="trips/[tripId]/packing/entry/[entryId]" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="trips/[tripId]/packing/bag/[bagId]" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="inventory/item/new" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="inventory/item/[itemId]/index" />
+            <Stack.Screen name="inventory/item/[itemId]/edit" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="inventory/category/[categoryId]" />
+            <Stack.Screen name="inventory/categories/index" />
+            <Stack.Screen name="inventory/categories/new" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="inventory/categories/[categoryId]" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="inventory/shopping" />
             <Stack.Screen name="templates/new" options={{ presentation: 'modal' }} />
             <Stack.Screen name="templates/[templateId]/index" />
             <Stack.Screen name="templates/[templateId]/edit" options={{ presentation: 'modal' }} />

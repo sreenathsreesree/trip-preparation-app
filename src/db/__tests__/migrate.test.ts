@@ -16,7 +16,7 @@ describe('migrate', () => {
     expect(result).toEqual({
       fromVersion: 0,
       toVersion: migrations.length,
-      applied: ['initial_schema', 'trip_management_and_checklists'],
+      applied: ['initial_schema', 'trip_management_and_checklists', 'inventory_and_packing'],
     });
     expect(await getSchemaVersion(db)).toBe(migrations.length);
 
@@ -28,9 +28,18 @@ describe('migrate', () => {
       'checklist_sections',
       'checklist_tasks',
       'checklist_templates',
+      'inventory_categories',
+      'inventory_items',
+      'inventory_reservations',
+      'packing_entries',
+      'packing_recommendations',
+      'purchase_items',
       'trip_destinations',
+      'trip_luggage',
+      'trip_packing',
       'trip_travellers',
       'trips',
+      'user_preferences',
     ]);
     db.close();
   });

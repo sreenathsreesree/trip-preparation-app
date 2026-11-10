@@ -40,4 +40,13 @@ export const durations = {
   slow: 380,
 } as const;
 
+/**
+ * Spring physics. Always give `mass` explicitly: Reanimated 4 defaults it to 4,
+ * which makes light-looking damping/stiffness values very bouncy.
+ */
+export const springs = {
+  /** Sliding selection indicators (segmented controls, tab bar): settles in ~350 ms, no visible overshoot. */
+  indicator: { damping: 30, stiffness: 320, mass: 1 },
+} as const;
+
 export type Spacing = keyof typeof spacing;
