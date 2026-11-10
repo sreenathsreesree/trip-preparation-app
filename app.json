@@ -10,16 +10,21 @@
     "backgroundColor": "#202832",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.tripprep.app"
+      "bundleIdentifier": "com.sreenathsreesree.tripprep"
     },
     "android": {
-      "package": "com.tripprep.app",
+      "package": "com.sreenathsreesree.tripprep",
       "adaptiveIcon": {
         "backgroundColor": "#202832",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -43,7 +48,7 @@
         "expo-splash-screen",
         {
           "image": "./assets/splash-icon.png",
-          "imageWidth": 160,
+          "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#202832"
         }

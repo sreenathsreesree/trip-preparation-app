@@ -66,7 +66,7 @@ function ChecklistBody({ trip, section }: { trip: TripSummary; section: PrepSect
   );
 
   return (
-    <Screen testID={`section-screen-${section}`}>
+    <Screen testID={`section-screen-${section}`} bottomInset>
       <ScreenHeader showBack eyebrow={trip.name} title={meta.title} subtitle={meta.description} />
 
       <View style={styles.progressRow}>
@@ -157,7 +157,7 @@ export function SectionChecklist({
   }
 
   return (
-    <Screen>
+    <Screen bottomInset>
       <ScreenHeader showBack title="Checklist" />
       {status === 'error' ? (
         <ErrorState message={error ?? 'Could not load your trips.'} onRetry={() => void reload()} />

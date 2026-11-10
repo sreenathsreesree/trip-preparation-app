@@ -66,7 +66,7 @@ function DashboardBody({ trip }: { trip: TripSummary }) {
   }
 
   return (
-    <Screen testID="trip-dashboard" onRefresh={() => void loadTrip(trip.id)}>
+    <Screen testID="trip-dashboard" onRefresh={() => void loadTrip(trip.id)} bottomInset>
       <ScreenHeader
         showBack
         eyebrow={describeTripTiming(trip, today)}
@@ -130,7 +130,7 @@ export function TripDashboard({ tripId }: { tripId: string | undefined }) {
   if (trip) return <DashboardBody trip={trip} />;
 
   return (
-    <Screen>
+    <Screen bottomInset>
       <ScreenHeader showBack title="Trip" />
       {status === 'error' ? (
         <ErrorState message={error ?? 'Could not load your trips.'} onRetry={() => void reload()} />

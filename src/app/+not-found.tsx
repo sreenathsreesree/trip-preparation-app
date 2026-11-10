@@ -7,7 +7,7 @@ export default function NotFoundScreen() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <Screen>
+      <Screen bottomInset>
         <EmptyState
           icon="compass-off-outline"
           title="Off the map"

@@ -71,7 +71,9 @@ export function Screen({
     <KeyboardAvoidingView
       testID={testID}
       style={[styles.root, { paddingTop: insets.top }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // Android is always edge-to-edge (SDK 54+), so the window no longer resizes for
+      // the keyboard; padding keeps pinned footers and inputs above it on both platforms.
+      behavior={Platform.OS === 'web' ? undefined : 'padding'}
     >
       {body}
       {footer ? (

@@ -1,6 +1,6 @@
-import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { BackHandler, StyleSheet, View } from 'react-native';
 import Animated, { FadeInRight, FadeOutLeft } from 'react-native-reanimated';
 
 import { Screen } from '@/components/layout/Screen';
@@ -41,6 +41,22 @@ export function CreateTripFlow() {
   useEffect(() => {
     reset();
   }, [reset]);
+
+  // Android hardware/gesture back steps back through the wizard instead of
+  // closing it and discarding the draft. (No-op on iOS and web.)
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (submitting) return true;
+        if (step > 0) {
+          goTo(step - 1);
+          return true;
+        }
+        return false;
+      });
+      return () => subscription.remove();
+    }, [step, submitting, goTo]),
+  );
 
   const current = CREATE_TRIP_STEPS[step] ?? CREATE_TRIP_STEPS[0];
   const isLast = step === CREATE_TRIP_STEPS.length - 1;

@@ -42,3 +42,7 @@ yarn-error.*
 
 # test coverage
 coverage/
+
+# build outputs (EAS local builds, downloaded APKs)
+*.apk
+*.aab
