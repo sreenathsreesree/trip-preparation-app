@@ -28,6 +28,7 @@ export function TextField({
   onFocus,
   onBlur,
   ref,
+  multiline,
   ...rest
 }: TextFieldProps) {
   const [focused, setFocused] = useState(false);
@@ -46,13 +47,22 @@ export function TextField({
           </AppText>
         ) : null}
       </View>
-      <View style={[styles.inputShell, { borderColor }, focused && styles.inputFocused]}>
+      <View
+        style={[
+          styles.inputShell,
+          multiline && styles.inputShellMultiline,
+          { borderColor },
+          focused && styles.inputFocused,
+        ]}
+      >
         {icon ? <Icon name={icon} tone={focused ? 'accent' : 'textMuted'} /> : null}
         <TextInput
           ref={ref}
           {...rest}
           value={value}
           maxLength={maxLength}
+          multiline={multiline}
+          textAlignVertical={multiline ? 'top' : 'center'}
           accessibilityLabel={label}
           aria-invalid={Boolean(error)}
           placeholderTextColor={colors.textMuted}
@@ -66,7 +76,7 @@ export function TextField({
             setFocused(false);
             onBlur?.(event);
           }}
-          style={styles.input}
+          style={[styles.input, multiline && styles.inputMultiline]}
         />
       </View>
       {message ? (
@@ -101,6 +111,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     backgroundColor: colors.surface,
   },
+  inputShellMultiline: {
+    alignItems: 'flex-start',
+  },
   inputFocused: {
     backgroundColor: colors.surfaceRaised,
   },
@@ -111,5 +124,9 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.body,
     fontSize: 16,
     paddingVertical: spacing.md,
+  },
+  inputMultiline: {
+    minHeight: 96,
+    maxHeight: 200,
   },
 });

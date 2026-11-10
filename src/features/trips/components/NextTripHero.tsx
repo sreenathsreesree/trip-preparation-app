@@ -6,7 +6,7 @@ import { AppText, Button, Icon } from '@/components/ui';
 import { diffInDays, formatDateRange, type ISODate } from '@/lib/dates';
 import { colors, radii, spacing } from '@/theme';
 
-import { getTripPhase, type TripSummary } from '../model';
+import { formatRoute, getTripPhase, type TripSummary } from '../model';
 import { ReadinessMeter } from './ReadinessMeter';
 import { TripMetaTags } from './TripMetaTags';
 
@@ -39,8 +39,8 @@ export function NextTripHero({ trip, today }: { trip: TripSummary; today: ISODat
             </AppText>
             <View style={styles.destination}>
               <Icon name="map-marker" size={16} tone="info" />
-              <AppText variant="captionStrong" tone="textSecondary" numberOfLines={1}>
-                {trip.destination}
+              <AppText variant="captionStrong" tone="textSecondary" numberOfLines={2} style={styles.flex}>
+                {formatRoute(trip.destinations)}
               </AppText>
             </View>
           </View>
@@ -62,7 +62,7 @@ export function NextTripHero({ trip, today }: { trip: TripSummary; today: ISODat
         </View>
 
         <TripMetaTags trip={trip} />
-        <ReadinessMeter progress={trip.progress} size="large" />
+        <ReadinessMeter readiness={trip.readiness} size="large" />
 
         <Button
           label="Open preparation dashboard"
@@ -105,6 +105,9 @@ const styles = StyleSheet.create({
   titles: {
     flex: 1,
     gap: spacing.xs,
+  },
+  flex: {
+    flex: 1,
   },
   destination: {
     flexDirection: 'row',

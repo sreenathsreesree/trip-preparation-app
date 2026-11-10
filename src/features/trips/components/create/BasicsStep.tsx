@@ -6,11 +6,12 @@ import { spacing } from '@/theme';
 import { TRIP_CATEGORIES, TRIP_CATEGORY_META } from '../../model';
 import { useTripDraftStore } from '../../tripDraftStore';
 import { TRIP_LIMITS, type TripDraftErrors } from '../../validation';
+import { DestinationsEditor } from './RowEditors';
 
 export function BasicsStep({ errors }: { errors: TripDraftErrors }) {
-  const draft = useTripDraftStore((state) => state.draft);
-  const update = useTripDraftStore((state) => state.update);
-  const reveal = useTripDraftStore((state) => state.reveal);
+  const name = useTripDraftStore((state) => state.draft.name);
+  const category = useTripDraftStore((state) => state.draft.category);
+  const { update, reveal } = useTripDraftStore.getState();
 
   return (
     <View style={styles.container}>
@@ -18,8 +19,8 @@ export function BasicsStep({ errors }: { errors: TripDraftErrors }) {
         label="Trip name"
         placeholder="e.g. Diwali at Nani's"
         icon="flag-variant-outline"
-        value={draft.name}
-        onChangeText={(name) => update({ name })}
+        value={name}
+        onChangeText={(value) => update({ name: value })}
         onBlur={() => reveal(['name'])}
         error={errors.name}
         maxLength={TRIP_LIMITS.nameMax}
@@ -28,34 +29,23 @@ export function BasicsStep({ errors }: { errors: TripDraftErrors }) {
         returnKeyType="next"
         testID="trip-name-input"
       />
-      <TextField
-        label="Destination"
-        placeholder="City, region or route — e.g. Manali"
-        icon="map-marker-outline"
-        value={draft.destination}
-        onChangeText={(destination) => update({ destination })}
-        onBlur={() => reveal(['destination'])}
-        error={errors.destination}
-        maxLength={TRIP_LIMITS.destinationMax}
-        autoCapitalize="words"
-        returnKeyType="done"
-        testID="trip-destination-input"
-      />
+
+      <DestinationsEditor errors={errors} />
 
       <View style={styles.group}>
         <AppText variant="label" tone="textSecondary">
           Trip category
         </AppText>
         <View style={styles.chips} accessibilityRole="radiogroup" accessibilityLabel="Trip category">
-          {TRIP_CATEGORIES.map((category) => (
+          {TRIP_CATEGORIES.map((option) => (
             <OptionTile
-              key={category}
+              key={option}
               layout="chip"
-              label={TRIP_CATEGORY_META[category].label}
-              icon={TRIP_CATEGORY_META[category].icon}
-              selected={draft.category === category}
-              onPress={() => update({ category })}
-              testID={`category-${category}`}
+              label={TRIP_CATEGORY_META[option].label}
+              icon={TRIP_CATEGORY_META[option].icon}
+              selected={category === option}
+              onPress={() => update({ category: option })}
+              testID={`category-${option}`}
             />
           ))}
         </View>

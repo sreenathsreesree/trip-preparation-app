@@ -1,53 +1,108 @@
 import { diffInDays, isValidISODate, type ISODate } from '@/lib/dates';
 
-import { isTransportMode, isTripCategory, type NewTripInput } from './model';
+import {
+  isTransportMode,
+  isTravellerKind,
+  isTripCategory,
+  type Trip,
+  type TripInput,
+  type TravellerKind,
+} from './model';
 
 export const TRIP_LIMITS = {
   nameMin: 2,
   nameMax: 60,
   destinationMin: 2,
   destinationMax: 80,
+  destinationsMax: 10,
   maxDurationDays: 365,
-  adultsMin: 1,
-  adultsMax: 20,
-  childrenMin: 0,
-  childrenMax: 20,
+  travellersMin: 1,
+  travellersMax: 20,
+  travellerNameMax: 40,
 } as const;
 
-/** The editable state of the Create Trip flow; every field may be incomplete. */
+/** A destination row in the form. `key` is a stable UI key; `id` is set for saved rows. */
+export interface DraftDestination {
+  key: string;
+  id?: string;
+  name: string;
+}
+
+export interface DraftTraveller {
+  key: string;
+  id?: string;
+  name: string;
+  kind: TravellerKind;
+}
+
+/** Editable state of the trip form; every field may be incomplete. */
 export interface TripDraft {
   name: string;
-  destination: string;
+  destinations: DraftDestination[];
   startDate: ISODate | null;
   endDate: ISODate | null;
-  adults: number;
-  children: number;
+  travellers: DraftTraveller[];
   transportMode: string | null;
   category: string | null;
 }
 
-export type TripDraftField = keyof TripDraft;
-export type TripDraftErrors = Partial<Record<TripDraftField, string>>;
+export type TripDraftField =
+  | 'name'
+  | 'destinations'
+  | 'category'
+  | 'startDate'
+  | 'endDate'
+  | 'travellers'
+  | 'transportMode';
 
-export function validateTripDraft(draft: TripDraft, today: ISODate): TripDraftErrors {
+export interface TripDraftErrors extends Partial<Record<TripDraftField, string>> {
+  /** Per-row errors keyed by `DraftDestination.key`. */
+  destinationItems?: Record<string, string>;
+  /** Per-row errors keyed by `DraftTraveller.key`. */
+  travellerItems?: Record<string, string>;
+}
+
+export interface ValidationOptions {
+  /** Earliest allowed start: today when creating; when editing, the earlier of today and the saved start. */
+  minStartDate: ISODate;
+}
+
+function lengthError(value: string, min: number, max: number, emptyMessage: string) {
+  if (value.length === 0) return emptyMessage;
+  if (value.length < min) return `Use at least ${min} characters.`;
+  if (value.length > max) return `Keep it under ${max} characters.`;
+  return undefined;
+}
+
+export function validateTripDraft(draft: TripDraft, options: ValidationOptions): TripDraftErrors {
   const errors: TripDraftErrors = {};
-  const name = draft.name.trim();
-  const destination = draft.destination.trim();
 
-  if (name.length === 0) {
-    errors.name = 'Give your trip a name.';
-  } else if (name.length < TRIP_LIMITS.nameMin) {
-    errors.name = `Use at least ${TRIP_LIMITS.nameMin} characters.`;
-  } else if (name.length > TRIP_LIMITS.nameMax) {
-    errors.name = `Keep it under ${TRIP_LIMITS.nameMax} characters.`;
+  const nameError = lengthError(
+    draft.name.trim(),
+    TRIP_LIMITS.nameMin,
+    TRIP_LIMITS.nameMax,
+    'Give your trip a name.',
+  );
+  if (nameError) errors.name = nameError;
+
+  // Destinations: at least one, every row filled in.
+  const destinationItems: Record<string, string> = {};
+  for (const destination of draft.destinations) {
+    const error = lengthError(
+      destination.name.trim(),
+      TRIP_LIMITS.destinationMin,
+      TRIP_LIMITS.destinationMax,
+      draft.destinations.length > 1 ? 'Enter a place or remove this stop.' : 'Where are you headed?',
+    );
+    if (error) destinationItems[destination.key] = error;
   }
-
-  if (destination.length === 0) {
-    errors.destination = 'Where are you headed?';
-  } else if (destination.length < TRIP_LIMITS.destinationMin) {
-    errors.destination = `Use at least ${TRIP_LIMITS.destinationMin} characters.`;
-  } else if (destination.length > TRIP_LIMITS.destinationMax) {
-    errors.destination = `Keep it under ${TRIP_LIMITS.destinationMax} characters.`;
+  if (draft.destinations.length === 0) {
+    errors.destinations = 'Add at least one destination.';
+  } else if (draft.destinations.length > TRIP_LIMITS.destinationsMax) {
+    errors.destinations = `Up to ${TRIP_LIMITS.destinationsMax} destinations.`;
+  } else if (Object.keys(destinationItems).length > 0) {
+    errors.destinations = Object.values(destinationItems)[0];
+    errors.destinationItems = destinationItems;
   }
 
   if (!draft.category) {
@@ -58,7 +113,7 @@ export function validateTripDraft(draft: TripDraft, today: ISODate): TripDraftEr
 
   if (!draft.startDate || !isValidISODate(draft.startDate)) {
     errors.startDate = 'Choose a start date.';
-  } else if (draft.startDate < today) {
+  } else if (draft.startDate < options.minStartDate) {
     errors.startDate = 'The trip cannot start in the past.';
   }
 
@@ -72,19 +127,22 @@ export function validateTripDraft(draft: TripDraft, today: ISODate): TripDraftEr
     }
   }
 
-  if (
-    !Number.isInteger(draft.adults) ||
-    draft.adults < TRIP_LIMITS.adultsMin ||
-    draft.adults > TRIP_LIMITS.adultsMax
-  ) {
-    errors.adults = `Between ${TRIP_LIMITS.adultsMin} and ${TRIP_LIMITS.adultsMax} adults.`;
+  // Travellers: at least one, every row named.
+  const travellerItems: Record<string, string> = {};
+  for (const traveller of draft.travellers) {
+    const name = traveller.name.trim();
+    if (name.length === 0) travellerItems[traveller.key] = 'Enter a name or remove this traveller.';
+    else if (name.length > TRIP_LIMITS.travellerNameMax)
+      travellerItems[traveller.key] = `Keep names under ${TRIP_LIMITS.travellerNameMax} characters.`;
+    else if (!isTravellerKind(traveller.kind)) travellerItems[traveller.key] = 'Choose adult or child.';
   }
-  if (
-    !Number.isInteger(draft.children) ||
-    draft.children < TRIP_LIMITS.childrenMin ||
-    draft.children > TRIP_LIMITS.childrenMax
-  ) {
-    errors.children = `Up to ${TRIP_LIMITS.childrenMax} children.`;
+  if (draft.travellers.length < TRIP_LIMITS.travellersMin) {
+    errors.travellers = 'Add at least one traveller.';
+  } else if (draft.travellers.length > TRIP_LIMITS.travellersMax) {
+    errors.travellers = `Up to ${TRIP_LIMITS.travellersMax} travellers.`;
+  } else if (Object.keys(travellerItems).length > 0) {
+    errors.travellers = Object.values(travellerItems)[0];
+    errors.travellerItems = travellerItems;
   }
 
   if (!draft.transportMode) {
@@ -102,6 +160,12 @@ export function pickErrors(errors: TripDraftErrors, fields: readonly TripDraftFi
   for (const field of fields) {
     if (errors[field]) picked[field] = errors[field];
   }
+  if (fields.includes('destinations') && errors.destinationItems) {
+    picked.destinationItems = errors.destinationItems;
+  }
+  if (fields.includes('travellers') && errors.travellerItems) {
+    picked.travellerItems = errors.travellerItems;
+  }
   return picked;
 }
 
@@ -110,13 +174,14 @@ export function hasErrors(errors: TripDraftErrors): boolean {
 }
 
 /** Converts a fully valid draft into repository input; throws if invalid. */
-export function draftToTripInput(draft: TripDraft, today: ISODate): NewTripInput {
-  const errors = validateTripDraft(draft, today);
-  const firstError = Object.values(errors)[0];
+export function draftToTripInput(draft: TripDraft, options: ValidationOptions): TripInput {
+  const errors = validateTripDraft(draft, options);
+  const firstError = (Object.keys(errors) as (keyof TripDraftErrors)[])
+    .map((key) => errors[key])
+    .find((value): value is string => typeof value === 'string');
   if (firstError) {
     throw new Error(firstError);
   }
-  // Narrowing is guaranteed by validation above.
   if (
     !draft.startDate ||
     !draft.endDate ||
@@ -127,11 +192,35 @@ export function draftToTripInput(draft: TripDraft, today: ISODate): NewTripInput
   }
   return {
     name: draft.name.trim(),
-    destination: draft.destination.trim(),
+    destinations: draft.destinations.map(({ id, name }) => ({
+      ...(id ? { id } : {}),
+      name: name.trim(),
+    })),
     startDate: draft.startDate,
     endDate: draft.endDate,
-    travellers: { adults: draft.adults, children: draft.children },
+    travellers: draft.travellers.map(({ id, name, kind }) => ({
+      ...(id ? { id } : {}),
+      name: name.trim(),
+      kind,
+    })),
     transportMode: draft.transportMode,
     category: draft.category,
   };
+}
+
+/** Prefills the form from a saved trip; row keys are the saved ids. */
+export function tripToDraft(trip: Trip): TripDraft {
+  return {
+    name: trip.name,
+    destinations: trip.destinations.map(({ id, name }) => ({ key: id, id, name })),
+    startDate: trip.startDate,
+    endDate: trip.endDate,
+    travellers: trip.travellers.map(({ id, name, kind }) => ({ key: id, id, name, kind })),
+    transportMode: trip.transportMode,
+    category: trip.category,
+  };
+}
+
+export function editMinStartDate(savedStart: ISODate, today: ISODate): ISODate {
+  return savedStart < today ? savedStart : today;
 }

@@ -1,4 +1,5 @@
-import { createPrepItemRepository } from '@/features/preparation/prepItemRepository';
+import { createChecklistRepository } from '@/features/preparation/checklistRepository';
+import { createTemplateRepository } from '@/features/preparation/templateRepository';
 import { createTripRepository } from '@/features/trips/tripRepository';
 import { createId } from '@/lib/id';
 
@@ -13,8 +14,17 @@ export async function getRepositories() {
   const db = await getDatabase();
   return {
     trips: createTripRepository(db, { createId }),
-    prepItems: createPrepItemRepository(db, { createId }),
+    checklists: createChecklistRepository(db, { createId }),
+    templates: createTemplateRepository(db, { createId }),
     schemaVersion: () => getSchemaVersion(db),
+    countTasks: async () => {
+      const row = await db.getFirstAsync<{ count: number }>(
+        `SELECT COUNT(*) AS count FROM checklist_tasks k
+         JOIN checklist_sections s ON s.id = k.section_id WHERE s.trip_id IS NOT NULL`,
+        [],
+      );
+      return row?.count ?? 0;
+    },
   };
 }
 

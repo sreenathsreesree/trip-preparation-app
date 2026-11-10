@@ -14,6 +14,8 @@ export interface IconButtonProps {
   onPress: () => void;
   tone?: ColorToken;
   variant?: 'filled' | 'plain' | 'accent';
+  /** `sm` is visually compact but keeps a 44pt touch area via hit slop. */
+  size?: 'md' | 'sm';
   disabled?: boolean;
   testID?: string;
 }
@@ -24,9 +26,11 @@ export function IconButton({
   onPress,
   tone = 'textPrimary',
   variant = 'filled',
+  size = 'md',
   disabled = false,
   testID,
 }: IconButtonProps) {
+  const small = size === 'sm';
   return (
     <PressableScale
       testID={testID}
@@ -34,7 +38,7 @@ export function IconButton({
       accessibilityLabel={accessibilityLabel}
       accessibilityState={{ disabled }}
       disabled={disabled}
-      hitSlop={8}
+      hitSlop={small ? 12 : 8}
       pressedScale={0.92}
       onPress={() => {
         selectionFeedback();
@@ -42,13 +46,14 @@ export function IconButton({
       }}
       style={({ pressed }) => [
         styles.base,
+        small && styles.small,
         variant === 'filled' && styles.filled,
         variant === 'accent' && styles.accent,
         pressed && (variant === 'accent' ? styles.accentPressed : styles.pressed),
         disabled && styles.disabled,
       ]}
     >
-      <Icon name={icon} size={sizes.iconMd} tone={tone} />
+      <Icon name={icon} size={small ? sizes.iconSm + 2 : sizes.iconMd} tone={tone} />
     </PressableScale>
   );
 }
@@ -60,6 +65,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  small: {
+    width: 34,
+    height: 34,
   },
   filled: {
     backgroundColor: colors.surfaceRaised,

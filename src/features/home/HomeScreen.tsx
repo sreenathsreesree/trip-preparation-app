@@ -15,10 +15,11 @@ import {
   SectionHeader,
 } from '@/components/ui';
 import { formatDateLong } from '@/lib/dates';
-import { PREP_SECTIONS, PREP_SECTION_META } from '@/features/preparation/model';
+import { SECTION_META, STANDARD_SECTION_KINDS } from '@/features/preparation/model';
 import { NextTripHero } from '@/features/trips/components/NextTripHero';
 import { TripCard } from '@/features/trips/components/TripCard';
-import { useActiveTrips, useEnsureTripsLoaded, useToday } from '@/features/trips/hooks';
+import { openCount } from '@/features/preparation/readiness';
+import { useCurrentTrips, useEnsureTripsLoaded, useToday } from '@/features/trips/hooks';
 import { useTripsStore } from '@/features/trips/tripsStore';
 import { colors, radii, spacing } from '@/theme';
 
@@ -59,11 +60,11 @@ function FirstTripCard() {
           preparation dashboard covering:
         </AppText>
         <View style={styles.sectionList}>
-          {PREP_SECTIONS.map((section) => (
+          {STANDARD_SECTION_KINDS.map((section) => (
             <View key={section} style={styles.sectionItem}>
-              <Icon name={PREP_SECTION_META[section].icon} size={16} color={PREP_SECTION_META[section].tint} />
+              <Icon name={SECTION_META[section].icon} size={16} color={SECTION_META[section].tint} />
               <AppText variant="caption" tone="textSecondary">
-                {PREP_SECTION_META[section].title}
+                {SECTION_META[section].title}
               </AppText>
             </View>
           ))}
@@ -80,17 +81,18 @@ export function HomeScreen() {
   const status = useTripsStore((state) => state.status);
   const error = useTripsStore((state) => state.error);
   const load = useTripsStore((state) => state.load);
-  const activeTrips = useActiveTrips(today);
+  const activeTrips = useCurrentTrips(today);
 
   const [nextTrip, ...laterTrips] = activeTrips;
   const totals = useMemo(
     () =>
       activeTrips.reduce(
         (acc, trip) => ({
-          done: acc.done + trip.progress.done,
-          left: acc.left + (trip.progress.total - trip.progress.done),
+          done: acc.done + trip.readiness.done,
+          left: acc.left + openCount(trip.readiness),
+          essentials: acc.essentials + openCount(trip.readiness.essential),
         }),
-        { done: 0, left: 0 },
+        { done: 0, left: 0, essentials: 0 },
       ),
     [activeTrips],
   );
@@ -142,11 +144,11 @@ export function HomeScreen() {
           </Animated.View>
 
           <View style={styles.stats}>
-            <Stat value={activeTrips.length} label="Active trips" tone="info" />
+            <Stat value={activeTrips.length} label="Upcoming" tone="info" />
             <View style={styles.statDivider} />
-            <Stat value={totals.done} label="Items ready" tone="accent" />
+            <Stat value={totals.done} label="Tasks done" tone="accent" />
             <View style={styles.statDivider} />
-            <Stat value={totals.left} label="Items left" tone="warning" />
+            <Stat value={totals.essentials} label="Essentials open" tone="warning" />
           </View>
 
           {laterTrips.length > 0 ? (

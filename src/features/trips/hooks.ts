@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 
 import { todayISO, type ISODate } from '@/lib/dates';
 
-import { getTripPhase } from './model';
+import { isCurrentTrip } from './model';
 import { selectTripById, useTripsStore } from './tripsStore';
 
 /** Today's calendar date, fixed for the lifetime of the calling screen. */
@@ -28,11 +28,8 @@ export function useTrip(tripId: string | undefined) {
   return { trip, status, error, reload: load };
 }
 
-/** Trips that are upcoming or in progress, nearest first. */
-export function useActiveTrips(today: ISODate) {
+/** Active trips that are upcoming or in progress, nearest first. */
+export function useCurrentTrips(today: ISODate) {
   const trips = useTripsStore((state) => state.trips);
-  return useMemo(
-    () => trips.filter((trip) => getTripPhase(trip, today) !== 'completed'),
-    [trips, today],
-  );
+  return useMemo(() => trips.filter((trip) => isCurrentTrip(trip, today)), [trips, today]);
 }

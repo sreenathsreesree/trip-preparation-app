@@ -1,12 +1,14 @@
 import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
-import { AppText, Card, Icon, Tag } from '@/components/ui';
+import { AppText, Card, Icon, IconButton, Tag } from '@/components/ui';
 import { formatDateRange, type ISODate } from '@/lib/dates';
 import { colors, radii, spacing } from '@/theme';
 
 import {
   describeTripTiming,
+  formatRoute,
+  getTripLifecycle,
   getTripPhase,
   TRANSPORT_MODE_META,
   type TripSummary,
@@ -16,19 +18,31 @@ import { ReadinessMeter } from './ReadinessMeter';
 export interface TripCardProps {
   trip: TripSummary;
   today: ISODate;
+  /** Opens the trip's management actions; omit to hide the menu button. */
+  onMore?: (trip: TripSummary) => void;
 }
 
-export function TripCard({ trip, today }: TripCardProps) {
+export function TripCard({ trip, today, onMore }: TripCardProps) {
   const phase = getTripPhase(trip, today);
+  const lifecycle = getTripLifecycle(trip);
   const transport = TRANSPORT_MODE_META[trip.transportMode];
   const timing = describeTripTiming(trip, today);
-  const timingColor =
-    phase === 'ongoing' ? colors.accent : phase === 'completed' ? colors.textMuted : colors.info;
+  const route = formatRoute(trip.destinations);
+  const tag =
+    lifecycle === 'archived'
+      ? { label: 'Archived', color: colors.textMuted }
+      : lifecycle === 'completed'
+        ? { label: 'Completed', color: colors.accent }
+        : phase === 'ongoing'
+          ? { label: timing, color: colors.accent }
+          : phase === 'ended'
+            ? { label: 'Ended', color: colors.warning }
+            : { label: timing, color: colors.info };
 
   return (
     <Card
       onPress={() => router.push({ pathname: '/trips/[tripId]', params: { tripId: trip.id } })}
-      accessibilityLabel={`${trip.name}, ${trip.destination}, ${formatDateRange(trip.startDate, trip.endDate)}, ${timing}`}
+      accessibilityLabel={`${trip.name}, ${route}, ${formatDateRange(trip.startDate, trip.endDate)}, ${tag.label}`}
       accessibilityHint="Opens the trip preparation dashboard"
       testID={`trip-card-${trip.id}`}
     >
@@ -40,17 +54,40 @@ export function TripCard({ trip, today }: TripCardProps) {
           <AppText variant="h3" numberOfLines={1}>
             {trip.name}
           </AppText>
-          <View style={styles.destination}>
-            <Icon name="map-marker-outline" size={14} tone="textMuted" />
+          <View style={styles.line}>
+            <Icon name="map-marker-path" size={14} tone="textMuted" />
             <AppText variant="caption" tone="textSecondary" numberOfLines={1} style={styles.flex}>
-              {trip.destination} · {formatDateRange(trip.startDate, trip.endDate)}
+              {route}
+            </AppText>
+          </View>
+          <View style={styles.line}>
+            <Icon name="calendar-range" size={14} tone="textMuted" />
+            <AppText variant="caption" tone="textMuted" numberOfLines={1} style={styles.flex}>
+              {formatDateRange(trip.startDate, trip.endDate)}
             </AppText>
           </View>
         </View>
-        <Tag label={timing} color={timingColor} />
+        {onMore ? (
+          <IconButton
+            icon="dots-vertical"
+            variant="plain"
+            tone="textSecondary"
+            accessibilityLabel={`Manage ${trip.name}`}
+            onPress={() => onMore(trip)}
+            testID={`trip-more-${trip.id}`}
+          />
+        ) : null}
+      </View>
+      <View style={styles.tagRow}>
+        <Tag label={tag.label} color={tag.color} />
+        {lifecycle === 'active' && phase === 'ended' ? (
+          <AppText variant="caption" tone="textMuted" style={styles.flex}>
+            Mark it completed from the menu when you are back.
+          </AppText>
+        ) : null}
       </View>
       <View style={styles.meter}>
-        <ReadinessMeter progress={trip.progress} />
+        <ReadinessMeter readiness={trip.readiness} />
       </View>
     </Card>
   );
@@ -59,7 +96,7 @@ export function TripCard({ trip, today }: TripCardProps) {
 const styles = StyleSheet.create({
   top: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.md,
   },
   iconBadge: {
@@ -74,7 +111,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: spacing.xxs,
   },
-  destination: {
+  line: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
@@ -82,7 +119,13 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
+  tagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
   meter: {
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
   },
 });

@@ -18,3 +18,7 @@ export { TextField } from './TextField';
 export { ToggleRow } from './ToggleRow';
 export { SegmentedControl } from './SegmentedControl';
 export type { SegmentOption } from './SegmentedControl';
+export { ActionSheet } from './ActionSheet';
+export type { SheetAction } from './ActionSheet';
+export { Notice } from './Notice';
+export { ReorderControls } from './ReorderControls';

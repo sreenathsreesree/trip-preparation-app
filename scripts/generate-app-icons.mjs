@@ -6,6 +6,7 @@
 // Rasterises SVG with Playwright's Chromium, so Playwright must be resolvable
 // (`require('playwright')`); it is intentionally not a project dependency.
 // Output goes to assets/ and replaces the files referenced by app.json.
+import { Buffer } from 'node:buffer';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';

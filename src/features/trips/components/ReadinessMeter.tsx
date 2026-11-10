@@ -3,32 +3,42 @@ import { StyleSheet, View } from 'react-native';
 import { AppText, ProgressBar } from '@/components/ui';
 import { colors, spacing } from '@/theme';
 
-import { progressRatio, type PrepProgress } from '../model';
+import {
+  describeDeparture,
+  getDepartureStatus,
+  readinessPercent,
+  type DepartureStatus,
+  type ReadinessStats,
+} from '../../preparation/readiness';
+
+export const DEPARTURE_COLORS: Record<DepartureStatus, string> = {
+  empty: colors.textMuted,
+  blocked: colors.warning,
+  ready: colors.info,
+  complete: colors.accent,
+};
 
 export interface ReadinessMeterProps {
-  progress: PrepProgress;
+  readiness: ReadinessStats;
   size?: 'compact' | 'large';
 }
 
-/** "Readiness" read-out: percentage plus done/total and a bar. */
-export function ReadinessMeter({ progress, size = 'compact' }: ReadinessMeterProps) {
-  const ratio = progressRatio(progress);
-  const percent = Math.round(ratio * 100);
-  const color = ratio >= 1 ? colors.accent : ratio >= 0.5 ? colors.info : colors.warning;
-  const summary =
-    progress.total === 0
-      ? 'No checklist items yet'
-      : `${progress.done} of ${progress.total} ready`;
+/** Departure-readiness read-out: status, percentage (optional tasks excluded) and a bar. */
+export function ReadinessMeter({ readiness, size = 'compact' }: ReadinessMeterProps) {
+  const status = getDepartureStatus(readiness);
+  const percent = readinessPercent(readiness);
+  const color = DEPARTURE_COLORS[status];
+  const { title, detail } = describeDeparture(readiness);
 
   return (
     <View style={styles.container}>
       <View style={styles.row}>
         <View style={styles.label}>
-          <AppText variant="label" tone="textMuted">
-            Readiness
+          <AppText variant="label" style={{ color }}>
+            {title}
           </AppText>
-          <AppText variant="caption" tone="textSecondary">
-            {summary}
+          <AppText variant="caption" tone="textSecondary" numberOfLines={2}>
+            {detail}
           </AppText>
         </View>
         <AppText variant={size === 'large' ? 'metric' : 'h3'} style={{ color }}>
@@ -36,10 +46,10 @@ export function ReadinessMeter({ progress, size = 'compact' }: ReadinessMeterPro
         </AppText>
       </View>
       <ProgressBar
-        value={ratio}
+        value={percent / 100}
         color={color}
         height={size === 'large' ? 8 : 6}
-        accessibilityLabel={`Readiness ${percent} percent, ${summary}`}
+        accessibilityLabel={`Readiness ${percent} percent. ${title}. ${detail}`}
       />
     </View>
   );
@@ -53,8 +63,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
+    gap: spacing.md,
   },
   label: {
+    flex: 1,
     gap: spacing.xxs,
   },
 });

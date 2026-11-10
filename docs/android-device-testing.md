@@ -3,6 +3,11 @@
 Status: **configuration prepared, not yet run on an Android device or emulator.** Record results in
 the checklist at the bottom after the first run.
 
+> **Milestone 3 note:** no new native packages were added, so a development APK built from the
+> milestone 2 configuration runs this code too — just pull the latest commit and run `npm start`.
+> On first launch an existing install migrates its database to schema v2 (trips, ticks and order are
+> kept; adult/child counts become editable travellers named "Adult 1", "Child 1"…).
+
 ## Why a development build (not Expo Go)
 
 This project uses **Expo SDK 58**. The Expo Go app from Google Play only supports one SDK at a time,
@@ -126,4 +131,10 @@ Device / Android version: ________ · Build: ________ · Date: ________
 | 10 | Reboot the phone, reopen: data still there | |
 | 11 | Back on a non-Home tab goes to Home; back on Home leaves the app | |
 | 12 | Delete trip → confirmation dialog → returns to an empty Trips list | |
-| 13 | Profile shows trip/item counts and `Database schema v1` | |
+| 13 | Profile shows trip/task/template counts and `Database schema v2` | |
+| 14 | Edit a trip: add/reorder/remove stops and travellers; checklist ticks unchanged afterwards | |
+| 15 | Trip menu (⋯): duplicate, mark completed, archive, restore; Trips tab shows Active / Done / Archived | |
+| 16 | Hardware/gesture back closes the trip menu sheet without running an action | |
+| 17 | Create a template, add sections and tasks with priorities, apply it to a trip; edit the template and confirm the trip is unchanged | |
+| 18 | Task editor: the keyboard does not cover the Description/Notes fields or the Save button | |
+| 19 | Tick all essential tasks: dashboard switches from "Not ready to depart" to "Ready to depart" | |

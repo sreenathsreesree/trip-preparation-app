@@ -80,7 +80,17 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="trips/new" options={{ presentation: 'modal' }} />
             <Stack.Screen name="trips/[tripId]/index" />
-            <Stack.Screen name="trips/[tripId]/[section]" />
+            <Stack.Screen name="trips/[tripId]/edit" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="trips/[tripId]/sections/index" />
+            <Stack.Screen name="trips/[tripId]/sections/[sectionId]" />
+            <Stack.Screen name="trips/[tripId]/tasks/[taskId]" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="trips/[tripId]/templates" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="trips/[tripId]/save-template" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="templates/new" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="templates/[templateId]/index" />
+            <Stack.Screen name="templates/[templateId]/edit" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="templates/[templateId]/sections" />
+            <Stack.Screen name="templates/[templateId]/tasks/[taskId]" options={{ presentation: 'modal' }} />
           </Stack>
         </ThemeProvider>
       </SafeAreaProvider>

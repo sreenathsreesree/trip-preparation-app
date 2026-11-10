@@ -1,11 +1,12 @@
 import { StyleSheet, View } from 'react-native';
 
-import { AppText, DateRangeCalendar, Icon, Stepper } from '@/components/ui';
+import { AppText, DateRangeCalendar, Icon } from '@/components/ui';
 import { formatDate, inclusiveDayCount, type ISODate } from '@/lib/dates';
 import { colors, radii, spacing } from '@/theme';
 
 import { useTripDraftStore } from '../../tripDraftStore';
-import { TRIP_LIMITS, type TripDraftErrors } from '../../validation';
+import type { TripDraftErrors } from '../../validation';
+import { TravellersEditor } from './RowEditors';
 
 function DateSummary({ label, value }: { label: string; value: ISODate | null }) {
   return (
@@ -20,21 +21,21 @@ function DateSummary({ label, value }: { label: string; value: ISODate | null })
   );
 }
 
-export function WhenStep({ errors, today }: { errors: TripDraftErrors; today: ISODate }) {
-  const draft = useTripDraftStore((state) => state.draft);
-  const update = useTripDraftStore((state) => state.update);
+export function WhenStep({ errors }: { errors: TripDraftErrors }) {
+  const startDate = useTripDraftStore((state) => state.draft.startDate);
+  const endDate = useTripDraftStore((state) => state.draft.endDate);
+  const minStartDate = useTripDraftStore((state) => state.minStartDate);
   const setDates = useTripDraftStore((state) => state.setDates);
 
   const dateError = errors.startDate ?? errors.endDate;
-  const days =
-    draft.startDate && draft.endDate ? inclusiveDayCount(draft.startDate, draft.endDate) : null;
+  const days = startDate && endDate ? inclusiveDayCount(startDate, endDate) : null;
 
   return (
     <View style={styles.container}>
       <View style={styles.dateRow}>
-        <DateSummary label="Departs" value={draft.startDate} />
+        <DateSummary label="Departs" value={startDate} />
         <Icon name="arrow-right" tone="textMuted" />
-        <DateSummary label="Returns" value={draft.endDate} />
+        <DateSummary label="Returns" value={endDate} />
       </View>
       {days ? (
         <AppText variant="caption" tone="accent">
@@ -47,10 +48,10 @@ export function WhenStep({ errors, today }: { errors: TripDraftErrors; today: IS
       )}
 
       <DateRangeCalendar
-        startDate={draft.startDate}
-        endDate={draft.endDate}
-        minDate={today}
-        onChange={({ startDate, endDate }) => setDates(startDate, endDate)}
+        startDate={startDate}
+        endDate={endDate}
+        minDate={minStartDate}
+        onChange={(range) => setDates(range.startDate, range.endDate)}
         testID="trip-calendar"
       />
       {dateError ? (
@@ -59,28 +60,8 @@ export function WhenStep({ errors, today }: { errors: TripDraftErrors; today: IS
         </AppText>
       ) : null}
 
-      <View style={styles.group}>
-        <AppText variant="label" tone="textSecondary">
-          Travellers
-        </AppText>
-        <Stepper
-          label="Adults"
-          description="Age 12 and above"
-          value={draft.adults}
-          min={TRIP_LIMITS.adultsMin}
-          max={TRIP_LIMITS.adultsMax}
-          onChange={(adults) => update({ adults })}
-          testID="adults-stepper"
-        />
-        <Stepper
-          label="Children"
-          description="Under 12"
-          value={draft.children}
-          min={TRIP_LIMITS.childrenMin}
-          max={TRIP_LIMITS.childrenMax}
-          onChange={(children) => update({ children })}
-          testID="children-stepper"
-        />
+      <View style={styles.travellers}>
+        <TravellersEditor errors={errors} />
       </View>
     </View>
   );
@@ -104,8 +85,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  group: {
-    gap: spacing.sm,
+  travellers: {
     marginTop: spacing.sm,
   },
 });

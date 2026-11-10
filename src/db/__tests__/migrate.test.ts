@@ -13,14 +13,25 @@ describe('migrate', () => {
     const db = openTestDatabase();
     const result = await migrate(db, migrations);
 
-    expect(result).toEqual({ fromVersion: 0, toVersion: 1, applied: ['initial_schema'] });
-    expect(await getSchemaVersion(db)).toBe(1);
+    expect(result).toEqual({
+      fromVersion: 0,
+      toVersion: migrations.length,
+      applied: ['initial_schema', 'trip_management_and_checklists'],
+    });
+    expect(await getSchemaVersion(db)).toBe(migrations.length);
 
     const tables = await db.getAllAsync<{ name: string }>(
       "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
       [],
     );
-    expect(tables.map((t) => t.name)).toEqual(['prep_items', 'trips']);
+    expect(tables.map((t) => t.name)).toEqual([
+      'checklist_sections',
+      'checklist_tasks',
+      'checklist_templates',
+      'trip_destinations',
+      'trip_travellers',
+      'trips',
+    ]);
     db.close();
   });
 
@@ -29,7 +40,7 @@ describe('migrate', () => {
     await migrate(db, migrations);
     const again = await migrate(db, migrations);
     expect(again.applied).toEqual([]);
-    expect(await getSchemaVersion(db)).toBe(1);
+    expect(await getSchemaVersion(db)).toBe(migrations.length);
     db.close();
   });
 
@@ -44,13 +55,17 @@ describe('migrate', () => {
     );
 
     const addNotes: Migration = {
-      version: 2,
+      version: migrations.length + 1,
       name: 'add_trip_notes',
       up: (conn) => conn.execAsync("ALTER TABLE trips ADD COLUMN notes TEXT NOT NULL DEFAULT ''"),
     };
     const result = await migrate(db, [...migrations, addNotes]);
 
-    expect(result).toEqual({ fromVersion: 1, toVersion: 2, applied: ['add_trip_notes'] });
+    expect(result).toEqual({
+      fromVersion: migrations.length,
+      toVersion: migrations.length + 1,
+      applied: ['add_trip_notes'],
+    });
     const row = await db.getFirstAsync<{ name: string; notes: string }>(
       'SELECT name, notes FROM trips WHERE id = ?',
       ['t1'],
@@ -64,7 +79,7 @@ describe('migrate', () => {
     await migrate(db, migrations);
 
     const broken: Migration = {
-      version: 2,
+      version: migrations.length + 1,
       name: 'broken',
       async up(conn) {
         await conn.execAsync('CREATE TABLE half_done (id TEXT)');
@@ -73,7 +88,7 @@ describe('migrate', () => {
     };
 
     await expect(migrate(db, [...migrations, broken])).rejects.toThrow('boom');
-    expect(await getSchemaVersion(db)).toBe(1);
+    expect(await getSchemaVersion(db)).toBe(migrations.length);
     const leftover = await db.getFirstAsync(
       "SELECT name FROM sqlite_master WHERE name = 'half_done'",
       [],
@@ -84,7 +99,7 @@ describe('migrate', () => {
 
   it('refuses to run against a newer schema', async () => {
     const db = openTestDatabase();
-    await db.execAsync('PRAGMA user_version = 5');
+    await db.execAsync(`PRAGMA user_version = ${migrations.length + 1}`);
     await expect(migrate(db, migrations)).rejects.toBeInstanceOf(DatabaseNewerThanAppError);
     db.close();
   });

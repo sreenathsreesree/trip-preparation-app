@@ -5,11 +5,11 @@ import Animated, { FadeInRight, FadeOutLeft } from 'react-native-reanimated';
 
 import { Screen } from '@/components/layout/Screen';
 import { ScreenHeader } from '@/components/layout/ScreenHeader';
-import { AppText, Button, Icon } from '@/components/ui';
+import { Button, Notice } from '@/components/ui';
 import { todayISO } from '@/lib/dates';
 import { toErrorMessage } from '@/lib/errors';
 import { successFeedback } from '@/lib/haptics';
-import { colors, radii, spacing } from '@/theme';
+import { spacing } from '@/theme';
 
 import { CREATE_TRIP_STEPS, useTripDraftStore } from '../../tripDraftStore';
 import { useTripsStore } from '../../tripsStore';
@@ -30,8 +30,10 @@ export function CreateTripFlow() {
   const draft = useTripDraftStore((state) => state.draft);
   const step = useTripDraftStore((state) => state.step);
   const revealed = useTripDraftStore((state) => state.revealed);
+  const minStartDate = useTripDraftStore((state) => state.minStartDate);
   const withStarterChecklist = useTripDraftStore((state) => state.withStarterChecklist);
-  const { reveal, goTo, reset } = useTripDraftStore.getState();
+  const templateIds = useTripDraftStore((state) => state.templateIds);
+  const { reveal, goTo, startCreate } = useTripDraftStore.getState();
   const createTrip = useTripsStore((state) => state.create);
 
   const [submitting, setSubmitting] = useState(false);
@@ -39,8 +41,8 @@ export function CreateTripFlow() {
 
   // Every visit starts from a clean draft.
   useEffect(() => {
-    reset();
-  }, [reset]);
+    startCreate(today);
+  }, [startCreate, today]);
 
   // Android hardware/gesture back steps back through the wizard instead of
   // closing it and discarding the draft. (No-op on iOS and web.)
@@ -60,7 +62,7 @@ export function CreateTripFlow() {
 
   const current = CREATE_TRIP_STEPS[step] ?? CREATE_TRIP_STEPS[0];
   const isLast = step === CREATE_TRIP_STEPS.length - 1;
-  const allErrors = useMemo(() => validateTripDraft(draft, today), [draft, today]);
+  const allErrors = useMemo(() => validateTripDraft(draft, { minStartDate }), [draft, minStartDate]);
   const visibleErrors = pickErrors(
     allErrors,
     (Object.keys(revealed) as TripDraftField[]).filter((field) => revealed[field]),
@@ -70,10 +72,9 @@ export function CreateTripFlow() {
     setSubmitError(null);
     setSubmitting(true);
     try {
-      const input = draftToTripInput(draft, today);
-      const trip = await createTrip(input, { withStarterChecklist });
+      const input = draftToTripInput(draft, { minStartDate });
+      const trip = await createTrip(input, { withStarterChecklist, templateIds });
       successFeedback();
-      reset();
       router.replace({ pathname: '/trips/[tripId]', params: { tripId: trip.id } });
     } catch (error) {
       setSubmitError(toErrorMessage(error, 'Could not save the trip. Please try again.'));
@@ -131,18 +132,11 @@ export function CreateTripFlow() {
 
       <Animated.View key={current.key} entering={FadeInRight.duration(220)} exiting={FadeOutLeft.duration(120)}>
         {step === 0 && <BasicsStep errors={visibleErrors} />}
-        {step === 1 && <WhenStep errors={visibleErrors} today={today} />}
+        {step === 1 && <WhenStep errors={visibleErrors} />}
         {step === 2 && <HowStep errors={visibleErrors} />}
       </Animated.View>
 
-      {submitError ? (
-        <View style={styles.errorBanner} accessibilityRole="alert">
-          <Icon name="alert-circle-outline" tone="danger" />
-          <AppText variant="caption" tone="danger" style={styles.flex}>
-            {submitError}
-          </AppText>
-        </View>
-      ) : null}
+      {submitError ? <Notice tone="danger" title="Trip not saved" message={submitError} /> : null}
     </Screen>
   );
 }
@@ -153,19 +147,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   primary: {
-    flex: 1,
-  },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.danger,
-    backgroundColor: colors.dangerSoft,
-  },
-  flex: {
     flex: 1,
   },
 });

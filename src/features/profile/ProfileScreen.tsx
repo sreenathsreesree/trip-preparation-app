@@ -13,6 +13,7 @@ import { colors, radii, spacing } from '@/theme';
 interface StorageStats {
   trips: number;
   items: number;
+  templates: number;
   schemaVersion: number;
 }
 
@@ -39,13 +40,14 @@ export function ProfileScreen() {
       let cancelled = false;
       getRepositories()
         .then(async (repos) => {
-          const [trips, items, schemaVersion] = await Promise.all([
+          const [trips, items, templates, schemaVersion] = await Promise.all([
             repos.trips.count(),
-            repos.prepItems.countAll(),
+            repos.countTasks(),
+            repos.templates.list().then((list) => list.length),
             repos.schemaVersion(),
           ]);
           if (!cancelled) {
-            setStats({ trips, items, schemaVersion });
+            setStats({ trips, items, templates, schemaVersion });
             setError(null);
           }
         })
@@ -92,7 +94,9 @@ export function ProfileScreen() {
             <>
               <InfoRow label="Trips saved" value={stats ? String(stats.trips) : '…'} testID="profile-trip-count" />
               <View style={styles.divider} />
-              <InfoRow label="Checklist items" value={stats ? String(stats.items) : '…'} />
+              <InfoRow label="Trip checklist tasks" value={stats ? String(stats.items) : '…'} />
+              <View style={styles.divider} />
+              <InfoRow label="Checklist templates" value={stats ? String(stats.templates) : '…'} />
               <View style={styles.divider} />
               <InfoRow label="Database schema" value={stats ? `v${stats.schemaVersion}` : '…'} />
             </>
