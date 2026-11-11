@@ -1,4 +1,6 @@
 import { itemInput, setupRepositories, tripInput } from '../../../../test/fixtures';
+import { suggestionKeywords } from '../recommendations';
+import { coveredSuggestions } from '../suggestionCoverage';
 
 async function setup() {
   const repos = await setupRepositories();
@@ -149,6 +151,41 @@ describe('shopping list linked to packing entries', () => {
     const { item } = await purchases.addForEntry(entry.id);
     await packing.removeEntry(entry.id);
     expect((await purchases.list(tripA.id))[0]).toMatchObject({ id: item.id, packingEntryId: null });
+    db.close();
+  });
+});
+
+describe('smart suggestions vs items already on the list', () => {
+  it('knows the keywords of a rule from its key', () => {
+    expect(suggestionKeywords('clothing.socks:traveller-1')).toEqual(['sock']);
+    expect(suggestionKeywords('unknown.rule')).toEqual([]);
+  });
+
+  it('treats hand-added items as covering suggestions and links instead of duplicating', async () => {
+    const { db, packing, recommendations, tripA } = await setup();
+    await recommendations.apply(tripA.id);
+    const manual = await packing.addEntry(tripA.id, { name: 'Phone charger' });
+    await packing.addEntry(tripA.id, { name: 'Socks', unit: 'pairs', quantity: 6 });
+
+    const load = async () => ({ entries: (await packing.load(tripA.id)).entries, recommendations: await recommendations.list(tripA.id) });
+    let state = await load();
+    const covered = coveredSuggestions(state.recommendations, state.entries);
+    const chargerRecs = state.recommendations.filter((r) => r.key.startsWith('electronics.phone_charger'));
+    expect(chargerRecs.length).toBe(2); // one per adult
+    expect(chargerRecs.every((r) => covered.get(r.id)?.id === manual.id)).toBe(true);
+    expect(state.recommendations.filter((r) => r.key.startsWith('clothing.socks')).every((r) => covered.has(r.id))).toBe(true);
+    expect(covered.has(state.recommendations.find((r) => r.key === 'medicines.first_aid')!.id)).toBe(false);
+
+    const before = state.entries.length;
+    await recommendations.accept([chargerRecs[0]!.id]);
+    state = await load();
+    expect(state.entries.length).toBe(before);
+    expect(state.recommendations.find((r) => r.id === chargerRecs[0]!.id)).toMatchObject({
+      status: 'accepted',
+      packingEntryId: manual.id,
+    });
+    // The entry is now linked, so the second adult's charger is no longer covered by it.
+    expect(coveredSuggestions(state.recommendations, state.entries).has(chargerRecs[1]!.id)).toBe(false);
     db.close();
   });
 });

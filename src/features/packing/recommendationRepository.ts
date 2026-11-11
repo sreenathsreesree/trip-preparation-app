@@ -14,7 +14,8 @@ import {
 import { ensurePackingState, insertEntry, PackingError } from './packingRepository';
 import { getPreferences } from './preferencesRepository';
 import { insertPurchase } from './purchaseRepository';
-import { generateSuggestions, type RecommendationInput } from './recommendations';
+import { coveringEntry } from './categories';
+import { generateSuggestions, suggestionKeywords, type RecommendationInput } from './recommendations';
 
 interface RecRow {
   id: string;
@@ -151,6 +152,27 @@ export function createRecommendationRepository(
     return rows.map(mapRecommendation);
   }
 
+  async function findCoveringEntry(rec: RecRow): Promise<{ id: string } | undefined> {
+    const entries = await db.getAllAsync<{ id: string; name: string; inventory_item_id: string | null; traveller_id: string | null }>(
+      'SELECT id, name, inventory_item_id, traveller_id FROM packing_entries WHERE trip_id = ? ORDER BY position',
+      [rec.trip_id],
+    );
+    const linked = await db.getAllAsync<{ packing_entry_id: string }>(
+      'SELECT packing_entry_id FROM packing_recommendations WHERE trip_id = ? AND packing_entry_id IS NOT NULL',
+      [rec.trip_id],
+    );
+    return coveringEntry(
+      {
+        name: rec.name,
+        keywords: suggestionKeywords(rec.rule_key),
+        inventoryItemId: rec.inventory_item_id,
+        travellerId: rec.traveller_id,
+      },
+      entries.map((e) => ({ id: e.id, name: e.name, inventoryItemId: e.inventory_item_id, travellerId: e.traveller_id })),
+      new Set(linked.map((l) => l.packing_entry_id)),
+    );
+  }
+
   async function getRow(id: string) {
     const row = await db.getFirstAsync<RecRow>('SELECT * FROM packing_recommendations WHERE id = ?', [id]);
     if (!row) throw new PackingError('That suggestion no longer exists.');
@@ -220,7 +242,7 @@ export function createRecommendationRepository(
           const rec = await getRow(id);
           if (rec.status === 'accepted' && rec.packing_entry_id) continue;
           // Already on the list (e.g. added from the inventory)? Link it instead of duplicating.
-          const listed = rec.inventory_item_id
+          let listed = rec.inventory_item_id
             ? await db.getFirstAsync<{ id: string }>(
                 `SELECT e.id FROM packing_entries e
                  WHERE e.trip_id = ? AND e.inventory_item_id = ? AND e.traveller_id IS ?
@@ -229,6 +251,8 @@ export function createRecommendationRepository(
                 [rec.trip_id, rec.inventory_item_id, rec.traveller_id],
               )
             : null;
+          // Or added by hand under a matching name (e.g. "Phone charger" from a category screen).
+          listed ??= (await findCoveringEntry(rec)) ?? null;
           if (listed) {
             await db.runAsync(
               `UPDATE packing_recommendations SET status = 'accepted', packing_entry_id = ?, decided_at = ?, updated_at = ? WHERE id = ?`,

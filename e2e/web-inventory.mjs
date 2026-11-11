@@ -305,6 +305,9 @@ await run('Inventory & packing test', async () => {
   check(plan.includes('new suggestion') && plan.includes('stay skipped'), `regeneration is previewed ("${plan.split('\n').find((l) => l.includes('new')) ?? ''}")`);
   await shot(page, 'm4-12-regenerate-preview');
   await byId(page, 'suggest-apply').click();
+  // The camera is already on the list, so its suggestion waits under "Already on your list".
+  await byId(page, 'suggest-covered').waitFor();
+  await byId(page, 'suggest-show-covered').click();
   await byId(page, 'suggestion-photography.camera').waitFor();
   check(
     (await text(page, 'suggestion-photography.camera')).includes('Already on your list'),

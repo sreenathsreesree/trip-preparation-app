@@ -543,3 +543,12 @@ export function generateSuggestions(input: RecommendationInput): Suggestion[] {
   }
   return suggestions;
 }
+
+/**
+ * Words identifying a packing entry that already covers a suggestion: the
+ * rule's inventory keywords (suggestion keys are `rule` or `rule:traveller`).
+ */
+export function suggestionKeywords(key: string): readonly string[] {
+  const ruleKey = key.split(':')[0];
+  return RULES.find((rule) => rule.key === ruleKey)?.keywords ?? [];
+}

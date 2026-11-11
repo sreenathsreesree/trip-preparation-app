@@ -248,6 +248,23 @@ await run('Packing categories test', async () => {
   await page.goto(`${tripA}/packing`);
   await byId(page, 'items-tab').waitFor();
 
+  setStep('smart suggestions skip what is already on the list');
+  await page.goto(`${tripA}/packing?tab=suggest`);
+  await byId(page, 'suggest-tab').waitFor();
+  await byId(page, 'suggest-generate').click();
+  await byId(page, 'suggest-covered').waitFor();
+  const review = await text(page, 'suggest-tab');
+  const reviewPart = review.slice(0, review.indexOf('Already on your list'));
+  check(!reviewPart.includes('Phone charger'), 'phone charger (added by hand) is not in the review list');
+  check(!reviewPart.includes('Power bank'), 'power bank (added by hand) is not in the review list');
+  await shot(page, 'p-08-suggestions-covered');
+  await byId(page, 'suggest-link-covered').click();
+  await byId(page, 'suggest-covered').waitFor({ state: 'detached' });
+  check(true, 'covered suggestions linked without adding anything');
+  await page.goto(`${tripA}/packing`);
+  await byId(page, 'items-tab').waitFor();
+  check((await text(page, 'packing-categories')).includes('4 items · 0 packed'), 'Electronics still has its 4 items (no duplicates)');
+
   setStep('the same inventory item on another trip');
   await page.goto(`${tripB}/packing`);
   await byId(page, 'items-tab').waitFor();

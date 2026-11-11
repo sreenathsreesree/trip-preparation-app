@@ -34,6 +34,7 @@ import { SuggestTab } from './components/SuggestTab';
 import { categoryProgress } from './categories';
 import { describeConflict, type ReservationConflict } from './model';
 import { usePackingStore, useTripPacking } from './packingStore';
+import { coveredSuggestions } from './suggestionCoverage';
 
 type Tab = 'items' | 'bags' | 'suggest' | 'buy';
 const isTab = (value: unknown): value is Tab =>
@@ -141,7 +142,9 @@ function PackingBody({ trip, initialTab }: { trip: TripSummary; initialTab: Tab 
 
   // Item-based, like each category's progress: "4 of 6 items packed".
   const progress = categoryProgress(packing.entries);
-  const pending = packing.recommendations.filter((r) => r.status === 'pending').length;
+  // Suggestions already covered by an item on the list do not need reviewing.
+  const covered = coveredSuggestions(packing.recommendations, packing.entries);
+  const pending = packing.recommendations.filter((r) => r.status === 'pending' && !covered.has(r.id)).length;
   const toBuy = packing.purchases.filter((p) => p.status === 'needed').length;
   const options: SegmentOption<Tab>[] = [
     { value: 'items', label: `Items${packing.entries.length ? ` ${packing.entries.length}` : ''}` },

@@ -10,6 +10,7 @@ import { CATEGORY_KEYS, type InventoryItemSummary } from '../../inventory/model'
 import type { Traveller } from '../../trips/model';
 import { planHasChanges, type Recommendation, type RegenerationPlan } from '../model';
 import { usePackingStore, type TripPacking } from '../packingStore';
+import { coveredSuggestions } from '../suggestionCoverage';
 import { PackingProfileEditor, SuggestionCard } from './PackingParts';
 
 function PlanSummary({ plan }: { plan: RegenerationPlan }) {
@@ -59,7 +60,11 @@ export function SuggestTab({
   const entryQuantity = useMemo(() => new Map(packing.entries.map((e) => [e.id, e.quantity])), [packing.entries]);
   const state = packing.state;
   const recs = packing.recommendations;
-  const pending = recs.filter((r) => r.status === 'pending');
+  // Suggestions already represented by an item on the list are kept out of the review queue.
+  const covered = useMemo(() => coveredSuggestions(recs, packing.entries), [recs, packing.entries]);
+  const [showCovered, setShowCovered] = useState(false);
+  const pendingCovered = recs.filter((r) => r.status === 'pending' && covered.has(r.id));
+  const pending = recs.filter((r) => r.status === 'pending' && !covered.has(r.id));
   const accepted = recs.filter((r) => r.status === 'accepted');
   const stale = recs.filter((r) => r.status === 'stale' && r.packingEntryId);
   const skipped = recs.filter((r) => r.status === 'rejected');
@@ -115,14 +120,8 @@ export function SuggestTab({
     }
   }
 
-  /** Unlinked list entry for the same inventory item and traveller (what accepting would link to). */
-  const listedFor = (r: Recommendation) => {
-    if (!r.inventoryItemId) return undefined;
-    const linked = new Set(recs.map((x) => x.packingEntryId).filter(Boolean));
-    return packing.entries.find(
-      (e) => e.inventoryItemId === r.inventoryItemId && e.travellerId === r.travellerId && !linked.has(e.id),
-    )?.quantity;
-  };
+  /** Quantity of the unlinked list entry that already covers the suggestion (what accepting would link to). */
+  const listedFor = (r: Recommendation) => covered.get(r.id)?.quantity;
   const owned = (r: Recommendation) => (r.inventoryItemId ? itemById.get(r.inventoryItemId) : undefined);
   const traveller = (r: Recommendation) => (r.travellerId ? travellerNames.get(r.travellerId) : undefined);
 
@@ -242,6 +241,57 @@ export function SuggestTab({
         <AppText variant="caption" tone="textMuted">
           Nothing left to review.
         </AppText>
+      ) : null}
+
+      {pendingCovered.length > 0 ? (
+        <View style={styles.group} testID="suggest-covered">
+          <View style={styles.groupHeader}>
+            <AppText variant="label" tone="textMuted" style={styles.flex}>
+              Already on your list ({pendingCovered.length})
+            </AppText>
+            <Button
+              label={showCovered ? 'Hide' : 'Show'}
+              size="sm"
+              variant="ghost"
+              onPress={() => setShowCovered((v) => !v)}
+              testID="suggest-show-covered"
+            />
+          </View>
+          <AppText variant="caption" tone="textMuted">
+            You already added items that cover these. Linking marks them done without adding anything.
+          </AppText>
+          <Button
+            label={`Link ${pendingCovered.length === 1 ? 'it' : `all ${pendingCovered.length}`}`}
+            icon="link-variant"
+            size="sm"
+            variant="secondary"
+            style={styles.left}
+            onPress={() =>
+              run(
+                () =>
+                  store().acceptSuggestions(
+                    tripId,
+                    pendingCovered.map((r) => r.id),
+                  ),
+                'Could not link them.',
+              )
+            }
+            testID="suggest-link-covered"
+          />
+          {showCovered
+            ? pendingCovered.map((r) => (
+                <SuggestionCard
+                  key={r.id}
+                  recommendation={r}
+                  owned={owned(r)}
+                  travellerName={traveller(r)}
+                  listedQuantity={listedFor(r)}
+                  onAccept={() => run(() => store().acceptSuggestions(tripId, [r.id]), 'Could not link it.')}
+                  onReject={() => run(() => store().rejectSuggestion(tripId, r.id), 'Could not skip it.')}
+                />
+              ))
+            : null}
+        </View>
       ) : null}
 
       {stale.length > 0 ? (

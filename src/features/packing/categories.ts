@@ -95,6 +95,24 @@ export interface CoverageCandidate {
 }
 
 /**
+ * The trip entry that already represents a suggestion, if any. Only entries for
+ * the same traveller (or shared ones) count, and entries in `exclude` (already
+ * linked to another suggestion) are skipped.
+ */
+export function coveringEntry<E extends Pick<PackingEntry, 'id' | 'name' | 'inventoryItemId' | 'travellerId'>>(
+  candidate: CoverageCandidate & { travellerId: string | null },
+  entries: readonly E[],
+  exclude: ReadonlySet<string> = new Set(),
+): E | undefined {
+  return entries.find(
+    (entry) =>
+      !exclude.has(entry.id) &&
+      (entry.travellerId === null || entry.travellerId === candidate.travellerId) &&
+      isCovered(candidate, [entry]),
+  );
+}
+
+/**
  * True when a trip entry already represents the candidate: the same inventory
  * item, the same name, or a name containing one of its keywords.
  */
