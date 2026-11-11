@@ -1,0 +1,142 @@
+# Deploys the committed Supabase migrations (supabase/migrations) to the Trip Prep
+# project with the official Supabase CLI. Manual only; two separate approvals.
+#
+#   1. guard   - no secrets: checks the typed project ref and lists the migrations proposed.
+#   2. dry-run - environment "supabase-production" (approval #1): shows the remote
+#                migration history and `supabase db push --dry-run`. Changes nothing.
+#   3. deploy  - environment "supabase-production" (approval #2, only after the dry run
+#                succeeded): `supabase db push`, then shows the migration history.
+#
+# The only secret is SUPABASE_DB_PASSWORD, an environment secret of "supabase-production",
+# so only the approved jobs can read it. It is never printed (masked, also URL-encoded form).
+# Connection details come from the project's official pooler configuration (see env below).
+
+name: Deploy Supabase migrations (Trip Prep)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_project_ref:
+        description: Type the Trip Prep project ref to confirm the target (okudcunrqusrzppqnppm)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-production-migrations
+  cancel-in-progress: false
+
+env:
+  SUPABASE_PROJECT_REF: okudcunrqusrzppqnppm
+  SUPABASE_CLI_VERSION: 2.58.5
+  # Session pooler (Supavisor, session mode), confirmed in Supabase Dashboard -> Connect ->
+  # Session pooler; host, user and database also match the Management API pooler config
+  # (GET /v1/projects/okudcunrqusrzppqnppm/config/database/pooler). Session mode suits
+  # migrations; the direct host is IPv6-only and GitHub runners use IPv4.
+  POOLER_HOST: aws-1-ap-southeast-1.pooler.supabase.com
+  POOLER_USER: postgres.okudcunrqusrzppqnppm
+  POOLER_DB: postgres
+  POOLER_SESSION_PORT: "5432"
+
+jobs:
+  guard:
+    name: Check target and list proposed migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Confirm the target project
+        env:
+          CONFIRM: ${{ inputs.confirm_project_ref }}
+        run: |
+          if [ "$CONFIRM" != "$SUPABASE_PROJECT_REF" ]; then
+            echo "::error::Typed project ref does not match $SUPABASE_PROJECT_REF. Nothing was done."
+            exit 1
+          fi
+          case "$POOLER_USER" in
+            *".$SUPABASE_PROJECT_REF") ;;
+            *) echo "::error::Pooler user is not for project $SUPABASE_PROJECT_REF"; exit 1 ;;
+          esac
+          echo "Target: $SUPABASE_PROJECT_REF via $POOLER_HOST:$POOLER_SESSION_PORT (session mode)"
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Migrations proposed for deployment (committed files, in order)
+        run: |
+          echo "Commit: $GITHUB_SHA"
+          for file in supabase/migrations/*.sql; do
+            echo "$(sha256sum "$file" | cut -c1-16)  $(wc -c < "$file") bytes  $file"
+          done
+
+  dry-run:
+    name: Dry run (no changes)
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: supabase-production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Prepare the database connection (password never printed)
+        env:
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          if [ -z "$SUPABASE_DB_PASSWORD" ]; then
+            echo "::error::Environment secret SUPABASE_DB_PASSWORD is not set on 'supabase-production'."
+            exit 1
+          fi
+          ENCODED=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["SUPABASE_DB_PASSWORD"], safe=""))')
+          echo "::add-mask::$ENCODED"
+          DB_URL="postgresql://${POOLER_USER}:${ENCODED}@${POOLER_HOST}:${POOLER_SESSION_PORT}/${POOLER_DB}"
+          echo "::add-mask::$DB_URL"
+          echo "SUPABASE_DB_URL=$DB_URL" >> "$GITHUB_ENV"
+
+      - name: Migration history on the project (before)
+        run: supabase migration list --db-url "$SUPABASE_DB_URL"
+
+      - name: Dry run - migrations that would be applied
+        run: supabase db push --dry-run --db-url "$SUPABASE_DB_URL"
+
+  deploy:
+    name: Deploy migrations
+    needs: dry-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: supabase-production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Prepare the database connection (password never printed)
+        env:
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          if [ -z "$SUPABASE_DB_PASSWORD" ]; then
+            echo "::error::Environment secret SUPABASE_DB_PASSWORD is not set on 'supabase-production'."
+            exit 1
+          fi
+          ENCODED=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["SUPABASE_DB_PASSWORD"], safe=""))')
+          echo "::add-mask::$ENCODED"
+          DB_URL="postgresql://${POOLER_USER}:${ENCODED}@${POOLER_HOST}:${POOLER_SESSION_PORT}/${POOLER_DB}"
+          echo "::add-mask::$DB_URL"
+          echo "SUPABASE_DB_URL=$DB_URL" >> "$GITHUB_ENV"
+
+      - name: Apply migrations
+        run: supabase db push --yes --db-url "$SUPABASE_DB_URL"
+
+      - name: Migration history on the project (after)
+        run: supabase migration list --db-url "$SUPABASE_DB_URL"

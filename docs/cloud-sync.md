@@ -231,22 +231,49 @@ Project: **`okudcunrqusrzppqnppm`** — `https://okudcunrqusrzppqnppm.supabase.c
 `cjwefisfeadtirbqbcwz`, region `ap-southeast-1`). A separate project and Postgres database from
 SVALAYA; the access token used for checks can see only this project.
 
-**Bundle for the SQL editor.** [`supabase/deploy/g1_bundle.sql`](../supabase/deploy/g1_bundle.sql)
-is generated from `supabase/migrations/` (`npm run supabase:bundle`; a test fails if it is out of
-date). It runs every migration in **one transaction** (all or nothing), records them in
-`supabase_migrations.schema_migrations` exactly like `supabase db push` (so the CLI can be used later
-without re-applying), and **refuses to run** if Trip Prep tables already exist — nothing is changed in
-that case. Tested on Postgres 17 (PGlite): same schema as applying the migrations, history rows
-written, second run rejected with existing data intact.
+### Chosen path: GitHub Actions with the official Supabase CLI
 
-**From a phone:**
-1. Open the bundle on GitHub (branch `ccr-65197697-95agwo`, file `supabase/deploy/g1_bundle.sql`) →
-   **Raw** → select all → copy.
-2. Supabase dashboard → project *Trip-prep* → **SQL Editor** → **New query** → paste → **Run**.
-   Expect "Success. No rows returned". If it reports an error, nothing was applied.
+Workflow: [`.github/workflows/supabase-deploy.yml`](../.github/workflows/supabase-deploy.yml)
+(manual `workflow_dispatch` only; nothing runs on push).
 
-**Verification (read-only):** `npm run supabase:verify -- okudcunrqusrzppqnppm` builds the expected
-catalog from the migrations in local Postgres and compares it exactly with the live project: tables
-and columns, RLS flags, policies (with definitions), indexes, triggers, constraints, functions
-(security mode and settings), privileges for `anon` / `authenticated`, and migration history. It
-uses the Management API with a read-only token (queries run as `supabase_read_only_user`).
+| Job | Secrets | Approval | What it does |
+| --- | --- | --- | --- |
+| `guard` | none | — | Requires the typed ref `okudcunrqusrzppqnppm`; checks the pooler user belongs to it; lists the committed migrations (checksum, size) in order |
+| `dry-run` | `SUPABASE_DB_PASSWORD` | **#1** (environment `supabase-production`) | `supabase migration list` (remote history) and `supabase db push --dry-run` — changes nothing |
+| `deploy` | `SUPABASE_DB_PASSWORD` | **#2**, requested only after the dry run succeeded | `supabase db push`, then the migration history |
+
+- **Connection** — Supavisor **session pooler**, `aws-1-ap-southeast-1.pooler.supabase.com:5432`,
+  user `postgres.okudcunrqusrzppqnppm`, database `postgres`. Confirmed in Dashboard → Connect →
+  Session pooler; host, user and database also match the Management API pooler config. (Session mode
+  suits migrations; the direct host is IPv6-only and GitHub runners use IPv4.)
+- **Secret** — `SUPABASE_DB_PASSWORD`, an *environment* secret of `supabase-production` (readable
+  only by approved jobs on branch `ccr-65197697-95agwo`). Masked in logs, also in its URL-encoded
+  form and inside the connection string. No Supabase access token is used by the workflow.
+- **Environment** — required reviewer `sreenathsreesree`, self-review allowed, deployment limited to
+  branch `ccr-65197697-95agwo`. Required reviewers on environments are available for public
+  repositories on every GitHub plan.
+- **Supabase CLI** pinned to 2.58.5 (the version tested locally: the dry run lists exactly the two
+  committed files; the push applies them in order and records versions `20261111090000` and
+  `20261111090100`). Actions logs of a public repository are public; they contain no secrets.
+- **After deploying** — run the read-only verification below, then optionally reset the database
+  password so the stored secret stops working.
+
+**Running it from the GitHub app or a mobile browser:** Actions → *Deploy Supabase migrations (Trip
+Prep)* → **Run workflow** → branch `ccr-65197697-95agwo` → type `okudcunrqusrzppqnppm` → **Run
+workflow**. Then on the run page → **Review deployments** → tick `supabase-production` →
+**Approve and deploy** (once for the dry run; read its log; again for the deploy).
+
+### Alternative: SQL editor bundle
+
+[`supabase/deploy/g1_bundle.sql`](../supabase/deploy/g1_bundle.sql) is generated from
+`supabase/migrations/` (`npm run supabase:bundle`; a test fails if it is out of date). It runs every
+migration in one transaction, records the same migration history as `supabase db push`, and refuses
+to run if Trip Prep tables already exist. Paste once into Supabase → SQL Editor → Run.
+
+### Verification (read-only)
+
+`npm run supabase:verify -- okudcunrqusrzppqnppm` builds the expected catalog from the migrations in
+local Postgres and compares it exactly with the live project: tables and columns, RLS flags, policies
+(with definitions), indexes, triggers, constraints, functions (security mode and settings),
+privileges for `anon` / `authenticated`, and migration history. It uses the Management API with a
+read-only token (queries run as `supabase_read_only_user`).
