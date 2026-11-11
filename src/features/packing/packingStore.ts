@@ -86,6 +86,8 @@ interface PackingStoreState {
   removePurchase: (tripId: string | null, id: string) => Promise<void>;
   purchaseToInventory: (tripId: string | null, id: string) => Promise<void>;
   purchaseToTrip: (tripId: string, id: string) => Promise<void>;
+  /** "Need to buy" for an item on the trip's list; never creates a duplicate purchase. */
+  needToBuy: (tripId: string, entryId: string) => Promise<{ duplicate: boolean }>;
   loadAllPurchases: () => Promise<void>;
 }
 
@@ -284,6 +286,13 @@ export const usePackingStore = create<PackingStoreState>()((set, get) => {
       const result = await recommendations.addToPurchaseList(id);
       await after(tripId);
       return result;
+    },
+
+    async needToBuy(tripId, entryId) {
+      const { purchases } = await getRepositories();
+      const { duplicate } = await purchases.addForEntry(entryId);
+      await after(tripId);
+      return { duplicate };
     },
 
     async addPurchase(tripId, name, quantity, categoryId) {

@@ -85,6 +85,7 @@ await run('Packing categories test', async () => {
   await page.getByRole('checkbox', { name: 'Merino T-shirt packed' }).click();
   await waitText(page, 'category-progress', (v) => v.includes('1 of 1 packed · 0 left'));
   check(true, 'checkbox packs the item and progress updates');
+  await page.waitForTimeout(600); // let the progress bar animate
   await shot(page, 'p-03-level2');
 
   setStep('menu: edit');
@@ -214,6 +215,39 @@ await run('Packing categories test', async () => {
   await page.goto(`${tripA}/packing`);
   await byId(page, 'items-tab').waitFor();
 
+  setStep('need to buy → bought → keep → pack');
+  await categoryRow(page, 'Toiletries').click();
+  await byId(page, 'packing-category-screen').waitFor();
+  await byId(page, 'quick-suggested-Shampoo').click();
+  await within(page, 'packing-category-screen', 'Shampoo').waitFor();
+  const menu = () => byId(page, 'packing-category-screen').locator('[data-testid^="entry-menu-"]').first().click();
+  await menu();
+  await byId(page, 'sheet-action-buy').click();
+  await within(page, 'category-info', 'Shampoo added to the shopping list.').waitFor();
+  await within(page, 'packing-category-screen', 'To buy', { exact: false }).waitFor();
+  check(true, 'need to buy links a shopping-list entry');
+  await menu();
+  check((await byId(page, 'sheet-action-buy').count()) === 0, 'no second "Need to buy" for the same item');
+  await byId(page, 'sheet-action-bought').click();
+  await within(page, 'packing-category-screen', 'Bought · ready to pack', { exact: false }).waitFor();
+  check(true, 'marked as bought from the packing list');
+  await menu();
+  await byId(page, 'sheet-action-keep').click();
+  await within(page, 'category-info', 'Shampoo is now in My Inventory.').waitFor();
+  await within(page, 'packing-category-screen', 'From inventory', { exact: false }).waitFor();
+  await page.getByRole('checkbox', { name: 'Shampoo packed' }).click();
+  await waitText(page, 'category-progress', (v) => v.includes('1 of 1 packed'));
+  check(true, 'bought item kept in inventory and packed');
+  await page.waitForTimeout(600);
+  await shot(page, 'p-07-shopping');
+  await page.goto(`${tripA}/packing?tab=buy`);
+  await byId(page, 'buy-tab').waitFor();
+  check((await byId(page, 'buy-tab').getByTestId('purchase-Shampoo').count()) === 1, 'one shopping-list entry for the item');
+  await within(page, 'buy-tab', 'On packing list', { exact: false }).waitFor();
+  check(true, 'shopping list shows it is on the packing list');
+  await page.goto(`${tripA}/packing`);
+  await byId(page, 'items-tab').waitFor();
+
   setStep('the same inventory item on another trip');
   await page.goto(`${tripB}/packing`);
   await byId(page, 'items-tab').waitFor();
@@ -233,8 +267,8 @@ await run('Packing categories test', async () => {
   check(dialogs.some((d) => d.includes('stays in My Inventory')), 'remove confirms and keeps the inventory item');
   await page.goto(`${BASE}/inventory`);
   await byId(page, 'inventory-screen').waitFor();
-  await within(page, 'inventory-screen', '2 items · 6 units', { exact: false }).waitFor();
-  check(true, 'inventory unchanged (2 items, 6 units)');
+  await within(page, 'inventory-screen', '3 items · 7 units', { exact: false }).waitFor();
+  check(true, 'inventory has the 2 original items and the bought shampoo; removing entries deleted nothing');
 
   check(errors.length === 0, `no uncaught page errors (${errors.join('; ') || 'none'})`);
 });

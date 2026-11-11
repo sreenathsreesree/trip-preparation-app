@@ -30,7 +30,7 @@ import { quickInventory, suggestionChoices } from './addOptions';
 import { categoryProgress, entriesInCategory, UNCATEGORISED } from './categories';
 import { addToPackingCategory } from './components/ItemsTab';
 import { EntryRow, openEntry, TravellerChips, type TravellerFilter } from './components/PackingParts';
-import type { PackingEntry } from './model';
+import type { PackingEntry, PurchaseItem } from './model';
 import { usePackingStore, useTripPacking } from './packingStore';
 
 function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; categoryKey: string; initialTraveller: TravellerFilter }) {
@@ -42,6 +42,7 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
   const [subId, setSubId] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<PackingEntry | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const store = usePackingStore.getState;
 
   useFocusEffect(
@@ -64,6 +65,35 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
   );
   const progress = categoryProgress(visible);
 
+  // The shopping-list entry for each item (open ones first), if any.
+  const purchaseByEntry = useMemo(() => {
+    const map = new Map<string, PurchaseItem>();
+    for (const purchase of packing.purchases) {
+      if (!purchase.packingEntryId || purchase.status === 'skipped') continue;
+      const current = map.get(purchase.packingEntryId);
+      const open = purchase.status === 'needed' || purchase.status === 'purchased';
+      if (!current || open) map.set(purchase.packingEntryId, purchase);
+    }
+    return map;
+  }, [packing.purchases]);
+
+  const badgeFor = (entry: PackingEntry): { label: string; tone: 'warning' | 'accent' | 'info' } | undefined => {
+    const purchase = purchaseByEntry.get(entry.id);
+    if (!purchase) return undefined;
+    switch (purchase.status) {
+      case 'needed':
+        return { label: 'To buy', tone: 'warning' };
+      case 'purchased':
+        return { label: entry.isPacked ? 'Bought' : 'Bought · ready to pack', tone: 'accent' };
+      case 'owned':
+        return { label: 'Already had it', tone: 'info' };
+      case 'borrowed':
+        return { label: 'Borrowing', tone: 'info' };
+      default:
+        return undefined;
+    }
+  };
+
   // One-tap options: things you own in this category and default suggestions not yet on the trip.
   const QUICK_LIMIT = 8;
   const ownedOptions = useMemo(
@@ -77,6 +107,7 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
 
   const run = (fn: () => Promise<unknown>, fallback: string) => {
     setError(null);
+    setInfo(null);
     fn().catch((err: unknown) => setError(toErrorMessage(err, fallback)));
   };
 
@@ -92,9 +123,53 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
     if (ok) run(() => store().removeEntry(trip.id, entry.id), 'Could not remove the item.');
   }
 
+  const purchase = menuFor ? purchaseByEntry.get(menuFor.id) : undefined;
+  const shoppingActions: SheetAction[] = !menuFor
+    ? []
+    : !purchase
+      ? [
+          {
+            key: 'buy',
+            label: 'Need to buy',
+            description: 'Adds it to this trip’s shopping list',
+            icon: 'cart-plus',
+            onPress: () =>
+              run(async () => {
+                const { duplicate } = await store().needToBuy(trip.id, menuFor.id);
+                setInfo(duplicate ? `${menuFor.name} is already on the shopping list.` : `${menuFor.name} added to the shopping list.`);
+              }, 'Could not add it to the shopping list.'),
+          },
+        ]
+      : purchase.status === 'needed'
+        ? [
+            {
+              key: 'bought',
+              label: 'Mark as bought',
+              description: 'Then tick it when it is in the bag',
+              icon: 'cart-check',
+              onPress: () => run(() => store().setPurchaseStatus(trip.id, purchase.id, 'purchased'), 'Could not update the shopping list.'),
+            },
+          ]
+        : purchase.status === 'purchased' && !purchase.inventoryItemId && !menuFor.inventoryItemId
+          ? [
+              {
+                key: 'keep',
+                label: 'Add to My Inventory',
+                description: 'Keep it for future trips',
+                icon: 'archive-plus-outline',
+                onPress: () =>
+                  run(async () => {
+                    await store().purchaseToInventory(trip.id, purchase.id);
+                    setInfo(`${menuFor.name} is now in My Inventory.`);
+                  }, 'Could not add it to your inventory.'),
+              },
+            ]
+          : [];
+
   const actions: SheetAction[] = menuFor
     ? [
         { key: 'edit', label: 'Edit', icon: 'pencil-outline', onPress: () => openEntry(trip.id, menuFor.id) },
+        ...shoppingActions,
         {
           key: 'remove',
           label: 'Remove from this trip',
@@ -170,6 +245,14 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
       ) : null}
 
       {error ? <Notice tone="danger" title="Not updated" message={error} /> : null}
+      {info ? (
+        <Notice
+          tone="success"
+          title={info}
+          action={{ label: 'Shopping list', icon: 'cart-outline', onPress: () => router.push({ pathname: '/trips/[tripId]/packing', params: { tripId: trip.id, tab: 'buy' } }) }}
+          testID="category-info"
+        />
+      ) : null}
 
       {packing.status === 'error' ? (
         <ErrorState message={packing.error ?? 'Could not load the packing list.'} onRetry={() => void store().load(trip.id)} />
@@ -191,6 +274,7 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
               maps={maps}
               travellerName={entry.travellerId ? travellerNames.get(entry.travellerId) : undefined}
               bagName={entry.luggageId ? bagNames.get(entry.luggageId) : undefined}
+              badge={badgeFor(entry)}
               onToggle={(e) => run(() => store().togglePacked(trip.id, e.id), 'Could not update the item.')}
               onMenu={setMenuFor}
             />
