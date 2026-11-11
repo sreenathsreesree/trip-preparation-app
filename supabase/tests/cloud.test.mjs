@@ -334,3 +334,48 @@ describe('pull cursor', () => {
     await db.exec('reset role');
   });
 });
+
+describe('deploy bundle (supabase/deploy/g1_bundle.sql)', () => {
+  const bundlePath = join(import.meta.dirname, '..', 'deploy', 'g1_bundle.sql');
+  const catalog = async (db) =>
+    (
+      await db.query(`select
+        (select json_agg(tablename order by tablename) from pg_tables where schemaname = 'public') as tables,
+        (select json_agg(policyname order by policyname) from pg_policies where schemaname = 'public') as policies,
+        (select json_agg(indexname order by indexname) from pg_indexes where schemaname = 'public') as indexes,
+        (select json_agg(proname order by proname) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public') as functions`)
+    ).rows[0];
+
+  it('is up to date with the migration files', async () => {
+    const { buildBundle } = await import('../../scripts/build-supabase-bundle.mjs');
+    assert.equal(readFileSync(bundlePath, 'utf8'), buildBundle());
+  });
+
+  it('builds exactly the same schema as the migrations and records the history', async () => {
+    const viaMigrations = await freshDatabase();
+    const viaBundle = new PGlite();
+    await viaBundle.exec(SUPABASE_STUB);
+    await viaBundle.exec(readFileSync(bundlePath, 'utf8'));
+    assert.deepEqual(await catalog(viaBundle), await catalog(viaMigrations));
+    const history = (await viaBundle.query('select version, name from supabase_migrations.schema_migrations order by version')).rows;
+    assert.deepEqual(history, [
+      { version: '20261111090000', name: 'trip_prep_schema' },
+      { version: '20261111090100', name: 'trip_prep_sync_functions' },
+    ]);
+    // And it works: a signed-in user can push and pull through RLS.
+    const [result] = await push(viaBundle, ALICE, [upsert('trips', 'b1', trip('b1'))]);
+    assert.equal(result.status, 'applied');
+  });
+
+  it('refuses to run a second time and changes nothing', async () => {
+    const db = new PGlite();
+    await db.exec(SUPABASE_STUB);
+    await db.exec(readFileSync(bundlePath, 'utf8'));
+    await push(db, ALICE, [upsert('trips', 'keep', trip('keep'))]);
+    const before = await catalog(db);
+    await assert.rejects(db.exec(readFileSync(bundlePath, 'utf8')), /already deployed/);
+    await db.exec('rollback');
+    assert.deepEqual(await catalog(db), before);
+    assert.equal((await pull(db, ALICE)).rows.some((r) => r.pk === 'keep'), true);
+  });
+});

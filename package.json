@@ -55,6 +55,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cloud": "node --test --no-warnings supabase/tests/cloud.test.mjs",
+    "supabase:bundle": "node scripts/build-supabase-bundle.mjs",
+    "supabase:verify": "node --no-warnings scripts/verify-supabase.mjs",
     "doctor": "npx expo-doctor",
     "check": "npm run typecheck && npm run lint && npm test && npm run test:cloud",
     "build:web": "expo export --platform web --output-dir dist",

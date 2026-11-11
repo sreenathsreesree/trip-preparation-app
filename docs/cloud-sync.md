@@ -1,8 +1,8 @@
 # Google sign-in & cloud sync (Milestone G)
 
 Status: **G1 done** — cloud schema, Row Level Security and the sync protocol, tested against real
-Postgres. Nothing in the app talks to Supabase yet. G2 onwards needs the configuration in
-[What you need to configure](#what-you-need-to-configure).
+Postgres. Project `okudcunrqusrzppqnppm` (Trip-prep, ap-southeast-1, Postgres 17) created; deployment
+in progress (see [Deploying the schema](#deploying-the-schema)). Nothing in the app talks to Supabase yet.
 
 ## 1. Architecture
 
@@ -218,3 +218,29 @@ Set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 (see [`.env.example`](../.env.example)) as EAS environment variables for the `development` and
 `preview` environments, and tell me the **Project URL** (not secret) so I can configure and verify
 the app. The publishable key is designed to ship inside apps; I can read it from EAS rather than chat.
+
+## Deploying the schema
+
+Project: **`okudcunrqusrzppqnppm`** — `https://okudcunrqusrzppqnppm.supabase.co` (organisation
+`cjwefisfeadtirbqbcwz`, region `ap-southeast-1`). A separate project and Postgres database from
+SVALAYA; the access token used for checks can see only this project.
+
+**Bundle for the SQL editor.** [`supabase/deploy/g1_bundle.sql`](../supabase/deploy/g1_bundle.sql)
+is generated from `supabase/migrations/` (`npm run supabase:bundle`; a test fails if it is out of
+date). It runs every migration in **one transaction** (all or nothing), records them in
+`supabase_migrations.schema_migrations` exactly like `supabase db push` (so the CLI can be used later
+without re-applying), and **refuses to run** if Trip Prep tables already exist — nothing is changed in
+that case. Tested on Postgres 17 (PGlite): same schema as applying the migrations, history rows
+written, second run rejected with existing data intact.
+
+**From a phone:**
+1. Open the bundle on GitHub (branch `ccr-65197697-95agwo`, file `supabase/deploy/g1_bundle.sql`) →
+   **Raw** → select all → copy.
+2. Supabase dashboard → project *Trip-prep* → **SQL Editor** → **New query** → paste → **Run**.
+   Expect "Success. No rows returned". If it reports an error, nothing was applied.
+
+**Verification (read-only):** `npm run supabase:verify -- okudcunrqusrzppqnppm` builds the expected
+catalog from the migrations in local Postgres and compares it exactly with the live project: tables
+and columns, RLS flags, policies (with definitions), indexes, triggers, constraints, functions
+(security mode and settings), privileges for `anon` / `authenticated`, and migration history. It
+uses the Management API with a read-only token (queries run as `supabase_read_only_user`).
