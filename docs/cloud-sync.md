@@ -182,19 +182,17 @@ graph round trip, cursor paging over 1,200 rows, and exclusion of in-progress tr
 Do these yourself in the dashboards; never paste passwords, the database password, service-role keys,
 or the Google client secret into chat.
 
-### A. Create the Supabase project
-1. supabase.com → your organisation → **New project** → name `trip-prep`, region **South Asia (Mumbai)**,
-   strong database password (store it in your password manager).
-2. Project Settings → API: note the **Project URL** and the **publishable (anon) key**. Never use the
-   `service_role`/secret key in the app.
+### A. Supabase project — done
+Project **Trip-prep**, ref `okudcunrqusrzppqnppm`, URL `https://okudcunrqusrzppqnppm.supabase.co`,
+region **Southeast Asia (Singapore, `ap-southeast-1`)**. Keep the database password in your password
+manager. Never use the `service_role` / secret key in the app.
 
 ### B. Apply the migrations (choose one)
-- **Supabase CLI** on your computer: `npx supabase@latest login`, `npx supabase@latest link --project-ref <ref>`,
-  `npx supabase@latest db push` (applies `supabase/migrations/`).
-- **SQL editor**: run the two files in `supabase/migrations/` in name order.
-- **Or let me apply them** from this cloud session: allow host `api.supabase.com` and save a Supabase
-  personal access token through the secure credential form when I ask (it is injected by the proxy;
-  I never see it). You can revoke the token afterwards.
+- **SQL editor (chosen; works from a phone)**: run `supabase/deploy/g1_bundle.sql` once — see
+  [Deploying the schema](#deploying-the-schema).
+- **Supabase CLI** on a computer: `npx supabase@latest login`,
+  `npx supabase@latest link --project-ref okudcunrqusrzppqnppm`, `npx supabase@latest db push`.
+- The access token saved for this cloud session is **read-only** (verification only).
 
 ### C. Google OAuth client (Google Cloud console)
 1. Create or pick a project (e.g. "Trip Prep"). **APIs & Services → OAuth consent screen**: External,
@@ -202,8 +200,8 @@ or the Google client secret into chat.
    your Google accounts as test users.
 2. **Credentials → Create credentials → OAuth client ID → Web application** (Supabase talks to
    Google with this client):
-   - Authorised JavaScript origins: `https://<ref>.supabase.co`
-   - Authorised redirect URI: `https://<ref>.supabase.co/auth/v1/callback`
+   - Authorised JavaScript origins: `https://okudcunrqusrzppqnppm.supabase.co`
+   - Authorised redirect URI: `https://okudcunrqusrzppqnppm.supabase.co/auth/v1/callback`
 3. Copy the **Client ID** and **Client secret** into Supabase → **Authentication → Sign In / Providers
    → Google** → enable. The secret stays in Supabase.
 
@@ -213,11 +211,19 @@ Authentication → **URL Configuration**:
 - Additional redirect URLs: `tripprep://auth/callback`, `com.sreenathsreesree.tripprep://auth/callback`,
   `http://localhost:8081/auth/callback`
 
-### E. App configuration
-Set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-(see [`.env.example`](../.env.example)) as EAS environment variables for the `development` and
-`preview` environments, and tell me the **Project URL** (not secret) so I can configure and verify
-the app. The publishable key is designed to ship inside apps; I can read it from EAS rather than chat.
+### E. App configuration (EAS environment variables — not set yet)
+expo.dev → SreeDream Labs → project → **Environment variables** → add, for the **development** and
+**preview** environments (production later):
+
+| Name | Value | Visibility |
+| --- | --- | --- |
+| `EXPO_PUBLIC_SUPABASE_URL` | `https://okudcunrqusrzppqnppm.supabase.co` | Plain text |
+| `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | the project's publishable key (`sb_publishable_…`) | Plain text or Sensitive |
+
+`EXPO_PUBLIC_` variables are compiled into the app bundle, so they are public by design (Row Level
+Security protects the data). Never add the `sb_secret_…` / `service_role` key, the database password
+or the Google client secret to EAS or the repository. For local web development the same names go in
+a git-ignored `.env.local` (see [`.env.example`](../.env.example)).
 
 ## Deploying the schema
 
