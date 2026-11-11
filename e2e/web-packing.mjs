@@ -40,7 +40,7 @@ const categoryRow = (page, name) =>
   byId(page, 'items-tab').locator('[data-testid^="packing-category-"]', { hasText: name }).first();
 
 await run('Packing categories test', async () => {
-  const { page, errors, dialogs } = await launch();
+  const { context, page, errors, dialogs } = await launch();
 
   setStep('inventory');
   await addInventoryItem(page, 'Merino T-shirt', 'Clothing', 5);
@@ -286,6 +286,32 @@ await run('Packing categories test', async () => {
   await byId(page, 'inventory-screen').waitFor();
   await within(page, 'inventory-screen', '3 items · 7 units', { exact: false }).waitFor();
   check(true, 'inventory has the 2 original items and the bought shampoo; removing entries deleted nothing');
+
+  setStep('offline: packing keeps working');
+  await page.goto(`${tripB}/packing`);
+  await byId(page, 'items-tab').waitFor();
+  // The web export loads each screen's code on first visit (native builds bundle everything),
+  // so open the screens once while online, then cut the network.
+  await categoryRow(page, 'Toiletries').click();
+  await byId(page, 'packing-category-screen').waitFor();
+  await byId(page, 'category-add-item').click();
+  await byId(page, 'packing-add').waitFor();
+  await page.goBack();
+  await byId(page, 'packing-category-screen').waitFor();
+  await context.setOffline(true);
+  await byId(page, 'quick-suggested-Toothbrush').click();
+  await within(page, 'packing-category-screen', 'Toothbrush').waitFor();
+  await page.getByRole('checkbox', { name: 'Toothbrush packed' }).click();
+  await waitText(page, 'category-progress', (v) => v.includes('1 of 1 packed'));
+  await byId(page, 'category-add-item').click();
+  await byId(page, 'packing-add').waitFor();
+  await byId(page, 'packing-add-search').fill('Travel pillow');
+  await byId(page, 'packing-create').click();
+  await byId(page, 'packing-add-confirm').click();
+  await byId(page, 'packing-category-screen').waitFor();
+  await waitText(page, 'category-progress', (v) => v.includes('1 of 2 packed'));
+  check(true, 'add, pack and create work with no network');
+  await context.setOffline(false);
 
   check(errors.length === 0, `no uncaught page errors (${errors.join('; ') || 'none'})`);
 });

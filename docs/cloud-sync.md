@@ -81,6 +81,12 @@ truth; tests check it against both the SQLite schema and the Postgres schema.
 
 Rank = push order (parents before children); within a batch the server checks foreign keys per row.
 
+**Local columns not yet in the cloud (packing upgrade, local schema v5):** `packing_entries.unit`
+and `inventory_categories.description` exist only on the device and are listed as `localOnly` in
+`src/features/sync/tables.ts`. Before G4 syncs these tables, an additive cloud migration adding the
+same two columns (with the same defaults) must be written and deployed through the gated workflow —
+separately approved; nothing in the deployed G1 schema was changed for the packing upgrade.
+
 ## 4. Guest-to-account migration (G3)
 
 Principles: **never delete local data, never overwrite cloud data blindly, never upload twice.**
@@ -99,7 +105,7 @@ Principles: **never delete local data, never overwrite cloud data blindly, never
    downloads the account's data into the account file, then (if the user chose *Yes*) the guest rows
    are added as new records. Trips are distinct records, so nothing is replaced. Shared reference
    data merges instead of duplicating, because those ids are made deterministic first (local
-   migration v5): starter categories (`system_key`), Google places (Place ID) and packing suggestions
+   migration v6 — v5 is the packing upgrade): starter categories (`system_key`), Google places (Place ID) and packing suggestions
    (trip + rule). Same-id rows that differ become explicit conflicts (section 5).
 4. **Retries are safe:** the upload is driven by the outbox; each row is pushed with its base revision
    (`null` for new rows) and the server treats an identical retry as already applied. An interrupted
@@ -236,7 +242,7 @@ graph round trip, cursor paging over 1,200 rows, and exclusion of in-progress tr
 | --- | --- | --- | --- |
 | **G1** | Cloud schema, RLS, sync RPCs, registry, tests, this design | — | No |
 | **G2** | supabase-js client, Google sign-in / guest / sign-out, session restore, Account screen, deep-link callback, error states — **implemented; not yet tried end to end** | Google OAuth client + Supabase provider and URL settings (C, D below) | **Yes** — `expo-secure-store` and `expo-web-browser` are native modules (scheme unchanged) |
-| G3 | Local migration v5 (outbox triggers, base revisions, deterministic ids), per-account database files, guest adoption, initial upload with progress | Migrations applied to the project | No |
+| G3 | Local migration v6 (outbox triggers, base revisions, deterministic ids), per-account database files, guest adoption, initial upload with progress | Migrations applied to the project | No |
 | G4 | Push/pull engine, backoff, reconnect, conflicts UI, repairs, Sync status | — | Possibly (network state module) |
 | G5 | Second-device restore, incremental sync, sign-out / account switching, reliability tests (multi-device simulation against PGlite) | A second test Google account | No |
 

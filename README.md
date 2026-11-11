@@ -32,12 +32,13 @@ npm start          # Expo dev server — press i (iOS), a (Android) or w (web)
 | --- | --- |
 | `npm run typecheck` | `tsc --noEmit` (strict, `noUncheckedIndexedAccess`) |
 | `npm run lint` | `expo lint` (ESLint 9 flat config, `eslint-config-expo`) |
-| `npm test` | Jest (`jest-expo` preset) — domain, readiness, migrations (incl. v1 → v2 and v2 → v3 data upgrades), repositories, templates, inventory, packing, reservations, recommendation rules and purchases |
+| `npm test` | Jest (`jest-expo` preset) — domain, readiness, migrations (incl. v1 → v2 … v4 → v5 data upgrades), repositories, templates, inventory, packing (grouping, progress, add options, coverage), reservations, recommendation rules and purchases |
 | `npm run test:cloud` | Supabase migrations, Row Level Security and sync functions against real Postgres (PGlite) |
 | `npm run check` | Typecheck, lint, Jest and the cloud tests |
 | `npm run build:web` | Static web export to `dist/` |
 | `npm run e2e:web` | Browser smoke test (trips, checklists, templates) against `dist/`, or a running server via `BASE_URL` (needs Playwright + Chromium installed separately) |
 | `npm run e2e:inventory` | Browser test of inventory, packing, reservations, suggestions, shopping and luggage (same requirements) |
+| `npm run e2e:packing` | Browser test of two-level packing: category list and screens, adding (owned, suggested, trip-only, quick add), units, edit/remove, custom categories (create, rename, starter protection, reorder, delete), need to buy → bought → inventory → packed, covered suggestions, multi-trip reuse and offline use (same requirements) |
 | `npm run e2e:planner` | Browser test of the destination planner, route stops and its entry points (same requirements) |
 | `npm run e2e:auth` | Account routes in a build without Supabase configuration: guest-only, no sign-in control, protected account screen (same requirements) |
 | `npm run e2e:planner-reliability` | Planner offline (network cut) and with a 100-place plan, plus rapid taps (same requirements) |
@@ -119,12 +120,28 @@ screenshots.
 
 **Packing** (trip dashboard → Packing)
 
+- **Two levels: categories, then items.** The Items tab lists every category of the trip with its
+  icon, item count, packed count and progress; categories with items come first, empty ones are
+  compact rows with *Add items*, and items whose category was deleted appear under *Uncategorised*.
+  Tapping a category opens its own screen with progress, subcategory and traveller filters and the
+  items. On an item, the **checkbox** toggles packed; the row itself opens nothing; the **⋯ menu**
+  offers *Edit*, *Need to buy* (then *Mark as bought*, *Add to My Inventory*) and *Remove*.
+- **One shared category list** for My Inventory and trip packing (per user, reusable on every trip,
+  ready for account sync). Starter categories can be renamed, recoloured and reordered but not
+  deleted; your own categories (name, icon, colour, optional description, order) can also be deleted
+  — inventory items and trip items are never deleted with them. *Travel accessories* is where
+  personal-care items such as wallet, sunglasses and watch live.
+- **Adding items** (from a category): things you own in that category first (with how many are free
+  for the trip's dates; damaged or lent-out items cannot be picked), other owned items while
+  searching (they keep their own category), default suggestions for the category, and *Create …* for
+  a trip-only item that never touches My Inventory. Each category screen also offers one-tap *Quick
+  add* chips for owned items and suggestions not yet on the list. Nothing is added automatically and
+  new items always start unpacked.
 - **Packing entries are trip-specific decisions.** An entry may point at an inventory item but owns
-  its own name, category, quantity, traveller, bag, notes and packed state; removing it never touches
-  the inventory, and deleting an inventory item leaves trip entries as one-time items.
-- Add items **from the inventory** (showing how many are free for the trip's dates; damaged or lent-out
-  items cannot be picked) or as **one-time items**; adjust quantities, assign travellers, put entries
-  in bags, tick them off, filter by traveller.
+  its own name, category, quantity and unit (pieces, pairs, sets, bottles, packs), traveller, bag,
+  notes and packed state; the same item can be on several trips with independent packed states;
+  removing it never touches the inventory, and deleting an inventory item leaves trip entries as
+  trip-only items. Progress counts items (e.g. 4 of 6 packed, 67%) per category and for the trip.
 - **Reservations** — a draft list reserves nothing. *Confirm list* reserves the inventory for the
   trip's dates; overlapping trips can never hold more units than you own (checked inside the
   transaction), and damaged, lent-out or archived items cannot be reserved. Conflicts are explained
@@ -137,13 +154,16 @@ screenshots.
   destinations (cold/high-altitude/beach places), season, travellers (adult/child), transport,
   category, activities, accommodation, laundry and your packing style. Each suggestion shows the item,
   quantity, priority, reason, category, traveller and whether you own it. Nothing is added until you
-  accept it; accepting an item already on the list links it instead of duplicating it. *Check for
+  accept it. Suggestions already covered by something on the list (same inventory item, same name or
+  a matching word, e.g. a hand-added "Phone charger") leave the review queue for a collapsed *Already
+  on your list* group; accepting or *Link all* links them instead of duplicating. *Check for
   changes* previews what regenerating would change (new, updated, no longer suggested, skipped) and
   applies only after you confirm; your list, quantities and skipped suggestions are preserved.
 - **Shopping list** — per trip and across trips (Inventory → Shopping list): add items or send
-  suggestions, mark them purchased, already owned, borrowing or skipped; then add a purchase to the
-  inventory and/or the trip's list (never auto-packed). Duplicates are prevented, and history is kept
-  when a trip is deleted.
+  suggestions, or choose *Need to buy* on an item of the packing list (linked to that item; one
+  shopping entry per item); mark them purchased, already owned, borrowing or skipped; then add a
+  purchase to the inventory (which also links the packing item to it) and/or the trip's list (never
+  auto-packed). Duplicates are prevented, and history is kept when a trip is deleted.
 
 **Everything else**
 
@@ -160,7 +180,7 @@ src/
     (tabs)/               Home, Trips, Inventory, Checklists, Profile + custom tab bar
     trips/new.tsx         Create Trip flow (modal)
     trips/[tripId]/       Dashboard, edit, sections (manage + [sectionId]), tasks/[taskId],
-                          templates (apply), save-template, packing (index, add, entry/, bag/)
+                          templates (apply), save-template, packing (index, category/, add, entry/, bag/)
     inventory/            item (new, [itemId], [itemId]/edit), category/[categoryId],
                           categories (index, new, [categoryId]), shopping
     templates/            new, [templateId] (editor, edit, sections, tasks/[taskId])
@@ -230,6 +250,14 @@ Key decisions:
   confirmation), `trip_luggage`, `packing_entries`, `inventory_reservations`,
   `packing_recommendations`, `purchase_items` and `user_preferences`. It only creates tables, so v2
   data is untouched (covered by a v2 → v3 upgrade test).
+- **Schema v5** (`0005_packing_units_and_category_descriptions`) adds `packing_entries.unit` (default
+  `pcs`) and `inventory_categories.description` (default empty) with two `ADD COLUMN`s — no row is
+  rewritten (covered by a v4 → v5 test comparing every row). Both columns are local-only in the sync
+  registry until a matching cloud migration is approved (needed before G4).
+- **Two-level packing** is derived, not stored: `features/packing/categories.ts` groups entries by
+  top-level category (subcategories roll up) and computes progress; `addOptions.ts`, `catalogue.ts`
+  and `suggestionCoverage.ts` decide what can be added and what is already covered. All are pure and
+  unit-tested.
 - **InventoryItem vs PackingEntry** are separate tables and types. Entries copy the item's name and
   category when added and reference it with `ON DELETE SET NULL`; trip quantities never change the
   inventory quantity.
