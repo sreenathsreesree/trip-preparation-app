@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Trip Prep",
-    "slug": "trip-preparation-app",
+    "slug": "sreedream-labs",
     "scheme": "tripprep",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -63,6 +63,12 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "da7f0444-9f26-4e18-9fe6-89436ea04754"
+      }
+    },
+    "owner": "sreedream-labs"
   }
 }

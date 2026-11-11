@@ -37,26 +37,28 @@ contains exactly this project's native modules and loads JavaScript from your co
 > Google Play upload if you own a domain (e.g. `com.yourdomain.tripprep`); it cannot be changed after
 > publishing. Changing it later means a new app on the device, so local test data will not carry over.
 
-## One-time setup (Expo account)
+## Expo project (linked)
 
-EAS Build runs on Expo's servers and needs a free Expo account. Do these steps yourself in a terminal
-on your computer — **never paste passwords or access tokens into chat.**
+The project is linked to the existing EAS project in the **SreeDream Labs** organization:
 
-1. Create an account at https://expo.dev/signup (skip if you have one).
-2. In the project folder, run `npm install`, then log in interactively:
-   ```bash
-   npx eas-cli@latest login
-   ```
-   (Use `npx eas-cli@latest login --sso` if your account uses SSO.) Check with `npx eas-cli@latest whoami`.
-3. Link the project to your account:
-   ```bash
-   npx eas-cli@latest init
-   ```
-   This creates the EAS project and writes `owner` and `extra.eas.projectId` into `app.json`.
-   Commit that change.
+| Item | Value |
+| --- | --- |
+| Owner | `sreedream-labs` |
+| Project | `@sreedream-labs/sreedream-labs` (the project created in the dashboard and connected to this GitHub repo) |
+| Project ID | `da7f0444-9f26-4e18-9fe6-89436ea04754` (`extra.eas.projectId` in `app.json`) |
+| Slug | `sreedream-labs` — must match the EAS project's slug; the app's display name stays **Trip Prep** |
 
-For CI later, create an access token on expo.dev and store it as an `EXPO_TOKEN` secret in the CI
-system's settings — not in the repository and not in chat.
+To build from your own computer, log in once in a terminal (never paste passwords or tokens into
+chat):
+
+```bash
+npx eas-cli@latest login          # or: npx eas-cli@latest login --sso
+npx eas-cli@latest whoami         # should list sreedream-labs among your accounts
+```
+
+Do not run `eas init` again without `--id da7f0444-9f26-4e18-9fe6-89436ea04754`, or it may create a
+second project. For CI, create an access token (ideally a robot user) on expo.dev and store it as an
+`EXPO_TOKEN` secret in the CI system's settings — not in the repository and not in chat.
 
 ## Build the development APK
 
