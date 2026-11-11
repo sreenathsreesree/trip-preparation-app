@@ -26,6 +26,7 @@ import { DEFAULT_FILTERS, matchesFilters, sortItems, type InventoryItemSummary }
 import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
 import { PACKING_LIMITS } from './model';
+import { UNCATEGORISED } from './categories';
 import { usePackingStore, useTripPacking } from './packingStore';
 
 function blockedReason(item: InventoryItemSummary): string | null {
@@ -35,7 +36,7 @@ function blockedReason(item: InventoryItemSummary): string | null {
   return null;
 }
 
-function Picker({ trip }: { trip: TripSummary }) {
+function Picker({ trip, categoryKey }: { trip: TripSummary; categoryKey?: string }) {
   const items = useInventoryStore((state) => state.items);
   const status = useInventoryStore((state) => state.status);
   const packing = useTripPacking(trip.id);
@@ -99,6 +100,8 @@ function Picker({ trip }: { trip: TripSummary }) {
           name: byId.get(id)?.name ?? '',
           quantity,
           travellerId,
+          // Added from a category screen: the entry belongs to that category on this trip.
+          ...(categoryKey ? { categoryId: categoryKey === UNCATEGORISED ? null : categoryKey } : {}),
           source: 'inventory' as const,
         })),
       );
@@ -225,7 +228,7 @@ function Picker({ trip }: { trip: TripSummary }) {
   );
 }
 
-export function AddToPackingScreen({ tripId }: { tripId: string | undefined }) {
+export function AddToPackingScreen({ tripId, categoryKey }: { tripId: string | undefined; categoryKey?: string }) {
   useEnsureInventoryLoaded();
   const { trip, status } = useTrip(tripId);
   const packingStatus = useTripPacking(tripId).status;
@@ -233,7 +236,7 @@ export function AddToPackingScreen({ tripId }: { tripId: string | undefined }) {
     if (tripId && packingStatus === 'idle') void usePackingStore.getState().load(tripId);
   }, [tripId, packingStatus]);
 
-  if (trip) return <Picker trip={trip} />;
+  if (trip) return <Picker trip={trip} categoryKey={categoryKey} />;
   return (
     <Screen bottomInset>
       <ScreenHeader showBack backIcon="close" title="Add from inventory" />

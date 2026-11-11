@@ -6,14 +6,14 @@ import {
   Button,
   Card,
   Icon,
-  MiniStepper,
+  IconButton,
   OptionTile,
   ProgressBar,
   Tag,
   ToggleRow,
 } from '@/components/ui';
 import { selectionFeedback } from '@/lib/haptics';
-import { colors, radii, spacing } from '@/theme';
+import { colors, radii, spacing, type ColorToken } from '@/theme';
 
 import { ItemImage } from '../../inventory/components/ItemImage';
 import { placeholderFor, type CategoryMaps } from '../../inventory/hooks';
@@ -27,7 +27,7 @@ import {
   ACTIVITY_META,
   estimateWeight,
   LUGGAGE_META,
-  PACKING_LIMITS,
+  formatQuantity,
   PACKING_STYLES,
   PACKING_STYLE_META,
   packingProgress,
@@ -50,18 +50,20 @@ export function EntryRow({
   maps,
   travellerName,
   bagName,
+  badge,
   onToggle,
-  onQuantity,
-  onOpen,
+  onMenu,
 }: {
   entry: PackingEntry;
   item: InventoryItemSummary | undefined;
   maps: CategoryMaps;
   travellerName?: string;
   bagName?: string;
+  /** Extra status (e.g. shopping), shown with the other details. */
+  badge?: { label: string; tone: ColorToken };
   onToggle: (entry: PackingEntry) => void;
-  onQuantity: (entry: PackingEntry, quantity: number) => void;
-  onOpen: (entry: PackingEntry) => void;
+  /** Opens the item's actions (edit, need to buy, remove). The row itself does not open anything. */
+  onMenu: (entry: PackingEntry) => void;
 }) {
   const placeholder = placeholderFor({ categoryId: entry.categoryId ?? item?.categoryId ?? null }, maps);
   const unavailable = item && (item.availability !== 'available' || item.archivedAt);
@@ -83,13 +85,7 @@ export function EntryRow({
           {entry.isPacked ? <Icon name="check-bold" size={14} tone="textOnAccent" /> : null}
         </View>
       </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${entry.name}, edit packing entry`}
-        onPress={() => onOpen(entry)}
-        style={({ pressed }) => [styles.entryBody, pressed && styles.pressed]}
-        testID={`entry-open-${entry.id}`}
-      >
+      <View style={styles.entryBody}>
         <ItemImage image={item?.image} fallbackIcon={placeholder.icon} fallbackColor={placeholder.color} size={40} rounded={radii.sm} />
         <View style={styles.entryText}>
           <AppText
@@ -97,18 +93,26 @@ export function EntryRow({
             tone={entry.isPacked ? 'textMuted' : 'textPrimary'}
             style={entry.isPacked ? styles.strike : undefined}
             numberOfLines={2}
+            testID={`entry-name-${entry.id}`}
           >
             {entry.name}
           </AppText>
           <View style={styles.entryMeta}>
-            {!entry.inventoryItemId ? (
+            <AppText variant="caption" tone="textSecondary" testID={`entry-qty-${entry.id}`}>
+              {formatQuantity(entry.quantity, entry.unit)}
+            </AppText>
+            {entry.inventoryItemId ? (
               <AppText variant="caption" tone="textMuted">
-                One-time
+                · From inventory
               </AppText>
-            ) : null}
+            ) : (
+              <AppText variant="caption" tone="textMuted">
+                · Trip only
+              </AppText>
+            )}
             {travellerName ? (
               <AppText variant="caption" tone="info" numberOfLines={1}>
-                {travellerName}
+                · {travellerName}
               </AppText>
             ) : null}
             {bagName ? (
@@ -118,19 +122,29 @@ export function EntryRow({
             ) : null}
             {unavailable ? (
               <AppText variant="caption" tone="danger">
-                {item?.archivedAt ? 'Archived' : item?.availability === 'damaged' ? 'Damaged' : 'Lent out'}
+                · {item?.archivedAt ? 'Archived' : item?.availability === 'damaged' ? 'Damaged' : 'Lent out'}
+              </AppText>
+            ) : null}
+            {badge ? (
+              <AppText variant="caption" tone={badge.tone} testID={`entry-badge-${entry.id}`}>
+                · {badge.label}
               </AppText>
             ) : null}
           </View>
+          {entry.notes ? (
+            <AppText variant="caption" tone="textMuted" numberOfLines={1} testID={`entry-notes-${entry.id}`}>
+              {entry.notes}
+            </AppText>
+          ) : null}
         </View>
-      </Pressable>
-      <MiniStepper
-        value={entry.quantity}
-        min={1}
-        max={PACKING_LIMITS.quantityMax}
-        label={entry.name}
-        onChange={(quantity) => onQuantity(entry, quantity)}
-        testID={`entry-qty-${entry.id}`}
+      </View>
+      <IconButton
+        icon="dots-vertical"
+        accessibilityLabel={`Actions for ${entry.name}`}
+        variant="plain"
+        size="sm"
+        onPress={() => onMenu(entry)}
+        testID={`entry-menu-${entry.id}`}
       />
     </View>
   );

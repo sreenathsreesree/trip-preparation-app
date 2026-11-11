@@ -31,7 +31,8 @@ import { BuyTab } from './components/BuyTab';
 import { ItemsTab } from './components/ItemsTab';
 import { PackingStatusLine } from './components/PackingParts';
 import { SuggestTab } from './components/SuggestTab';
-import { describeConflict, packingProgress, type ReservationConflict } from './model';
+import { categoryProgress } from './categories';
+import { describeConflict, type ReservationConflict } from './model';
 import { usePackingStore, useTripPacking } from './packingStore';
 
 type Tab = 'items' | 'bags' | 'suggest' | 'buy';
@@ -138,7 +139,8 @@ function PackingBody({ trip, initialTab }: { trip: TripSummary; initialTab: Tab 
     }, [trip.id]),
   );
 
-  const progress = packingProgress(packing.entries);
+  // Item-based, like each category's progress: "4 of 6 items packed".
+  const progress = categoryProgress(packing.entries);
   const pending = packing.recommendations.filter((r) => r.status === 'pending').length;
   const toBuy = packing.purchases.filter((p) => p.status === 'needed').length;
   const options: SegmentOption<Tab>[] = [
@@ -155,9 +157,9 @@ function PackingBody({ trip, initialTab }: { trip: TripSummary; initialTab: Tab 
         eyebrow={trip.name}
         title="Packing"
         subtitle={
-          progress.entries === 0
+          progress.total === 0
             ? 'Nothing on the list yet'
-            : `${progress.packedUnits} of ${progress.units} packed · ${progress.entries} ${progress.entries === 1 ? 'entry' : 'entries'}`
+            : `${progress.packed} of ${progress.total} ${progress.total === 1 ? 'item' : 'items'} packed · ${progress.remaining} left`
         }
       />
 
@@ -179,11 +181,11 @@ function PackingBody({ trip, initialTab }: { trip: TripSummary; initialTab: Tab 
           <Card>
             <View style={styles.progressRow}>
               <AppText variant="title" style={styles.flex}>
-                {progress.units === 0 ? '0%' : `${Math.round((progress.packedUnits / progress.units) * 100)}%`} packed
+                {progress.percent}% packed
               </AppText>
             </View>
             <ProgressBar
-              value={progress.units === 0 ? 0 : progress.packedUnits / progress.units}
+              value={progress.total === 0 ? 0 : progress.packed / progress.total}
               accessibilityLabel="Packing progress"
             />
             <View style={styles.confirmWrap}>
@@ -205,7 +207,7 @@ function PackingBody({ trip, initialTab }: { trip: TripSummary; initialTab: Tab 
           ) : null}
 
           {tab === 'items' ? (
-            <ItemsTab tripId={trip.id} travellers={trip.travellers} packing={packing} maps={maps} itemById={itemById} />
+            <ItemsTab tripId={trip.id} travellers={trip.travellers} packing={packing} maps={maps} />
           ) : tab === 'bags' ? (
             <BagsTab tripId={trip.id} travellers={trip.travellers} packing={packing} itemById={itemById} />
           ) : tab === 'suggest' ? (

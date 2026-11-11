@@ -101,6 +101,7 @@ export default function RootLayout() {
             <Stack.Screen name="trips/[tripId]/plan/move/[nodeId]" options={{ presentation: 'modal' }} />
             <Stack.Screen name="trips/[tripId]/plan/route" />
             <Stack.Screen name="trips/[tripId]/packing/index" />
+            <Stack.Screen name="trips/[tripId]/packing/category/[categoryId]" />
             <Stack.Screen name="trips/[tripId]/packing/add" options={{ presentation: 'modal' }} />
             <Stack.Screen name="trips/[tripId]/packing/entry/[entryId]" options={{ presentation: 'modal' }} />
             <Stack.Screen name="trips/[tripId]/packing/bag/[bagId]" options={{ presentation: 'modal' }} />
