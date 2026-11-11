@@ -12,7 +12,7 @@
 // restart the browser to check persistence; delete a trip and keep its
 // shopping history. See harness.mjs for the shared helpers.
 
-import { BASE, byId, check, iso, launch, run, setStep, shot, text, waitText, within } from './harness.mjs';
+import { BASE, byId, check, iso, launch, plannerAdd, run, setStep, shot, text, waitText, within } from './harness.mjs';
 
 const now = new Date();
 const month = now.getMonth() + 1; // trips next month
@@ -22,7 +22,6 @@ async function createTrip(page, { name, place, category, from, to, travellers, t
   await page.goto(`${BASE}/trips/new`);
   await byId(page, 'trip-name-input').waitFor();
   await byId(page, 'trip-name-input').fill(name);
-  await byId(page, 'destination-input-0').fill(place);
   await byId(page, `category-${category}`).click();
   await byId(page, 'wizard-next').click();
   await byId(page, 'trip-calendar-next-month').click();
@@ -37,7 +36,14 @@ async function createTrip(page, { name, place, category, from, to, travellers, t
   await byId(page, `transport-${transport}`).click();
   await byId(page, 'wizard-create').click();
   await byId(page, 'trip-dashboard').waitFor();
-  return page.url();
+  const url = page.url().split('?')[0];
+  // Destinations are planned in the planner.
+  await page.goto(`${url}/plan`);
+  await byId(page, 'planner-screen').waitFor();
+  await plannerAdd(page, place);
+  await page.goto(url);
+  await byId(page, 'trip-dashboard').waitFor();
+  return url;
 }
 
 async function addItem(page, { name, category, quantity = 1, weight, damaged, acceptSuggestion }) {

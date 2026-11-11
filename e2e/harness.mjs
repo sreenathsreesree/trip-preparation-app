@@ -133,3 +133,23 @@ export async function run(name, body) {
     rmSync(profile, { recursive: true, force: true });
   }
 }
+
+/**
+ * From the planner screen: adds a place by name (as a main destination, or
+ * inside `parent`), optionally flipping the "Add to route" toggle away from
+ * its default (on for main destinations, off inside a place).
+ */
+export async function plannerAdd(page, name, { parent, toggleRoute = false } = {}) {
+  if (parent) {
+    await byId(page, `plan-more-${parent}`).click();
+    await byId(page, 'sheet-action-add-inside').click();
+  } else {
+    await byId(page, 'planner-add').click();
+  }
+  await byId(page, 'plan-add').waitFor();
+  await byId(page, 'plan-add-name').fill(name);
+  if (toggleRoute) await byId(page, 'plan-add-route').click();
+  await byId(page, 'plan-add-save').click();
+  await byId(page, 'planner-screen').waitFor();
+  await byId(page, `plan-row-${name}`).waitFor();
+}

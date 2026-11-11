@@ -75,7 +75,8 @@ export function CreateTripFlow() {
       const input = draftToTripInput(draft, { minStartDate });
       const trip = await createTrip(input, { withStarterChecklist, templateIds });
       successFeedback();
-      router.replace({ pathname: '/trips/[tripId]', params: { tripId: trip.id } });
+      // Offer planning straight away: a new trip may not have destinations yet.
+      router.replace({ pathname: '/trips/[tripId]', params: { tripId: trip.id, created: '1' } });
     } catch (error) {
       setSubmitError(toErrorMessage(error, 'Could not save the trip. Please try again.'));
     } finally {

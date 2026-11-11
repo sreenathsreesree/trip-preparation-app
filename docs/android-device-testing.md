@@ -157,3 +157,8 @@ Device / Android version: ________ · Build: ________ · Date: ________
 | 29 | Buy tab: mark purchased → add to inventory → add to trip (arrives unpacked) | |
 | 30 | Bags: add a cabin bag, choose its contents, weight estimate shown only from known weights | |
 | 31 | Hardware/gesture back closes packing modals (add, entry, bag) and action sheets without saving | |
+| 32 | Create a trip without destinations; dashboard offers *Start planning*; planner shows the empty state | |
+| 33 | Add main destinations and nested places; the dashboard/trip card route shows only main destinations | |
+| 34 | Promote, move, reorder and remove places; the Route screen order only changes through its own controls | |
+| 35 | Removing a place that is a route stop explains which stops leave the route before confirming | |
+| 36 | Home shows *Continue planning* for the last planned trip; force-stop and reopen keeps the whole plan | |

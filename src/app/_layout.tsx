@@ -86,6 +86,11 @@ export default function RootLayout() {
             <Stack.Screen name="trips/[tripId]/tasks/[taskId]" options={{ presentation: 'modal' }} />
             <Stack.Screen name="trips/[tripId]/templates" options={{ presentation: 'modal' }} />
             <Stack.Screen name="trips/[tripId]/save-template" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="trips/[tripId]/plan/index" />
+            <Stack.Screen name="trips/[tripId]/plan/add" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="trips/[tripId]/plan/place/[nodeId]" />
+            <Stack.Screen name="trips/[tripId]/plan/move/[nodeId]" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="trips/[tripId]/plan/route" />
             <Stack.Screen name="trips/[tripId]/packing/index" />
             <Stack.Screen name="trips/[tripId]/packing/add" options={{ presentation: 'modal' }} />
             <Stack.Screen name="trips/[tripId]/packing/entry/[entryId]" options={{ presentation: 'modal' }} />

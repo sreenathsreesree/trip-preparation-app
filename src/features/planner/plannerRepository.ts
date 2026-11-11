@@ -8,7 +8,6 @@ import {
   isPlaceProvider,
   isValidLocation,
   PLANNER_LIMITS,
-  subtreeIds,
   validateNodeName,
   type NodeOrigin,
   type Place,
@@ -109,14 +108,6 @@ function mapNode(row: NodeRow, place: Place | null): PlanNode {
 /* Helpers shared with the trip repository (run inside its transactions) */
 /* ------------------------------------------------------------------ */
 
-async function nextPosition(db: Database, tripId: string, parentId: string | null): Promise<number> {
-  const row = await db.getFirstAsync<{ next: number }>(
-    `SELECT COALESCE(MAX(position) + 1, 0) AS next FROM trip_plan_nodes WHERE trip_id = ? AND parent_id IS ?`,
-    [tripId, parentId],
-  );
-  return row?.next ?? 0;
-}
-
 async function appendRouteStop(db: Database, createId: IdFactory, tripId: string, nodeId: string, timestamp: string) {
   const next = await db.getFirstAsync<{ next: number }>(
     'SELECT COALESCE(MAX(position) + 1, 0) AS next FROM trip_route_stops WHERE trip_id = ?',
@@ -149,80 +140,84 @@ async function writeSiblingOrder(db: Database, ids: readonly string[], parentId:
   }
 }
 
-async function refreshLegacyDestination(db: Database, tripId: string, timestamp: string) {
+/**
+ * One destination system: the planner's main destinations (top-level nodes)
+ * *are* the trip's destinations. This rewrites `trip_destinations` (read by
+ * trip cards, route text and packing suggestions) to match them, keeping row
+ * ids stable, and refreshes the legacy `trips.destination` column. Nested
+ * places never become destinations. Never touches route stops.
+ */
+export async function syncTripDestinations(db: Database, createId: IdFactory, tripId: string, timestamp: string) {
+  const roots = await db.getAllAsync<{ id: string; name: string; trip_destination_id: string | null }>(
+    `SELECT id, name, trip_destination_id FROM trip_plan_nodes
+     WHERE trip_id = ? AND parent_id IS NULL ORDER BY position, created_at, id`,
+    [tripId],
+  );
+  const existing = new Set(
+    (await db.getAllAsync<{ id: string }>('SELECT id FROM trip_destinations WHERE trip_id = ?', [tripId])).map((d) => d.id),
+  );
+  // Nested places are not destinations.
+  await db.runAsync(
+    `UPDATE trip_plan_nodes SET trip_destination_id = NULL, origin = 'planner'
+     WHERE trip_id = ? AND parent_id IS NOT NULL AND trip_destination_id IS NOT NULL`,
+    [tripId],
+  );
+  const kept = new Set<string>();
+  for (let position = 0; position < roots.length; position += 1) {
+    const root = roots[position] as (typeof roots)[number];
+    if (root.trip_destination_id && existing.has(root.trip_destination_id)) {
+      kept.add(root.trip_destination_id);
+      await db.runAsync(
+        `UPDATE trip_destinations SET name = ?, position = ?, updated_at = ?
+         WHERE id = ? AND (name <> ? OR position <> ?)`,
+        [root.name, position, timestamp, root.trip_destination_id, root.name, position],
+      );
+      continue;
+    }
+    const destinationId = createId();
+    kept.add(destinationId);
+    await db.runAsync(
+      'INSERT INTO trip_destinations (id, trip_id, name, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [destinationId, tripId, root.name, position, timestamp, timestamp],
+    );
+    await db.runAsync(`UPDATE trip_plan_nodes SET trip_destination_id = ?, origin = 'trip' WHERE id = ?`, [
+      destinationId,
+      root.id,
+    ]);
+  }
+  for (const id of existing) {
+    if (!kept.has(id)) await db.runAsync('DELETE FROM trip_destinations WHERE id = ?', [id]);
+  }
   await db.runAsync(
     `UPDATE trips SET destination = COALESCE(
-       (SELECT name FROM trip_destinations WHERE trip_id = ? ORDER BY position, created_at LIMIT 1), destination),
-       updated_at = ? WHERE id = ?`,
-    [tripId, timestamp, tripId],
+       (SELECT name FROM trip_destinations WHERE trip_id = ? ORDER BY position, created_at LIMIT 1), '')
+     WHERE id = ?`,
+    [tripId, tripId],
   );
 }
 
-/**
- * Keeps the planner in step after the trip's destinations were created or
- * edited in the trip form:
- * - each destination without a planner node gets a main-destination node and a route stop;
- * - renamed destinations rename their node;
- * - a node whose destination was removed is deleted if it holds nothing,
- *   otherwise it stays in the planner (nothing nested is ever lost).
- */
-export async function syncPlanWithTripDestinations(db: Database, createId: IdFactory, tripId: string, timestamp: string) {
-  const destinations = await db.getAllAsync<{ id: string; name: string }>(
-    'SELECT id, name FROM trip_destinations WHERE trip_id = ? ORDER BY position, created_at',
-    [tripId],
-  );
-  const linked = await db.getAllAsync<{ id: string; name: string; trip_destination_id: string }>(
-    'SELECT id, name, trip_destination_id FROM trip_plan_nodes WHERE trip_id = ? AND trip_destination_id IS NOT NULL',
-    [tripId],
-  );
-  const nodeByDestination = new Map(linked.map((n) => [n.trip_destination_id, n]));
-
-  for (const destination of destinations) {
-    const node = nodeByDestination.get(destination.id);
-    if (node) {
-      if (node.name !== destination.name) {
-        await db.runAsync('UPDATE trip_plan_nodes SET name = ?, updated_at = ? WHERE id = ?', [
-          destination.name,
-          timestamp,
-          node.id,
-        ]);
-      }
-      continue;
-    }
+/** New trip: its first destinations become main destinations and route stops, in order. */
+export async function seedPlan(
+  db: Database,
+  createId: IdFactory,
+  tripId: string,
+  names: readonly string[],
+  timestamp: string,
+) {
+  for (let position = 0; position < names.length; position += 1) {
     const id = createId();
     await db.runAsync(
       `INSERT INTO trip_plan_nodes
          (id, trip_id, parent_id, place_id, trip_destination_id, origin, name, notes, position, created_at, updated_at)
-       VALUES (?, ?, NULL, NULL, ?, 'trip', ?, '', ?, ?, ?)`,
-      [id, tripId, destination.id, destination.name, await nextPosition(db, tripId, null), timestamp, timestamp],
+       VALUES (?, ?, NULL, NULL, NULL, 'trip', ?, '', ?, ?, ?)`,
+      [id, tripId, (names[position] ?? '').trim(), position, timestamp, timestamp],
     );
     await appendRouteStop(db, createId, tripId, id, timestamp);
   }
-
-  // Destinations removed in the trip form: the FK cleared the link.
-  const orphans = await db.getAllAsync<{ id: string; children: number }>(
-    `SELECT n.id, (SELECT COUNT(*) FROM trip_plan_nodes c WHERE c.parent_id = n.id) AS children
-     FROM trip_plan_nodes n
-     WHERE n.trip_id = ? AND n.origin = 'trip' AND n.trip_destination_id IS NULL`,
-    [tripId],
-  );
-  for (const orphan of orphans) {
-    if (Number(orphan.children) === 0) {
-      await db.runAsync('DELETE FROM trip_plan_nodes WHERE id = ?', [orphan.id]);
-    } else {
-      await db.runAsync(`UPDATE trip_plan_nodes SET origin = 'planner', updated_at = ? WHERE id = ?`, [
-        timestamp,
-        orphan.id,
-      ]);
-    }
-  }
-  await renumberRoute(db, tripId);
+  await syncTripDestinations(db, createId, tripId, timestamp);
 }
 
-/**
- * Copies a trip's plan (tree, places, route) into a duplicated trip. Links to
- * trip destinations are mapped by destination position.
- */
+/** Copies a trip's plan (tree, places, route) into a duplicated trip and derives its destinations. */
 export async function copyPlan(
   db: Database,
   createId: IdFactory,
@@ -230,19 +225,6 @@ export async function copyPlan(
   toTripId: string,
   timestamp: string,
 ) {
-  const [fromDestinations, toDestinations] = await Promise.all(
-    [fromTripId, toTripId].map((tripId) =>
-      db.getAllAsync<{ id: string }>('SELECT id FROM trip_destinations WHERE trip_id = ? ORDER BY position, created_at', [
-        tripId,
-      ]),
-    ),
-  );
-  const destinationMap = new Map(
-    (fromDestinations ?? []).flatMap((d, i) => {
-      const target = toDestinations?.[i];
-      return target ? [[d.id, target.id] as const] : [];
-    }),
-  );
   const nodes = await db.getAllAsync<NodeRow>('SELECT * FROM trip_plan_nodes WHERE trip_id = ?', [fromTripId]);
   const idMap = new Map(nodes.map((n) => [n.id, createId()]));
   // Parents first so the self-reference is always satisfied.
@@ -254,18 +236,15 @@ export async function copyPlan(
     if (next) ordered.push(next);
   }
   for (const node of ordered) {
-    const destination = node.trip_destination_id ? (destinationMap.get(node.trip_destination_id) ?? null) : null;
     await db.runAsync(
       `INSERT INTO trip_plan_nodes
          (id, trip_id, parent_id, place_id, trip_destination_id, origin, name, notes, position, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, NULL, 'planner', ?, ?, ?, ?, ?)`,
       [
         idMap.get(node.id) ?? createId(),
         toTripId,
         node.parent_id ? (idMap.get(node.parent_id) ?? null) : null,
         node.place_id,
-        destination,
-        destination ? 'trip' : 'planner',
         node.name,
         node.notes,
         node.position,
@@ -286,8 +265,7 @@ export async function copyPlan(
       [createId(), toTripId, nodeId, stop.position, timestamp],
     );
   }
-  // Destinations without a node in the source (should not happen) still get one.
-  await syncPlanWithTripDestinations(db, createId, toTripId, timestamp);
+  await syncTripDestinations(db, createId, toTripId, timestamp);
 }
 
 /* ------------------------------------------------------------------ */
@@ -321,7 +299,10 @@ export interface PlannerRepository {
   moveNode(id: string, target: { parentId: string | null; index?: number }): Promise<void>;
   /** Makes a nested place a main destination, right after the main destination it was in. */
   promote(id: string): Promise<void>;
-  /** `keepChildren`: places inside move up a level; `withChildren`: they are removed too. */
+  /**
+   * `keepChildren`: places inside move up a level; `withChildren`: they are removed too.
+   * Route stops of removed places are removed (see `removalImpact` to warn first).
+   */
   removeNode(id: string, mode: 'keepChildren' | 'withChildren'): Promise<void>;
   addRouteStop(tripId: string, nodeId: string, index?: number): Promise<void>;
   removeRouteStop(tripId: string, nodeId: string): Promise<void>;
@@ -508,6 +489,7 @@ export function createPlannerRepository(
         const withNew = await plainNodes(tripId);
         await place(withNew, id, parentId, input.index, timestamp);
         if (input.addToRoute) await appendRouteStop(db, deps.createId, tripId, id, timestamp);
+        if (!parentId) await syncTripDestinations(db, deps.createId, tripId, timestamp);
         result = { status: 'added', node: mapNode(await mustNode(id), null) };
       });
 
@@ -531,15 +513,8 @@ export function createPlannerRepository(
           timestamp,
           id,
         ]);
-        // A node that is one of the trip's destinations renames that destination too.
-        if (row.trip_destination_id && name !== row.name) {
-          await db.runAsync('UPDATE trip_destinations SET name = ?, updated_at = ? WHERE id = ?', [
-            name,
-            timestamp,
-            row.trip_destination_id,
-          ]);
-          await refreshLegacyDestination(db, row.trip_id, timestamp);
-        }
+        // Renaming a main destination renames the trip's destination too.
+        if (!row.parent_id && name !== row.name) await syncTripDestinations(db, deps.createId, row.trip_id, timestamp);
       });
       return getNode(id);
     },
@@ -555,6 +530,8 @@ export function createPlannerRepository(
         const check = canMove(nodes, id, target.parentId);
         if (!check.ok) throw new PlannerError(check.reason);
         await place(nodes, id, target.parentId, target.index, timestamp);
+        // Main destinations may have been added, removed or reordered; the route is untouched.
+        await syncTripDestinations(db, deps.createId, row.trip_id, timestamp);
       });
     },
 
@@ -579,19 +556,6 @@ export function createPlannerRepository(
       const timestamp = stamp();
       await db.withTransactionAsync(async () => {
         const nodes = await plainNodes(row.trip_id);
-        const removed = mode === 'withChildren' ? subtreeIds(nodes, id) : [id];
-        const destinationIds = nodes
-          .filter((n) => removed.includes(n.id) && n.tripDestinationId)
-          .map((n) => n.tripDestinationId as string);
-        if (destinationIds.length > 0) {
-          const total = await db.getFirstAsync<{ n: number }>(
-            'SELECT COUNT(*) AS n FROM trip_destinations WHERE trip_id = ?',
-            [row.trip_id],
-          );
-          if (Number(total?.n ?? 0) - destinationIds.length < 1) {
-            throw new PlannerError('A trip needs at least one destination. Add or keep another main destination first.');
-          }
-        }
         if (mode === 'keepChildren') {
           // Places inside take the removed node's spot, in their order.
           const siblings = childrenOf(nodes, row.parent_id).map((n) => n.id);
@@ -602,22 +566,11 @@ export function createPlannerRepository(
         }
         // Children (when removed too) and route stops cascade.
         await db.runAsync('DELETE FROM trip_plan_nodes WHERE id = ?', [id]);
-        for (const destinationId of destinationIds) {
-          await db.runAsync('DELETE FROM trip_destinations WHERE id = ?', [destinationId]);
-        }
-        if (destinationIds.length > 0) {
-          const rest = await db.getAllAsync<{ id: string }>(
-            'SELECT id FROM trip_destinations WHERE trip_id = ? ORDER BY position, created_at',
-            [row.trip_id],
-          );
-          for (let i = 0; i < rest.length; i += 1) {
-            await db.runAsync('UPDATE trip_destinations SET position = ? WHERE id = ?', [i, rest[i]?.id ?? '']);
-          }
-          await refreshLegacyDestination(db, row.trip_id, timestamp);
-        }
         const remaining = childrenOf(await plainNodes(row.trip_id), row.parent_id);
         await writeSiblingOrder(db, remaining.map((n) => n.id), row.parent_id, timestamp);
+        // Route stops of removed places went with them (the UI warns first); the rest keep their order.
         await renumberRoute(db, row.trip_id);
+        await syncTripDestinations(db, deps.createId, row.trip_id, timestamp);
       });
     },
 

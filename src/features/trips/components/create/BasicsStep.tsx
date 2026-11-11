@@ -6,7 +6,7 @@ import { spacing } from '@/theme';
 import { TRIP_CATEGORIES, TRIP_CATEGORY_META } from '../../model';
 import { useTripDraftStore } from '../../tripDraftStore';
 import { TRIP_LIMITS, type TripDraftErrors } from '../../validation';
-import { DestinationsEditor } from './RowEditors';
+import { DestinationsPlannerLink } from './DestinationsPlannerLink';
 
 export function BasicsStep({ errors }: { errors: TripDraftErrors }) {
   const name = useTripDraftStore((state) => state.draft.name);
@@ -30,7 +30,7 @@ export function BasicsStep({ errors }: { errors: TripDraftErrors }) {
         testID="trip-name-input"
       />
 
-      <DestinationsEditor errors={errors} />
+      <DestinationsPlannerLink />
 
       <View style={styles.group}>
         <AppText variant="label" tone="textSecondary">

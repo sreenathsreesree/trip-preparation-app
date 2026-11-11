@@ -1,5 +1,5 @@
 import { setupRepositories, tripInput } from '../../../../test/fixtures';
-import { buildTree, routeNodes, type PlaceInput, type TripPlan } from '../model';
+import { buildTree, removalImpact, routeNodes, type PlaceInput, type TripPlan } from '../model';
 
 const googlePlace = (id: string, name: string, lat = 10.08, lng = 77.06): PlaceInput => ({
   provider: 'google',
@@ -135,15 +135,18 @@ describe('planner repository', () => {
     db.close();
   });
 
-  it('removing a main destination removes it from the trip, but never the last one', async () => {
+  it('removing a main destination removes it from the trip, down to an empty plan', async () => {
     const { db, planner, trips, trip, munnar, athirappilly } = await setup();
     await planner.addNode(trip.id, { parentId: munnar, name: 'Tea Museum' });
     await planner.removeNode(munnar, 'keepChildren');
-    const updated = await trips.getById(trip.id);
-    expect(updated?.destinations.map((d) => d.name)).toEqual(['Athirappilly']);
+    // The place inside moved up and became a main destination itself.
+    expect((await trips.getById(trip.id))?.destinations.map((d) => d.name)).toEqual(['Tea Museum', 'Athirappilly']);
     expect(shape(await planner.load(trip.id))).toEqual(['Tea Museum', 'Athirappilly']);
-    await expect(planner.removeNode(athirappilly, 'withChildren')).rejects.toThrow(/at least one destination/);
-    expect((await trips.getById(trip.id))?.destinations).toHaveLength(1);
+    await planner.removeNode(athirappilly, 'withChildren');
+    const teaMuseum = (await planner.load(trip.id)).nodes[0]?.id ?? '';
+    await planner.removeNode(teaMuseum, 'withChildren');
+    expect((await trips.getById(trip.id))?.destinations).toEqual([]);
+    expect(await planner.load(trip.id)).toEqual({ nodes: [], route: [] });
     db.close();
   });
 
@@ -176,26 +179,67 @@ describe('planner repository', () => {
     db.close();
   });
 
-  it('follows trip edits: new, renamed and removed destinations', async () => {
-    const { db, planner, trips, trip, munnar } = await setup();
-    await planner.addNode(trip.id, { parentId: munnar, name: 'Tea Museum' });
-    const [munnarDest, athDest] = trip.destinations;
-    await trips.update(trip.id, {
-      ...tripInput(),
-      name: trip.name,
-      destinations: [{ id: munnarDest?.id, name: 'Munnar Town' }, { name: 'Kochi' }],
-    });
-    void athDest;
-    const plan = await planner.load(trip.id);
-    // Athirappilly held nothing, so it went; Munnar (with a place inside) was renamed; Kochi was added.
-    expect(shape(plan)).toEqual([{ 'Munnar Town': ['Tea Museum'] }, 'Kochi']);
-    expect(routeNames(plan)).toEqual(['Munnar Town', 'Kochi']);
+  it('main destinations are the trip destinations everywhere; nested places never are', async () => {
+    const { db, planner, trips, trip, munnar, athirappilly } = await setup();
+    const destinations = async () => (await trips.getById(trip.id))?.destinations.map((d) => d.name);
+    const legacy = async () =>
+      (await db.getFirstAsync<{ destination: string }>('SELECT destination FROM trips WHERE id = ?', [trip.id]))
+        ?.destination;
+    const munnarDestId = (await trips.getById(trip.id))?.destinations[0]?.id;
 
-    // Removing a destination that holds places keeps those places in the planner.
-    await trips.update(trip.id, { ...tripInput(), name: trip.name, destinations: [{ name: 'Kochi' }] });
-    const after = await planner.load(trip.id);
-    expect(shape(after)).toEqual(expect.arrayContaining([{ 'Munnar Town': ['Tea Museum'] }]));
-    expect(after.nodes.find((n) => n.name === 'Munnar Town')).toMatchObject({ origin: 'planner', tripDestinationId: null });
+    // Adding a main destination (not a route stop unless asked) adds a trip destination.
+    const kochi = (await planner.addNode(trip.id, { name: 'Kochi' })).node.id;
+    await planner.addNode(trip.id, { parentId: munnar, name: 'Echo Point' });
+    expect(await destinations()).toEqual(['Munnar', 'Athirappilly', 'Kochi']);
+    expect(routeNames(await planner.load(trip.id))).toEqual(['Munnar', 'Athirappilly']);
+
+    // Reordering main destinations reorders the trip; ids stay stable.
+    await planner.moveNode(kochi, { parentId: null, index: 0 });
+    expect(await destinations()).toEqual(['Kochi', 'Munnar', 'Athirappilly']);
+    expect(await legacy()).toBe('Kochi');
+    expect((await trips.getById(trip.id))?.destinations[1]?.id).toBe(munnarDestId);
+
+    // Nesting a main destination removes it from the trip's destinations; promoting brings it back.
+    await planner.moveNode(athirappilly, { parentId: munnar });
+    expect(await destinations()).toEqual(['Kochi', 'Munnar']);
+    await planner.promote(athirappilly);
+    expect(await destinations()).toEqual(['Kochi', 'Munnar', 'Athirappilly']);
+
+    // Renaming follows; the route never changed through any of this.
+    await planner.updateNode(kochi, { name: 'Fort Kochi' });
+    expect(await destinations()).toEqual(['Fort Kochi', 'Munnar', 'Athirappilly']);
+    expect(routeNames(await planner.load(trip.id))).toEqual(['Munnar', 'Athirappilly']);
+
+    // Editing trip details leaves destinations alone.
+    await trips.update(trip.id, { ...tripInput(), name: 'Renamed trip' });
+    expect(await destinations()).toEqual(['Fort Kochi', 'Munnar', 'Athirappilly']);
+    expect(shape(await planner.load(trip.id))).toEqual(['Fort Kochi', { Munnar: ['Echo Point'] }, 'Athirappilly']);
+    db.close();
+  });
+
+  it('starts a trip created without destinations with an empty plan', async () => {
+    const { db, planner, trips } = await setupRepositories();
+    const trip = await trips.create(tripInput({ destinations: [] }), { sections: [] });
+    expect(await planner.load(trip.id)).toEqual({ nodes: [], route: [] });
+    await planner.addNode(trip.id, { name: 'Hampi', addToRoute: true });
+    expect((await trips.getById(trip.id))?.destinations.map((d) => d.name)).toEqual(['Hampi']);
+    expect(routeNames(await planner.load(trip.id))).toEqual(['Hampi']);
+    db.close();
+  });
+
+  it('describes what a removal does to the route before it happens', async () => {
+    const { db, planner, trip, munnar } = await setup();
+    const dam = (await planner.addNode(trip.id, { parentId: munnar, name: 'Dam', addToRoute: true })).node.id;
+    await planner.addNode(trip.id, { parentId: dam, name: 'Boating' });
+    const plan = await planner.load(trip.id);
+    expect(removalImpact(plan, munnar, 'withChildren')).toEqual({
+      removedNodes: 3,
+      movedUp: 0,
+      routeStops: ['Munnar', 'Dam'],
+      removesMainDestination: true,
+    });
+    expect(removalImpact(plan, munnar, 'keepChildren')).toMatchObject({ removedNodes: 1, movedUp: 1, routeStops: ['Munnar'] });
+    expect(removalImpact(plan, dam, 'keepChildren')).toMatchObject({ routeStops: ['Dam'], removesMainDestination: false });
     db.close();
   });
 

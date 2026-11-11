@@ -2,7 +2,7 @@ import type { Database, SqlValue } from '@/db/types';
 import type { IdFactory } from '@/lib/id';
 
 import { closeTripReservations, copyPacking, revalidateTripReservations } from '../packing/packingRepository';
-import { copyPlan, syncPlanWithTripDestinations } from '../planner/plannerRepository';
+import { copyPlan, seedPlan } from '../planner/plannerRepository';
 import { copyChecklist, insertPlan } from '../preparation/checklistRepository';
 import { tripOwner, type ChecklistPlan } from '../preparation/model';
 import { statsFromRow } from '../preparation/readiness';
@@ -75,8 +75,8 @@ function mapSummary(row: TripRow, destinations: Destination[], travellers: Trave
   return {
     id: row.id,
     name: row.name,
-    // Fall back to the legacy column if a trip somehow has no destination rows.
-    destinations: destinations.length > 0 ? destinations : [{ id: `${row.id}-legacy`, name: row.destination }],
+    // A trip may have no destinations yet (planned later in the planner).
+    destinations,
     startDate: row.start_date,
     endDate: row.end_date,
     travellers,
@@ -115,15 +115,11 @@ export interface TripRepository {
 }
 
 function assertChildren(input: TripInput) {
-  if (input.destinations.length === 0) throw new TripDataError('A trip needs at least one destination.');
-  if (input.destinations.length > TRIP_LIMITS.destinationsMax) {
-    throw new TripDataError(`Up to ${TRIP_LIMITS.destinationsMax} destinations.`);
-  }
   if (input.travellers.length === 0) throw new TripDataError('A trip needs at least one traveller.');
   if (input.travellers.length > TRIP_LIMITS.travellersMax) {
     throw new TripDataError(`Up to ${TRIP_LIMITS.travellersMax} travellers.`);
   }
-  for (const d of input.destinations) {
+  for (const d of input.destinations ?? []) {
     if (d.name.trim().length === 0) throw new TripDataError('Destination names cannot be empty.');
   }
   for (const t of input.travellers) {
@@ -234,7 +230,7 @@ export function createTripRepository(
   /** Legacy summary columns kept in step with the child rows. */
   function legacyColumns(input: TripInput) {
     const { adults, children } = countTravellers(input.travellers);
-    return { destination: input.destinations[0]?.name.trim() ?? '', adults, children };
+    return { destination: input.destinations?.[0]?.name.trim() ?? '', adults, children };
   }
 
   async function setTimestampColumn(id: string, column: 'completed_at' | 'archived_at', on: boolean) {
@@ -292,14 +288,14 @@ export function createTripRepository(
           ],
         );
         // New trip: ignore any ids passed in for child rows.
-        await syncChildren('trip_destinations', id, input.destinations.map(({ name }) => ({ name })), timestamp);
         await syncChildren(
           'trip_travellers',
           id,
           input.travellers.map(({ name, kind }) => ({ name, kind })),
           timestamp,
         );
-        await syncPlanWithTripDestinations(db, deps.createId, id, timestamp);
+        // First main destinations (if any) seed the planner, which derives the trip's destinations.
+        await seedPlan(db, deps.createId, id, (input.destinations ?? []).map((d) => d.name), timestamp);
         await insertPlan(db, tripOwner(id), checklist, { createId: deps.createId, timestamp });
       });
 
@@ -312,12 +308,11 @@ export function createTripRepository(
       const legacy = legacyColumns(input);
       await db.withTransactionAsync(async () => {
         const result = await db.runAsync(
-          `UPDATE trips SET name = ?, destination = ?, start_date = ?, end_date = ?, adults = ?, children = ?,
+          `UPDATE trips SET name = ?, start_date = ?, end_date = ?, adults = ?, children = ?,
                             transport_mode = ?, category = ?, updated_at = ?
            WHERE id = ?`,
           [
             input.name.trim(),
-            legacy.destination,
             input.startDate,
             input.endDate,
             legacy.adults,
@@ -329,9 +324,8 @@ export function createTripRepository(
           ],
         );
         if (result.changes === 0) throw new TripDataError('That trip no longer exists.');
-        await syncChildren('trip_destinations', id, input.destinations, timestamp);
+        // Destinations are edited in the planner, never here.
         await syncChildren('trip_travellers', id, input.travellers, timestamp);
-        await syncPlanWithTripDestinations(db, deps.createId, id, timestamp);
         // Keep purchase history readable and reservations valid for the new dates.
         await db.runAsync('UPDATE purchase_items SET trip_name = ? WHERE trip_id = ?', [input.name.trim(), id]);
         await revalidateTripReservations(db, id, timestamp);
@@ -373,7 +367,6 @@ export function createTripRepository(
             timestamp,
           ],
         );
-        await syncChildren('trip_destinations', copyId, input.destinations, timestamp);
         await syncChildren('trip_travellers', copyId, input.travellers, timestamp);
         await copyChecklist(db, tripOwner(id), tripOwner(copyId), { createId: deps.createId, timestamp }, {
           keepProvenance: true,

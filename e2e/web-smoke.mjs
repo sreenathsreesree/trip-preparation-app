@@ -16,6 +16,7 @@ import {
   EXTERNAL_BASE,
   iso,
   launch,
+  plannerAdd,
   run,
   setStep,
   shot,
@@ -43,20 +44,13 @@ await run('Web smoke test', async () => {
   if (EXTERNAL_BASE) console.log(`  · cross-origin isolated: ${isolated}`);
   else check(isolated, 'page is cross-origin isolated');
 
-  setStep('create: basics with three stops');
+  setStep('create: basics (destinations come later, in the planner)');
   await byId(page, 'home-plan-trip').click();
   await byId(page, 'trip-name-input').waitFor();
   await byId(page, 'wizard-next').click();
   check(await page.getByText('Give your trip a name.').isVisible(), 'validation blocks an empty step');
   await byId(page, 'trip-name-input').fill('Spiti Valley Ride');
-  await byId(page, 'destination-input-0').fill('Manali');
-  await byId(page, 'destination-add').click();
-  await byId(page, 'destination-input-1').fill('Kaza');
-  await byId(page, 'destination-add').click();
-  await byId(page, 'wizard-next').click();
-  check(await page.getByText('Enter a place or remove this stop.').first().isVisible(), 'empty stop is flagged');
-  await byId(page, 'destination-input-2').fill('Chandratal');
-  await byId(page, 'destination-move-2-up').click(); // Manali, Chandratal, Kaza
+  await byId(page, 'destinations-planner-link').waitFor();
   await byId(page, 'category-mountains').click();
   await shot(page, '01-create-basics');
   await byId(page, 'wizard-next').click();
@@ -79,10 +73,20 @@ await run('Web smoke test', async () => {
   await shot(page, '03-create-how');
   await byId(page, 'wizard-create').click();
 
-  setStep('dashboard');
+  setStep('dashboard: start planning three stops');
   await byId(page, 'trip-dashboard').waitFor();
-  const tripUrl = page.url();
+  const tripUrl = page.url().split('?')[0];
   const tripPath = new URL(tripUrl).pathname;
+  check(await within(page, 'trip-dashboard', 'No destinations yet').isVisible(), 'a trip can be saved before choosing destinations');
+  await byId(page, 'trip-created-start-planning').getByText('Start planning', { exact: true }).click();
+  await byId(page, 'planner-empty').waitFor();
+  for (const stop of ['Manali', 'Kaza', 'Chandratal']) await plannerAdd(page, stop);
+  await byId(page, 'planner-reorder').click();
+  await byId(page, 'plan-move-Chandratal-up').click(); // Manali, Chandratal, Kaza
+  await byId(page, 'planner-reorder').click();
+  await page.waitForTimeout(300);
+  await page.goto(tripUrl);
+  await byId(page, 'trip-dashboard').waitFor();
   check(
     await within(page, 'trip-dashboard', 'Manali → Chandratal → Kaza', { exact: false }).isVisible(),
     'route keeps stop order',
@@ -138,7 +142,10 @@ await run('Web smoke test', async () => {
   await openTripActions(page, 'edit');
   await byId(page, 'edit-trip-screen').waitFor();
   check((await byId(page, 'trip-name-input').inputValue()) === 'Spiti Valley Ride', 'edit form is prefilled');
-  check((await byId(page, 'destination-input-1').inputValue()) === 'Chandratal', 'stops are prefilled in order');
+  check(
+    (await text(page, 'destinations-planner-link')).includes('Manali → Chandratal → Kaza'),
+    'edit form shows the planner’s destinations',
+  );
   await byId(page, 'trip-name-input').fill('Spiti & Chandratal');
   await byId(page, 'traveller-remove-2').click(); // remove Ravi
   await shot(page, '07-edit-trip');

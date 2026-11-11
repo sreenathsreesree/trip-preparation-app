@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
-import { AppText, Button, Icon, IconButton, ReorderControls } from '@/components/ui';
+import { AppText, Button, Icon, IconButton } from '@/components/ui';
 import { selectionFeedback } from '@/lib/haptics';
 import { colors, fontFamilies, radii, sizes, spacing } from '@/theme';
 
@@ -40,93 +40,6 @@ function RowInput({
       style={[styles.input, invalid && styles.inputInvalid]}
       testID={testID}
     />
-  );
-}
-
-/** Ordered list of stops: add, rename, reorder and remove. */
-export function DestinationsEditor({ errors }: { errors: TripDraftErrors }) {
-  const destinations = useTripDraftStore((state) => state.draft.destinations);
-  const { addDestination, updateDestination, removeDestination, moveDestination, reveal } =
-    useTripDraftStore.getState();
-  const many = destinations.length > 1;
-
-  return (
-    <View style={styles.group}>
-      <View style={styles.header}>
-        <AppText variant="label" tone="textSecondary">
-          Destinations
-        </AppText>
-        <AppText variant="caption" tone="textMuted">
-          {destinations.length}/{TRIP_LIMITS.destinationsMax}
-        </AppText>
-      </View>
-      {destinations.map((destination, index) => {
-        const error = errors.destinationItems?.[destination.key];
-        return (
-          <View key={destination.key} style={styles.item}>
-            <View style={styles.row}>
-              <View style={styles.stopBadge}>
-                <AppText variant="captionStrong" tone="accent">
-                  {index + 1}
-                </AppText>
-              </View>
-              <RowInput
-                value={destination.name}
-                onChangeText={(name) => updateDestination(destination.key, name)}
-                placeholder={index === 0 ? 'City, region or route — e.g. Manali' : 'Next stop'}
-                accessibilityLabel={`Destination ${index + 1}`}
-                invalid={Boolean(error)}
-                maxLength={TRIP_LIMITS.destinationMax}
-                testID={`destination-input-${index}`}
-              />
-              {many ? (
-                <ReorderControls
-                  label={`destination ${index + 1}`}
-                  canMoveUp={index > 0}
-                  canMoveDown={index < destinations.length - 1}
-                  onMove={(direction) => moveDestination(destination.key, direction)}
-                  testID={`destination-move-${index}`}
-                />
-              ) : null}
-              {many ? (
-                <IconButton
-                  icon="close"
-                  variant="plain"
-                  size="sm"
-                  tone="textMuted"
-                  accessibilityLabel={`Remove destination ${index + 1}`}
-                  onPress={() => removeDestination(destination.key)}
-                  testID={`destination-remove-${index}`}
-                />
-              ) : null}
-            </View>
-            {error ? (
-              <AppText variant="caption" tone="danger" accessibilityLiveRegion="polite">
-                {error}
-              </AppText>
-            ) : null}
-          </View>
-        );
-      })}
-      {errors.destinations && !errors.destinationItems ? (
-        <AppText variant="caption" tone="danger">
-          {errors.destinations}
-        </AppText>
-      ) : null}
-      <Button
-        label="Add a stop"
-        icon="plus"
-        variant="ghost"
-        size="sm"
-        disabled={destinations.length >= TRIP_LIMITS.destinationsMax}
-        onPress={() => {
-          reveal(['destinations']);
-          addDestination();
-        }}
-        style={styles.addButton}
-        testID="destination-add"
-      />
-    </View>
   );
 }
 

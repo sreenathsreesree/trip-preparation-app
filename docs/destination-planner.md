@@ -1,7 +1,8 @@
 # Destination Discovery & Visual Trip Planner (Milestone 5)
 
-Status: **sub-milestone A done** (data model, migration, provider abstraction, tests). No UI and no
-live Google calls yet. Nothing here talks to Google until a proxy is configured (see below).
+Status: **parts A and C done** (data model, migration, provider abstraction, planner screens with
+manual places, one destination system). No live Google calls yet; nothing talks to Google until a
+proxy is configured (part B).
 
 ## Concepts
 
@@ -12,17 +13,26 @@ live Google calls yet. Nothing here talks to Google until a proxy is configured 
 | Route stop | `trip_route_stops` | An explicitly selected, ordered list of nodes to travel through. Nesting never implies routing. A node is a stop at most once. |
 | Planner recency | `trips.planner_opened_at` | Home's "continue planning" shortcut. |
 
-**Main destinations and the trip's destinations.** The existing `trip_destinations` (shown on trip
-cards, used by packing suggestions and the trip form) stay the trip's summary. Each one has a linked
-top-level node (`trip_destination_id`, `origin = 'trip'`):
+**One destination system.** The planner's main destinations (top-level nodes) *are* the trip's
+destinations. After every planner change, inside the same transaction,
+`syncTripDestinations` rewrites `trip_destinations` (kept for trip cards, route text and packing
+suggestions) to match them in order, keeping row ids stable, and refreshes the legacy
+`trips.destination` column:
 
-- trip form: new destination → new main destination + route stop; rename → node renamed; removed →
-  node deleted if it holds nothing, otherwise kept in the planner (nothing nested is lost);
-- planner: renaming a linked node renames the destination; removing it removes the destination,
-  except the last one (a trip always has a destination);
-- main destinations added in the planner do not (yet) appear on the trip card — decided in
-  sub-milestone C (proposal: planner main destinations become the trip's destination list, and the
-  trip form's destination step links to the planner).
+- adding, reordering, renaming or removing a main destination updates the trip everywhere;
+- promoting a nested place adds it as a destination; nesting a main destination removes it;
+- places inside main destinations never become destinations;
+- the trip form has no destination editor any more: creating a trip needs no destination (empty
+  planner with *Add destination*), and editing links to the planner; trip updates never touch
+  destinations;
+- `TripInput.destinations` only seeds a new trip's first main destinations (used by duplication paths
+  and tests).
+
+**Route independence.** Route stops change only through explicit route actions (add / remove /
+reorder on the Route screen or a place's menu, or the visible *Add to route* toggle when adding a
+place). Moving, nesting, promoting, reordering and renaming never change the route. Removing places
+that are route stops removes those stops; the confirmation spells out which stops leave the route
+(`removalImpact`) before anything is deleted.
 
 **Migration v4** (`0004_destination_planner`) only creates tables, indexes and one nullable column,
 then copies every existing destination into a main-destination node and a route stop in the same
@@ -88,7 +98,17 @@ details call, then discarded.
 | --- | --- | --- |
 | **A** | Schema v4, plan/route model, repository, provider interface, cache policy, tests | — (done) |
 | B | Proxy (`server/places-proxy`), proxy-backed provider, debounced autocomplete controller (350 ms, ≥ 3 chars, stale-request cancellation, session tokens), manual entry fallback | Google Cloud project + Places API (New) key; proxy host account |
-| C | Planner screen (Trips → trip → Plan, dashboard entry, post-create "Start planning", Home "continue planning"), expandable list, add / move / reorder / nest / promote / remove, route-stop selection | A |
+| **C** | One destination system; planner screen (trip menu → Plan destinations, dashboard card, post-create "Start planning", Home "Continue planning"), expandable list, add / move / reorder / nest / promote / rename / remove with explained route impact, separate route screen, manual places, same-name warning, saved-place reuse | A (done) |
 | D | Destination detail screen, live details, nearby/text search with add-under / add-as-stop / make-main, duplicate state | B, C |
 | E | Map view (`react-native-maps`, Google Maps SDK key), markers, route polyline, list/map toggle, Google Maps directions URLs | C; Maps SDK key; new dev build |
 | F | Offline states, cache refresh, reliability, e2e at 360 px, Android bundle and build verification | all |
+
+## Screens (part C)
+
+| Route | Screen |
+| --- | --- |
+| `/trips/[tripId]/plan` | Planner: counts, *Add destination*, *Route*, expandable tree (main destinations vs nested places, route-stop badges), reorder mode, per-place action sheet |
+| `/trips/[tripId]/plan/add?parentId=` | Add a main destination or a place inside one: name, notes, *Add to route* toggle, saved-place reuse, "search not set up" notice |
+| `/trips/[tripId]/plan/place/[nodeId]` | Place: trail, main/nested and route badges, map details if any, Google Maps link, rename/notes, add to / remove from route, make main destination, places inside |
+| `/trips/[tripId]/plan/move/[nodeId]` | Move into another place or to the top level (own sub-places disabled) |
+| `/trips/[tripId]/plan/route` | Route stops in order (reorder / remove) and places to add |

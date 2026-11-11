@@ -50,11 +50,16 @@ describe('tripRepository: create and read', () => {
     db.close();
   });
 
-  it('rejects trips without destinations or travellers', async () => {
+  it('allows a trip without destinations yet, but not without travellers', async () => {
     const { db, trips } = await setupRepositories();
-    await expect(trips.create(tripInput({ destinations: [] }), { sections: [] })).rejects.toThrow(/destination/);
     await expect(trips.create(tripInput({ travellers: [] }), { sections: [] })).rejects.toThrow(/traveller/);
     expect(await trips.count()).toBe(0);
+    const undecided = await trips.create(tripInput({ destinations: undefined }), { sections: [] });
+    expect(undecided.destinations).toEqual([]);
+    const empty = await trips.create(tripInput({ destinations: [] }), { sections: [] });
+    expect((await trips.getById(empty.id))?.destinations).toEqual([]);
+    const row = await db.getFirstAsync<{ destination: string }>('SELECT destination FROM trips WHERE id = ?', [empty.id]);
+    expect(row?.destination).toBe('');
     db.close();
   });
 
@@ -70,16 +75,15 @@ describe('tripRepository: create and read', () => {
 });
 
 describe('tripRepository: editing', () => {
-  it('updates details, adds/edits/removes/reorders child rows and preserves ids', async () => {
+  it('updates details and travellers (preserving ids) but never destinations, which the planner owns', async () => {
     const { db, trips } = await setupRepositories();
     const created = await trips.create(input, { sections: [] });
-    const [north, south] = created.destinations;
     const [asha, , mia] = created.travellers;
 
     const updated = await trips.update(created.id, {
       ...input,
       name: 'Goa & Gokarna',
-      destinations: [{ id: south?.id, name: 'South Goa' }, { name: 'Gokarna' }, { id: north?.id, name: 'Panaji' }],
+      destinations: [{ name: 'Ignored' }],
       travellers: [
         { id: asha?.id, name: 'Asha K', kind: 'adult' },
         { id: mia?.id, name: 'Mia', kind: 'child' },
@@ -88,9 +92,7 @@ describe('tripRepository: editing', () => {
     });
 
     expect(updated.name).toBe('Goa & Gokarna');
-    expect(updated.destinations.map((d) => d.name)).toEqual(['South Goa', 'Gokarna', 'Panaji']);
-    expect(updated.destinations[0]?.id).toBe(south?.id);
-    expect(updated.destinations[2]?.id).toBe(north?.id);
+    expect(updated.destinations).toEqual(created.destinations);
     expect(updated.travellers.map((t) => t.name)).toEqual(['Asha K', 'Mia', 'Dev']);
     expect(updated.travellers[0]?.id).toBe(asha?.id); // edited in place
     expect(updated.travellers.some((t) => t.name === 'Ravi')).toBe(false); // removed
@@ -117,15 +119,15 @@ describe('tripRepository: editing', () => {
     const { db, trips } = await setupRepositories();
     const a = await trips.create(input, { sections: [] });
     const b = await trips.create(tripInput({ name: 'Other trip' }), { sections: [] });
-    const foreignId = b.destinations[0]?.id;
+    const foreign = b.travellers[0];
 
-    await trips.update(a.id, { ...input, destinations: [{ id: foreignId, name: 'Hijack attempt' }] });
+    await trips.update(a.id, { ...input, travellers: [{ id: foreign?.id, name: 'Hijack attempt', kind: 'adult' }] });
 
     const reloadedB = await trips.getById(b.id);
-    expect(reloadedB?.destinations[0]).toEqual({ id: foreignId, name: 'North Goa' });
+    expect(reloadedB?.travellers[0]).toEqual(foreign);
     const reloadedA = await trips.getById(a.id);
-    expect(reloadedA?.destinations.map((d) => d.name)).toEqual(['Hijack attempt']);
-    expect(reloadedA?.destinations[0]?.id).not.toBe(foreignId);
+    expect(reloadedA?.travellers.map((t) => t.name)).toEqual(['Hijack attempt']);
+    expect(reloadedA?.travellers[0]?.id).not.toBe(foreign?.id);
     db.close();
   });
 

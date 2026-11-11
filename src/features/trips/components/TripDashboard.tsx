@@ -21,6 +21,7 @@ import { toErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing } from '@/theme';
 
 import { PackingSummaryCard } from '../../packing/components/PackingSummaryCard';
+import { PlanSummaryCard } from '../../planner/components/PlanSummaryCard';
 import { useChecklistStore } from '../../preparation/checklistStore';
 import { ReadinessPanel } from '../../preparation/components/ReadinessPanel';
 import { SectionCard } from '../../preparation/components/SectionCard';
@@ -90,13 +91,14 @@ function LifecycleNotice({ trip, today }: { trip: TripSummary; today: string }) 
   );
 }
 
-function DashboardBody({ trip }: { trip: TripSummary }) {
+function DashboardBody({ trip, justCreated }: { trip: TripSummary; justCreated: boolean }) {
   const today = useToday();
   const owner = useOwner('trip', trip.id);
   const checklist = useOwnerChecklist(owner);
   const { load, toggleTask, deleteTask, applyPlan } = useChecklistStore.getState();
   const [actionError, setActionError] = useState<string | null>(null);
   const [addingVehicle, setAddingVehicle] = useState(false);
+  const [showCreated, setShowCreated] = useState(justCreated);
   const { openActions, sheet, error: tripActionError } = useTripActions(trip, {
     onDeleted: () => router.replace('/trips'),
   });
@@ -132,6 +134,28 @@ function DashboardBody({ trip }: { trip: TripSummary }) {
         }
       />
 
+      {showCreated ? (
+        <Notice
+          tone="success"
+          icon="check-circle-outline"
+          title="Trip created"
+          message={
+            trip.destinations.length === 0
+              ? 'Next, plan where you are going: add main destinations and the places you want to see.'
+              : 'Next, plan the places you want to see and your route.'
+          }
+          action={{
+            label: 'Start planning',
+            icon: 'map-marker-plus-outline',
+            onPress: () => {
+              setShowCreated(false);
+              router.push({ pathname: '/trips/[tripId]/plan', params: { tripId: trip.id } });
+            },
+          }}
+          testID="trip-created-start-planning"
+        />
+      ) : null}
+
       <LifecycleNotice trip={trip} today={today} />
       {tripActionError ? <Notice tone="danger" title="Action failed" message={tripActionError} /> : null}
 
@@ -152,6 +176,8 @@ function DashboardBody({ trip }: { trip: TripSummary }) {
       </View>
 
       {actionError ? <Notice tone="danger" title="Something went wrong" message={actionError} /> : null}
+
+      <PlanSummaryCard trip={trip} />
 
       <PackingSummaryCard tripId={trip.id} />
 
@@ -248,10 +274,10 @@ function DashboardBody({ trip }: { trip: TripSummary }) {
   );
 }
 
-export function TripDashboard({ tripId }: { tripId: string | undefined }) {
+export function TripDashboard({ tripId, justCreated = false }: { tripId: string | undefined; justCreated?: boolean }) {
   const { trip, status, error, reload } = useTrip(tripId);
 
-  if (trip) return <DashboardBody trip={trip} />;
+  if (trip) return <DashboardBody trip={trip} justCreated={justCreated} />;
 
   return (
     <Screen bottomInset>

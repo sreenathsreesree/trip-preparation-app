@@ -12,21 +12,11 @@ import {
 export const TRIP_LIMITS = {
   nameMin: 2,
   nameMax: 60,
-  destinationMin: 2,
-  destinationMax: 80,
-  destinationsMax: 10,
   maxDurationDays: 365,
   travellersMin: 1,
   travellersMax: 20,
   travellerNameMax: 40,
 } as const;
-
-/** A destination row in the form. `key` is a stable UI key; `id` is set for saved rows. */
-export interface DraftDestination {
-  key: string;
-  id?: string;
-  name: string;
-}
 
 export interface DraftTraveller {
   key: string;
@@ -38,7 +28,6 @@ export interface DraftTraveller {
 /** Editable state of the trip form; every field may be incomplete. */
 export interface TripDraft {
   name: string;
-  destinations: DraftDestination[];
   startDate: ISODate | null;
   endDate: ISODate | null;
   travellers: DraftTraveller[];
@@ -48,7 +37,6 @@ export interface TripDraft {
 
 export type TripDraftField =
   | 'name'
-  | 'destinations'
   | 'category'
   | 'startDate'
   | 'endDate'
@@ -56,8 +44,6 @@ export type TripDraftField =
   | 'transportMode';
 
 export interface TripDraftErrors extends Partial<Record<TripDraftField, string>> {
-  /** Per-row errors keyed by `DraftDestination.key`. */
-  destinationItems?: Record<string, string>;
   /** Per-row errors keyed by `DraftTraveller.key`. */
   travellerItems?: Record<string, string>;
 }
@@ -85,25 +71,7 @@ export function validateTripDraft(draft: TripDraft, options: ValidationOptions):
   );
   if (nameError) errors.name = nameError;
 
-  // Destinations: at least one, every row filled in.
-  const destinationItems: Record<string, string> = {};
-  for (const destination of draft.destinations) {
-    const error = lengthError(
-      destination.name.trim(),
-      TRIP_LIMITS.destinationMin,
-      TRIP_LIMITS.destinationMax,
-      draft.destinations.length > 1 ? 'Enter a place or remove this stop.' : 'Where are you headed?',
-    );
-    if (error) destinationItems[destination.key] = error;
-  }
-  if (draft.destinations.length === 0) {
-    errors.destinations = 'Add at least one destination.';
-  } else if (draft.destinations.length > TRIP_LIMITS.destinationsMax) {
-    errors.destinations = `Up to ${TRIP_LIMITS.destinationsMax} destinations.`;
-  } else if (Object.keys(destinationItems).length > 0) {
-    errors.destinations = Object.values(destinationItems)[0];
-    errors.destinationItems = destinationItems;
-  }
+  // Destinations are not part of this form: they are planned in the planner.
 
   if (!draft.category) {
     errors.category = 'Pick the kind of trip.';
@@ -160,9 +128,6 @@ export function pickErrors(errors: TripDraftErrors, fields: readonly TripDraftFi
   for (const field of fields) {
     if (errors[field]) picked[field] = errors[field];
   }
-  if (fields.includes('destinations') && errors.destinationItems) {
-    picked.destinationItems = errors.destinationItems;
-  }
   if (fields.includes('travellers') && errors.travellerItems) {
     picked.travellerItems = errors.travellerItems;
   }
@@ -192,10 +157,6 @@ export function draftToTripInput(draft: TripDraft, options: ValidationOptions): 
   }
   return {
     name: draft.name.trim(),
-    destinations: draft.destinations.map(({ id, name }) => ({
-      ...(id ? { id } : {}),
-      name: name.trim(),
-    })),
     startDate: draft.startDate,
     endDate: draft.endDate,
     travellers: draft.travellers.map(({ id, name, kind }) => ({
@@ -212,7 +173,6 @@ export function draftToTripInput(draft: TripDraft, options: ValidationOptions): 
 export function tripToDraft(trip: Trip): TripDraft {
   return {
     name: trip.name,
-    destinations: trip.destinations.map(({ id, name }) => ({ key: id, id, name })),
     startDate: trip.startDate,
     endDate: trip.endDate,
     travellers: trip.travellers.map(({ id, name, kind }) => ({ key: id, id, name, kind })),

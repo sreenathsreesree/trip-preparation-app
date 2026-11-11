@@ -84,12 +84,16 @@ export interface Trip {
 }
 
 /**
- * Editable trip fields. Destination and traveller rows with an `id` update the
- * existing row (ids are preserved); rows without one are created.
+ * Editable trip fields. Traveller rows with an `id` update the existing row
+ * (ids are preserved); rows without one are created.
+ *
+ * Destinations are managed in the planner (its main destinations are the
+ * trip's destinations). `destinations` only seeds a new trip's first main
+ * destinations (e.g. when duplicating from elsewhere); updates ignore it.
  */
 export interface TripInput {
   name: string;
-  destinations: { id?: string; name: string }[];
+  destinations?: { id?: string; name: string }[];
   startDate: ISODate;
   endDate: ISODate;
   travellers: { id?: string; name: string; kind: TravellerKind }[];
@@ -159,6 +163,7 @@ export function describeTripTiming(
 
 /** "Manali → Kaza → Leh". */
 export function formatRoute(destinations: readonly { name: string }[]): string {
+  if (destinations.length === 0) return 'No destinations yet';
   return destinations.map((destination) => destination.name).join(' → ');
 }
 

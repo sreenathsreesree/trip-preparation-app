@@ -18,6 +18,7 @@ import {
   TRIP_CATEGORY_META,
 } from '../../model';
 import { useTripDraftStore } from '../../tripDraftStore';
+import { selectTripById, useTripsStore } from '../../tripsStore';
 import type { TripDraftErrors } from '../../validation';
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
@@ -111,6 +112,8 @@ function ChecklistSources() {
 export function HowStep({ errors }: { errors: TripDraftErrors }) {
   const draft = useTripDraftStore((state) => state.draft);
   const mode = useTripDraftStore((state) => state.mode);
+  const tripId = useTripDraftStore((state) => state.tripId);
+  const savedTrip = useTripsStore(selectTripById(tripId ?? undefined));
 
   return (
     <View style={styles.container}>
@@ -124,7 +127,7 @@ export function HowStep({ errors }: { errors: TripDraftErrors }) {
         <SummaryRow label="Trip" value={draft.name.trim() || '—'} />
         <SummaryRow
           label="Route"
-          value={formatRoute(draft.destinations.filter((d) => d.name.trim())) || '—'}
+          value={savedTrip ? formatRoute(savedTrip.destinations) : 'Planned next, in the planner'}
         />
         <SummaryRow
           label="Dates"

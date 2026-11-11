@@ -15,9 +15,9 @@ import {
 export const CREATE_TRIP_STEPS = [
   {
     key: 'basics',
-    title: 'Where to?',
-    subtitle: 'Name the trip, add your stops and pick the kind of trip.',
-    fields: ['name', 'destinations', 'category'],
+    title: 'What kind of trip?',
+    subtitle: 'Name it and pick the kind of trip. You plan the destinations next, in the planner.',
+    fields: ['name', 'category'],
   },
   {
     key: 'when',
@@ -50,7 +50,6 @@ export function newRowKey(): string {
 export function blankDraft(): TripDraft {
   return {
     name: '',
-    destinations: [{ key: newRowKey(), name: '' }],
     startDate: null,
     endDate: null,
     travellers: [{ key: newRowKey(), name: 'Me', kind: 'adult' }],
@@ -76,10 +75,6 @@ interface TripDraftState {
   startEdit: (trip: Trip, today: ISODate) => void;
   update: (patch: Partial<Pick<TripDraft, 'name' | 'transportMode' | 'category'>>) => void;
   setDates: (startDate: ISODate | null, endDate: ISODate | null) => void;
-  addDestination: () => void;
-  updateDestination: (key: string, name: string) => void;
-  removeDestination: (key: string) => void;
-  moveDestination: (key: string, direction: -1 | 1) => void;
   addTraveller: () => void;
   updateTraveller: (key: string, patch: Partial<Pick<DraftTraveller, 'name' | 'kind'>>) => void;
   removeTraveller: (key: string) => void;
@@ -87,15 +82,6 @@ interface TripDraftState {
   toggleTemplate: (templateId: string) => void;
   reveal: (fields: readonly TripDraftField[]) => void;
   goTo: (step: number) => void;
-}
-
-function move<T extends { key: string }>(items: T[], key: string, direction: -1 | 1): T[] {
-  const index = items.findIndex((item) => item.key === key);
-  const target = index + direction;
-  if (index < 0 || target < 0 || target >= items.length) return items;
-  const next = [...items];
-  [next[index], next[target]] = [next[target] as T, next[index] as T];
-  return next;
 }
 
 export const useTripDraftStore = create<TripDraftState>()((set) => {
@@ -146,31 +132,6 @@ export const useTripDraftStore = create<TripDraftState>()((set) => {
       patchDraft(() => ({ startDate, endDate }));
     },
 
-    addDestination() {
-      patchDraft((draft) =>
-        draft.destinations.length >= TRIP_LIMITS.destinationsMax
-          ? {}
-          : { destinations: [...draft.destinations, { key: newRowKey(), name: '' }] },
-      );
-    },
-
-    updateDestination(key, name) {
-      patchDraft((draft) => ({
-        destinations: draft.destinations.map((d) => (d.key === key ? { ...d, name } : d)),
-      }));
-    },
-
-    removeDestination(key) {
-      patchDraft((draft) =>
-        draft.destinations.length <= 1
-          ? {}
-          : { destinations: draft.destinations.filter((d) => d.key !== key) },
-      );
-    },
-
-    moveDestination(key, direction) {
-      patchDraft((draft) => ({ destinations: move(draft.destinations, key, direction) }));
-    },
 
     addTraveller() {
       patchDraft((draft) =>

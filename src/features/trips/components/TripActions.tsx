@@ -63,10 +63,17 @@ export function useTripActions(trip: TripSummary | undefined, options: TripActio
     const lifecycle = getTripLifecycle(trip);
     actions.push(
       {
+        key: 'plan',
+        label: 'Plan destinations',
+        icon: 'map-search-outline',
+        description: 'Main destinations, places inside them and your route',
+        onPress: () => router.push({ pathname: '/trips/[tripId]/plan', params: { tripId: trip.id } }),
+      },
+      {
         key: 'edit',
         label: 'Edit trip details',
         icon: 'pencil-outline',
-        description: 'Name, destinations, dates, travellers, transport',
+        description: 'Name, dates, travellers, transport',
         onPress: () => router.push({ pathname: '/trips/[tripId]/edit', params: { tripId: trip.id } }),
       },
       {

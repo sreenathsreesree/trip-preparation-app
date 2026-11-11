@@ -14,10 +14,6 @@ const create = { minStartDate: TODAY };
 
 const valid: TripDraft = {
   name: '  Goa Getaway ',
-  destinations: [
-    { key: 'd1', name: ' North Goa ' },
-    { key: 'd2', id: 'dest-2', name: 'South Goa' },
-  ],
   startDate: '2026-12-20',
   endDate: '2026-12-24',
   travellers: [
@@ -36,22 +32,13 @@ describe('validateTripDraft', () => {
   it('reports every missing field on a blank draft', () => {
     const errors = validateTripDraft({ ...blankDraft(), travellers: [] }, create);
     expect(Object.keys(errors).sort()).toEqual(
-      ['category', 'destinations', 'destinationItems', 'endDate', 'name', 'startDate', 'transportMode', 'travellers'].sort(),
+      ['category', 'endDate', 'name', 'startDate', 'transportMode', 'travellers'].sort(),
     );
   });
 
-  it('flags each empty destination row', () => {
-    const errors = validateTripDraft(
-      { ...valid, destinations: [...valid.destinations, { key: 'd3', name: '  ' }] },
-      create,
-    );
-    expect(errors.destinationItems).toEqual({ d3: 'Enter a place or remove this stop.' });
-    expect(errors.destinations).toBe('Enter a place or remove this stop.');
-  });
-
-  it('limits destinations to ten', () => {
-    const destinations = Array.from({ length: 11 }, (_, i) => ({ key: `d${i}`, name: `Stop ${i}` }));
-    expect(validateTripDraft({ ...valid, destinations }, create).destinations).toBeDefined();
+  it('does not ask for destinations (they are planned in the planner)', () => {
+    expect(Object.keys(blankDraft())).not.toContain('destinations');
+    expect(validateTripDraft(valid, create)).toEqual({});
   });
 
   it('requires at least one named traveller', () => {
@@ -100,11 +87,7 @@ describe('validateTripDraft', () => {
 describe('pickErrors', () => {
   it('limits errors (and row errors) to the requested fields', () => {
     const errors = validateTripDraft({ ...blankDraft(), travellers: [] }, create);
-    expect(Object.keys(pickErrors(errors, ['name', 'destinations'])).sort()).toEqual([
-      'destinationItems',
-      'destinations',
-      'name',
-    ]);
+    expect(Object.keys(pickErrors(errors, ['name', 'travellers'])).sort()).toEqual(['name', 'travellers']);
     expect(pickErrors(errors, ['transportMode'])).toEqual({ transportMode: 'How are you travelling?' });
   });
 });
@@ -113,7 +96,6 @@ describe('draftToTripInput / tripToDraft', () => {
   it('trims text and keeps ids of saved rows', () => {
     expect(draftToTripInput(valid, create)).toEqual({
       name: 'Goa Getaway',
-      destinations: [{ name: 'North Goa' }, { id: 'dest-2', name: 'South Goa' }],
       startDate: '2026-12-20',
       endDate: '2026-12-24',
       travellers: [
@@ -146,7 +128,6 @@ describe('draftToTripInput / tripToDraft', () => {
     };
     expect(tripToDraft(trip)).toEqual({
       name: 'Spiti',
-      destinations: [{ key: 'd1', id: 'd1', name: 'Kaza' }],
       startDate: '2026-12-01',
       endDate: '2026-12-05',
       travellers: [{ key: 't1', id: 't1', name: 'Asha', kind: 'adult' }],

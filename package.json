@@ -58,6 +58,7 @@
     "build:web": "expo export --platform web --output-dir dist",
     "e2e:web": "node e2e/web-smoke.mjs",
     "e2e:inventory": "node e2e/web-inventory.mjs",
+    "e2e:planner": "node e2e/web-planner.mjs",
     "build:android:dev": "npx eas-cli@latest build --platform android --profile development",
     "build:android:preview": "npx eas-cli@latest build --platform android --profile preview"
   },

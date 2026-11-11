@@ -204,6 +204,30 @@ export function routeNodes(plan: TripPlan): PlanNode[] {
     });
 }
 
+export interface RemovalImpact {
+  /** Places removed (the node, plus everything inside it with `withChildren`). */
+  removedNodes: number;
+  /** Places inside that move up a level with `keepChildren`. */
+  movedUp: number;
+  /** Removed places that are route stops — they leave the route. */
+  routeStops: string[];
+  /** Whether a main destination of the trip is removed. */
+  removesMainDestination: boolean;
+}
+
+/** What removing a node would do, so the UI can explain it before confirming. */
+export function removalImpact(plan: TripPlan, id: string, mode: 'keepChildren' | 'withChildren'): RemovalImpact {
+  const removed = mode === 'withChildren' ? subtreeIds(plan.nodes, id) : [id];
+  const stops = new Set(plan.route.map((s) => s.nodeId));
+  const node = plan.nodes.find((n) => n.id === id);
+  return {
+    removedNodes: removed.length,
+    movedUp: mode === 'keepChildren' ? plan.nodes.filter((n) => n.parentId === id).length : 0,
+    routeStops: plan.nodes.filter((n) => removed.includes(n.id) && stops.has(n.id)).map((n) => n.name),
+    removesMainDestination: !!node && node.parentId === null,
+  };
+}
+
 /** Coordinates to draw for a node, if its place has any. */
 export const nodeLocation = (node: PlanNode): GeoPoint | null => node.place?.location ?? null;
 
