@@ -189,6 +189,30 @@ export function visibleRows(tree: readonly PlanTreeNode[], expanded: ReadonlySet
   return rows;
 }
 
+export interface RowInfo {
+  /** Index among siblings and number of siblings (for move up/down). */
+  index: number;
+  siblings: number;
+  /** Places nested anywhere below. */
+  descendants: number;
+}
+
+/** Per-node sibling position and descendant count, computed in one pass over the tree. */
+export function rowInfo(tree: readonly PlanTreeNode[]): Map<string, RowInfo> {
+  const info = new Map<string, RowInfo>();
+  const walk = (items: readonly PlanTreeNode[]): number => {
+    let total = 0;
+    items.forEach((item, index) => {
+      const descendants = walk(item.children);
+      info.set(item.node.id, { index, siblings: items.length, descendants });
+      total += 1 + descendants;
+    });
+    return total;
+  };
+  walk(tree);
+  return info;
+}
+
 /** Number of nodes in a subtree, excluding its root. */
 export const countDescendants = (item: PlanTreeNode): number =>
   item.children.reduce((sum, child) => sum + 1 + countDescendants(child), 0);

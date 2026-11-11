@@ -25,7 +25,7 @@ import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
 import { useNodeActions } from './components/NodeActions';
 import { PlanRow } from './components/PlanRow';
-import { ancestorIds, buildTree, PLANNER_LIMITS, validateNodeName, type PlanNode, type PlanTreeNode } from './model';
+import { ancestorIds, buildTree, countDescendants, PLANNER_LIMITS, validateNodeName, type PlanNode, type PlanTreeNode } from './model';
 import { usePlannerStore, useTripPlan } from './plannerStore';
 
 function findItem(tree: readonly PlanTreeNode[], id: string): PlanTreeNode | null {
@@ -211,6 +211,7 @@ function Details({ trip, node }: { trip: TripSummary; node: PlanNode }) {
             <PlanRow
               key={child.node.id}
               item={{ ...child, depth: 1 }}
+              descendants={countDescendants(child)}
               expanded={false}
               routeNumber={routeNumber.get(child.node.id) ?? null}
               reorder={false}

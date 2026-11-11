@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { AppText, Icon, IconButton, ReorderControls } from '@/components/ui';
 import { colors, radii, spacing } from '@/theme';
 
-import { countDescendants, type PlanTreeNode } from '../model';
+import type { PlanTreeNode } from '../model';
 
 /** Indentation stops growing after a few levels so deep trees stay readable on phones. */
 const INDENT = 16;
@@ -11,6 +11,7 @@ const MAX_VISUAL_DEPTH = 5;
 
 export function PlanRow({
   item,
+  descendants,
   expanded,
   routeNumber,
   reorder,
@@ -22,6 +23,8 @@ export function PlanRow({
   onMove,
 }: {
   item: PlanTreeNode;
+  /** Places nested anywhere below this one. */
+  descendants: number;
   expanded: boolean;
   /** 1-based position in the route, or null when not a route stop. */
   routeNumber: number | null;
@@ -35,7 +38,7 @@ export function PlanRow({
 }) {
   const { node, depth } = item;
   const main = depth === 0;
-  const inside = countDescendants(item);
+  const inside = descendants;
   const meta = [
     inside > 0 ? `${inside} ${inside === 1 ? 'place' : 'places'} inside` : '',
     node.place?.formattedAddress ?? '',

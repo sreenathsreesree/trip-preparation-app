@@ -3,6 +3,12 @@
 Status: **configuration prepared, not yet run on an Android device or emulator.** Record results in
 the checklist at the bottom after the first run.
 
+> **Milestone 5 (parts A, C, F) note:** no new native modules, so the latest development or preview
+> APK (built after Milestone 4) runs this code; JavaScript changes reach a development build through
+> `npm start`, while a standalone preview APK needs `npm run build:android:preview` to include them.
+> First launch migrates the database to schema v4 (planner tables; existing trips keep their
+> destinations, which become main destinations and route stops). Checks 32–48 cover the planner.
+>
 > **Milestone 4 note — rebuild the development APK.** Milestone 4 adds two native modules,
 > `expo-image-picker` (item photos) and `expo-file-system` (storing them), and an `app.json` plugin
 > entry. A development APK built before this milestone does not contain them and will fail when you
@@ -162,3 +168,15 @@ Device / Android version: ________ · Build: ________ · Date: ________
 | 34 | Promote, move, reorder and remove places; the Route screen order only changes through its own controls | |
 | 35 | Removing a place that is a route stop explains which stops leave the route before confirming | |
 | 36 | Home shows *Continue planning* for the last planned trip; force-stop and reopen keeps the whole plan | |
+| 37 | **Airplane mode on**, then: open a trip's planner from Home *Continue planning* and from the trip dashboard | |
+| 38 | Still offline: add main destinations and places three levels deep, rename one, add notes | |
+| 39 | Still offline: promote, move into another place, reorder main destinations, remove a place keeping its contents | |
+| 40 | Still offline: Route screen — add, reorder and remove stops; open a saved place's details | |
+| 41 | Still offline: *Add destination* says place search is not set up and manual entry works; no error screens anywhere | |
+| 42 | Swipe the app away from recents (force close) right after a planner change, reopen: the change is there | |
+| 43 | Reboot the phone, reopen: the whole plan, route order and trip destinations are unchanged | |
+| 44 | A trip created before this update: its destinations appear as main destinations and route stops, in the old order | |
+| 45 | Duplicate a trip with a nested plan: the copy has the same tree and route order; editing the copy leaves the original alone | |
+| 46 | Delete a trip with a plan: it disappears everywhere; other trips' plans are untouched | |
+| 47 | Tap reorder arrows quickly several times and double-tap *Add destination* → Save: no error, no duplicate place, dashboard order matches the planner | |
+| 48 | A plan with 50–100 places: expand/collapse, scrolling and the ⋯ menu stay responsive; nothing is cut off on a small screen; system back closes sheets and modals | |

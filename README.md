@@ -38,6 +38,7 @@ npm start          # Expo dev server — press i (iOS), a (Android) or w (web)
 | `npm run e2e:web` | Browser smoke test (trips, checklists, templates) against `dist/`, or a running server via `BASE_URL` (needs Playwright + Chromium installed separately) |
 | `npm run e2e:inventory` | Browser test of inventory, packing, reservations, suggestions, shopping and luggage (same requirements) |
 | `npm run e2e:planner` | Browser test of the destination planner, route stops and its entry points (same requirements) |
+| `npm run e2e:planner-reliability` | Planner offline (network cut) and with a 100-place plan, plus rapid taps (same requirements) |
 | `npm run doctor` | `expo-doctor` (needs network access to Expo's API) |
 | `npm run build:android:dev` | EAS cloud build of the Android development APK (needs an Expo account) |
 | `npm run build:android:preview` | EAS cloud build of a standalone Android APK |
@@ -199,6 +200,9 @@ Key decisions:
   transaction, so a failure rolls back cleanly. A database newer than the app is refused rather
   than corrupted. Enum-like columns are validated in the domain layer (no `CHECK` lists) so new
   values ship without table rebuilds.
+- **One queued connection.** The shared expo-sqlite connection runs transactions one at a time
+  (`src/db/serialize.ts`), because `withTransactionAsync` is not exclusive; quick repeated actions
+  cannot collide.
 - **Repositories are factories over a minimal `Database` interface**, which `SQLiteDatabase`
   satisfies structurally. Tests inject a Node SQLite implementation.
 - **Stores**: `useTripsStore` (trip summaries with readiness, lifecycle actions),
@@ -280,9 +284,8 @@ creating a trip, and Home's *Continue planning*)
 
 ## In progress — Milestone 5
 
-Parts A (data layer) and C (planner) are done. Next: Google Places via a secure proxy (B, needs
-Google Cloud configuration), destination details and nearby discovery (D), map view (E), and
-offline/reliability hardening (F).
+Parts A (data layer), C (planner) and F (offline, reliability and persistence hardening) are done. Next: Google Places via a secure proxy (B, needs
+Google Cloud configuration), destination details and nearby discovery (D) and the map view (E).
 
 ## Not yet built
 

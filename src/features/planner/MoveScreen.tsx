@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Screen } from '@/components/layout/Screen';
@@ -62,8 +62,11 @@ function Picker({ tripId, plan, node }: { tripId: string; plan: TripPlan; node: 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const rows = visibleRows(buildTree(plan.nodes), new Set(plan.nodes.map((n) => n.id)));
+  const inFlight = useRef(false);
 
   async function moveTo(parentId: string | null) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -73,6 +76,7 @@ function Picker({ tripId, plan, node }: { tripId: string; plan: TripPlan; node: 
     } catch (err) {
       setError(toErrorMessage(err, 'Could not move it.'));
       setBusy(false);
+      inFlight.current = false;
     }
   }
 

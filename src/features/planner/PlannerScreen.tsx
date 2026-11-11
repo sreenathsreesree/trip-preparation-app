@@ -12,7 +12,7 @@ import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
 import { useNodeActions } from './components/NodeActions';
 import { PlanRow } from './components/PlanRow';
-import { buildTree, childrenOf, visibleRows } from './model';
+import { buildTree, childrenOf, rowInfo, visibleRows } from './model';
 import { usePlannerStore, useTripPlan } from './plannerStore';
 
 function PlannerBody({ trip }: { trip: TripSummary }) {
@@ -37,6 +37,7 @@ function PlannerBody({ trip }: { trip: TripSummary }) {
     [plan, collapsed],
   );
   const rows = visibleRows(tree, expanded);
+  const info = useMemo(() => rowInfo(tree), [tree]);
   const routeNumber = new Map((plan?.route ?? []).map((stop, index) => [stop.nodeId, index + 1]));
   const mains = tree.length;
   const total = plan?.nodes.length ?? 0;
@@ -141,17 +142,17 @@ function PlannerBody({ trip }: { trip: TripSummary }) {
               </View>
               <View style={styles.list}>
                 {rows.map((item) => {
-                  const siblings = childrenOf(plan.nodes, item.node.parentId);
-                  const index = siblings.findIndex((n) => n.id === item.node.id);
+                  const { index, siblings, descendants } = info.get(item.node.id) ?? { index: 0, siblings: 1, descendants: 0 };
                   return (
                     <PlanRow
                       key={item.node.id}
                       item={item}
+                      descendants={descendants}
                       expanded={expanded.has(item.node.id)}
                       routeNumber={routeNumber.get(item.node.id) ?? null}
                       reorder={reorder}
                       canMoveUp={index > 0}
-                      canMoveDown={index < siblings.length - 1}
+                      canMoveDown={index < siblings - 1}
                       onToggle={() => toggle(item.node.id)}
                       onOpen={() =>
                         router.push({

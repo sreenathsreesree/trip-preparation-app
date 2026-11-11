@@ -59,6 +59,7 @@
     "e2e:web": "node e2e/web-smoke.mjs",
     "e2e:inventory": "node e2e/web-inventory.mjs",
     "e2e:planner": "node e2e/web-planner.mjs",
+    "e2e:planner-reliability": "node e2e/web-planner-reliability.mjs",
     "build:android:dev": "npx eas-cli@latest build --platform android --profile development",
     "build:android:preview": "npx eas-cli@latest build --platform android --profile preview"
   },

@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 
 import { migrate } from './migrate';
 import { migrations } from './migrations';
+import { serializeTransactions } from './serialize';
 import type { Database } from './types';
 
 export const DATABASE_NAME = 'trip-prep.db';
@@ -18,8 +19,10 @@ async function openAndMigrate(): Promise<Database> {
   }
   await db.execAsync('PRAGMA foreign_keys = ON;');
 
-  await migrate(db, migrations);
-  return db;
+  // One shared connection: queue transactions so quick repeated actions cannot collide.
+  const serialized = serializeTransactions(db);
+  await migrate(serialized, migrations);
+  return serialized;
 }
 
 /**

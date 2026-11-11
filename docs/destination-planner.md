@@ -1,6 +1,6 @@
 # Destination Discovery & Visual Trip Planner (Milestone 5)
 
-Status: **parts A and C done** (data model, migration, provider abstraction, planner screens with
+Status: **parts A, C and F (offline / reliability) done** (data model, migration, provider abstraction, planner screens with
 manual places, one destination system). No live Google calls yet; nothing talks to Google until a
 proxy is configured (part B).
 
@@ -112,3 +112,29 @@ details call, then discarded.
 | `/trips/[tripId]/plan/place/[nodeId]` | Place: trail, main/nested and route badges, map details if any, Google Maps link, rename/notes, add to / remove from route, make main destination, places inside |
 | `/trips/[tripId]/plan/move/[nodeId]` | Move into another place or to the top level (own sub-places disabled) |
 | `/trips/[tripId]/plan/route` | Route stops in order (reorder / remove) and places to add |
+
+## Reliability (part F)
+
+- **No network dependency.** The planner, place details, route and Home's *Continue planning* use
+  only the on-device database. Google is reached only through the explicit *Open in Google Maps*
+  link. Verified in the browser with the network cut (`e2e/web-planner-reliability.mjs`). On web,
+  Expo Router loads each screen's code on first visit, so a never-opened screen needs a connection
+  once; Android ships a single bundle (verified by the Android export), so this is web-only.
+- **Transactions are queued** (`src/db/serialize.ts`). expo-sqlite's `withTransactionAsync` is not
+  exclusive; two quick actions could start a second transaction while one is open. All app writes
+  go through one queue, so rapid taps run one after another. Never start a transaction inside
+  another (it would wait for itself) — every test runs through the same queue to catch that.
+- **Invariants** (`test/planInvariants.ts`): parents in the same trip, no cycles, depth within the
+  limit, sibling and route positions contiguous, unique stops in the right trip, a place once per
+  trip, trip destinations exactly equal to main destinations in order, legacy column in step, no
+  orphan rows anywhere. Checked after every step of 900 seeded random operations, and route order is
+  checked to change only through route actions or removing stops' places.
+- **Interrupted writes** (simulated storage failures while adding, reordering, removing and moving)
+  roll back completely: plan, route and trip are byte-identical to before.
+- **Lifecycle**: database close/reopen, duplication of deep plans (same tree, route order, shared
+  places), deletion (no planner rows left; saved places stay for reuse), empty trips, and trips
+  created before Milestone 5 (original destination ids survive planner edits).
+- **Scale**: a 300-place plan through the repository; a 100-place plan through the UI at 360 px
+  (expand/collapse, scrolling, sheets, reorder — about 40–150 ms per action in headless desktop
+  Chromium; phones will be slower). The list computes sibling positions and nested counts in one pass.
+- Double taps on *Add* / *Move* are ignored while a save is in flight.

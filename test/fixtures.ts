@@ -1,5 +1,6 @@
 import { migrate } from '@/db/migrate';
 import { migrations } from '@/db/migrations';
+import { serializeTransactions } from '@/db/serialize';
 import { createInventoryRepository } from '@/features/inventory/inventoryRepository';
 import { emptyItemInput, type ItemInput } from '@/features/inventory/model';
 import { createPackingRepository } from '@/features/packing/packingRepository';
@@ -37,7 +38,9 @@ export function itemInput(overrides: Partial<ItemInput> = {}): ItemInput {
 
 /** Migrated database plus repositories with deterministic ids and a fixed clock. */
 export async function setupRepositories(db: TestDatabase = openTestDatabase(), clock = '2026-11-10T08:00:00.000Z') {
-  await migrate(db, migrations);
+  // Same transaction queue as the app; a nested transaction would hang and fail the test.
+  const shared = serializeTransactions(db);
+  await migrate(shared, migrations);
   let time = new Date(clock).getTime();
   // Each call advances the clock by a second so ordering by timestamp is stable.
   const now = () => new Date((time += 1000));
@@ -45,15 +48,15 @@ export async function setupRepositories(db: TestDatabase = openTestDatabase(), c
   const deps = { createId: sequentialIds(), now, today };
   return {
     db,
-    trips: createTripRepository(db, deps),
-    checklists: createChecklistRepository(db, deps),
-    templates: createTemplateRepository(db, deps),
-    inventory: createInventoryRepository(db, deps),
-    packing: createPackingRepository(db, deps),
-    recommendations: createRecommendationRepository(db, deps),
-    purchases: createPurchaseRepository(db, deps),
-    preferences: createPreferencesRepository(db, deps),
-    planner: createPlannerRepository(db, deps),
+    trips: createTripRepository(shared, deps),
+    checklists: createChecklistRepository(shared, deps),
+    templates: createTemplateRepository(shared, deps),
+    inventory: createInventoryRepository(shared, deps),
+    packing: createPackingRepository(shared, deps),
+    recommendations: createRecommendationRepository(shared, deps),
+    purchases: createPurchaseRepository(shared, deps),
+    preferences: createPreferencesRepository(shared, deps),
+    planner: createPlannerRepository(shared, deps),
     /** Moves the shared clock forward (e.g. to test cache expiry). */
     advanceClock: (ms: number) => {
       time += ms;

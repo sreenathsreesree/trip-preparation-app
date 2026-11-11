@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Screen } from '@/components/layout/Screen';
@@ -40,6 +40,8 @@ function Form({ trip, parent }: { trip: TripSummary; parent: PlanNode | null }) 
   const [sameName, setSameName] = useState<PlanNode | null>(null);
   const [saved, setSaved] = useState<Place[] | null>(null);
   const nameError = validateNodeName(name);
+  // A second tap while saving must not add the place twice.
+  const inFlight = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +64,8 @@ function Form({ trip, parent }: { trip: TripSummary; parent: PlanNode | null }) 
     .join(' › ');
 
   async function add(input: { name?: string; place?: Place }) {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setSaving(true);
     setError(null);
     setDuplicate(null);
@@ -89,6 +93,7 @@ function Form({ trip, parent }: { trip: TripSummary; parent: PlanNode | null }) 
       if (result.status === 'duplicate') {
         setDuplicate(result.node);
         setSaving(false);
+        inFlight.current = false;
         return;
       }
       successFeedback();
@@ -96,6 +101,7 @@ function Form({ trip, parent }: { trip: TripSummary; parent: PlanNode | null }) 
     } catch (err) {
       setError(toErrorMessage(err, 'Could not add the place.'));
       setSaving(false);
+      inFlight.current = false;
     }
   }
 
