@@ -34,6 +34,7 @@
     "zustand": "^5.1.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.3.6",
     "@react-native/jest-preset": "^0.88.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.20.5",
@@ -53,8 +54,9 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:cloud": "node --test --no-warnings supabase/tests/cloud.test.mjs",
     "doctor": "npx expo-doctor",
-    "check": "npm run typecheck && npm run lint && npm test",
+    "check": "npm run typecheck && npm run lint && npm test && npm run test:cloud",
     "build:web": "expo export --platform web --output-dir dist",
     "e2e:web": "node e2e/web-smoke.mjs",
     "e2e:inventory": "node e2e/web-inventory.mjs",
@@ -74,7 +76,8 @@
     },
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/e2e/"
+      "/e2e/",
+      "/supabase/"
     ]
   }
 }

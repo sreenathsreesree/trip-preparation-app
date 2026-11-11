@@ -33,7 +33,8 @@ npm start          # Expo dev server — press i (iOS), a (Android) or w (web)
 | `npm run typecheck` | `tsc --noEmit` (strict, `noUncheckedIndexedAccess`) |
 | `npm run lint` | `expo lint` (ESLint 9 flat config, `eslint-config-expo`) |
 | `npm test` | Jest (`jest-expo` preset) — domain, readiness, migrations (incl. v1 → v2 and v2 → v3 data upgrades), repositories, templates, inventory, packing, reservations, recommendation rules and purchases |
-| `npm run check` | All three of the above |
+| `npm run test:cloud` | Supabase migrations, Row Level Security and sync functions against real Postgres (PGlite) |
+| `npm run check` | Typecheck, lint, Jest and the cloud tests |
 | `npm run build:web` | Static web export to `dist/` |
 | `npm run e2e:web` | Browser smoke test (trips, checklists, templates) against `dist/`, or a running server via `BASE_URL` (needs Playwright + Chromium installed separately) |
 | `npm run e2e:inventory` | Browser test of inventory, packing, reservations, suggestions, shopping and luggage (same requirements) |
@@ -281,6 +282,13 @@ creating a trip, and Home's *Continue planning*)
   never alter it; removals that affect it say exactly which stops leave the route first.
 - Works with places entered by name today; Google place search, details, nearby attractions and the
   map view follow (see [docs/destination-planner.md](docs/destination-planner.md)).
+
+## In progress — Google sign-in & cloud sync (Milestone G)
+
+G1 is done: the Supabase cloud schema with Row Level Security and the sync protocol
+(`supabase/migrations/`), tested against real Postgres with `npm run test:cloud`. Sign-in and sync
+in the app come next and need a Supabase project and a Google OAuth client — see
+[docs/cloud-sync.md](docs/cloud-sync.md).
 
 ## In progress — Milestone 5
 
