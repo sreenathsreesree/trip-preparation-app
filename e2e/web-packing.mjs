@@ -138,6 +138,82 @@ await run('Packing categories test', async () => {
   await byId(page, 'packing-category-screen').getByTestId('header-back').click();
   await byId(page, 'items-tab').waitFor();
 
+  setStep('custom category from the packing screen');
+  await byId(page, 'packing-add-category').click();
+  await byId(page, 'category-form').waitFor();
+  await byId(page, 'category-name-input').fill('Camera Gear');
+  await byId(page, 'category-description-input').fill('Bodies, lenses and cleaning kit');
+  await byId(page, 'category-color-3').click();
+  await page.getByRole('button', { name: 'Icon camera outline' }).click();
+  await byId(page, 'category-save').click();
+  await byId(page, 'items-tab').waitFor();
+  await categoryRow(page, 'Camera Gear').waitFor();
+  check(true, 'custom category appears on the packing screen');
+  await categoryRow(page, 'Camera Gear').getByRole('button', { name: 'Add items' }).click();
+  await byId(page, 'packing-add').waitFor();
+  check((await byId(page, 'packing-add-suggestions').count()) === 0, 'custom categories have no default suggestions');
+  await byId(page, 'packing-add-search').fill('Lens cloth');
+  await byId(page, 'packing-create').click();
+  await byId(page, 'packing-add-confirm').click();
+  await byId(page, 'items-tab').waitFor();
+  await categoryRow(page, 'Camera Gear').click();
+  await byId(page, 'packing-category-screen').waitFor();
+  await within(page, 'packing-category-screen', 'Bodies, lenses and cleaning kit').waitFor();
+  await within(page, 'packing-category-screen', 'Lens cloth').waitFor();
+  check(true, 'custom category works like the defaults (description, items)');
+
+  setStep('edit and protect categories');
+  await byId(page, 'category-edit').click();
+  await byId(page, 'category-form').waitFor();
+  await byId(page, 'category-name-input').fill('Camera Kit');
+  await byId(page, 'category-save').click();
+  await byId(page, 'packing-category-screen').waitFor();
+  await within(page, 'packing-category-screen', 'Camera Kit').waitFor();
+  check(true, 'renamed from the category screen');
+  await byId(page, 'packing-category-screen').getByTestId('header-back').click();
+  await byId(page, 'items-tab').waitFor();
+  await categoryRow(page, 'Clothing').click();
+  await byId(page, 'packing-category-screen').waitFor();
+  await byId(page, 'category-edit').click();
+  await byId(page, 'category-protected').waitFor();
+  check((await byId(page, 'category-delete').count()) === 0, 'starter categories cannot be deleted');
+  await shot(page, 'p-06-starter-protected');
+  await byId(page, 'category-form').getByTestId('header-back').click();
+  await byId(page, 'packing-category-screen').getByTestId('header-back').click();
+  await byId(page, 'items-tab').waitFor();
+
+  setStep('reorder categories');
+  await byId(page, 'packing-manage-categories').click();
+  await byId(page, 'categories-screen').waitFor();
+  const orderBefore = await text(page, 'categories-screen');
+  check(orderBefore.indexOf('Camera Kit') > orderBefore.indexOf('Miscellaneous'), 'a new category starts at the end');
+  for (let i = 0; i < 2; i += 1) {
+    await byId(page, 'category-move-Camera Kit-up').click();
+    await page.waitForTimeout(300);
+  }
+  const orderAfter = await text(page, 'categories-screen');
+  check(
+    orderAfter.indexOf('Camera Kit') < orderAfter.indexOf('Food and essentials') &&
+      orderAfter.indexOf('Camera Kit') > orderAfter.indexOf('Photography'),
+    'moved up two places',
+  );
+  await page.goto(`${tripA}/packing`);
+  await byId(page, 'items-tab').waitFor();
+
+  setStep('delete a custom category: items stay');
+  await categoryRow(page, 'Camera Kit').click();
+  await byId(page, 'category-edit').click();
+  await byId(page, 'category-delete').click();
+  await page.waitForTimeout(500);
+  check(dialogs.some((d) => d.includes('1 trip packing item stays on its trip under “Uncategorised”')), 'delete explains what happens to trip items');
+  await page.goto(`${tripA}/packing`);
+  await byId(page, 'items-tab').waitFor();
+  await categoryRow(page, 'Uncategorised').click();
+  await within(page, 'packing-category-screen', 'Lens cloth').waitFor();
+  check(true, 'trip item kept under Uncategorised');
+  await page.goto(`${tripA}/packing`);
+  await byId(page, 'items-tab').waitFor();
+
   setStep('the same inventory item on another trip');
   await page.goto(`${tripB}/packing`);
   await byId(page, 'items-tab').waitFor();

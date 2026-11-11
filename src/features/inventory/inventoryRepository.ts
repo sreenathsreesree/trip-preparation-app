@@ -160,6 +160,8 @@ export interface InventoryRepository {
   moveCategory(id: string, direction: -1 | 1): Promise<boolean>;
   /** Deletes a category (and its subcategories). Items are kept and become uncategorised. */
   deleteCategory(id: string): Promise<{ orphanedImageUri: string | null }>;
+  /** How many inventory items and trip packing entries use a category (or its subcategories). */
+  categoryUsage(id: string): Promise<{ items: number; packingEntries: number }>;
 
   listItems(): Promise<InventoryItemSummary[]>;
   getItem(id: string): Promise<InventoryItemSummary | null>;
@@ -344,6 +346,20 @@ export function createInventoryRepository(
       return {
         orphanedImageUri: (await isUnreferenced(category.coverImageUri)) ? category.coverImageUri : null,
       };
+    },
+
+    async categoryUsage(id) {
+      const ids = [id, ...(await db.getAllAsync<{ id: string }>('SELECT id FROM inventory_categories WHERE parent_id = ?', [id])).map((r) => r.id)];
+      const marks = ids.map(() => '?').join(', ');
+      const items = await db.getFirstAsync<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM inventory_items WHERE category_id IN (${marks}) OR subcategory_id IN (${marks})`,
+        [...ids, ...ids],
+      );
+      const entries = await db.getFirstAsync<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM packing_entries WHERE category_id IN (${marks})`,
+        ids,
+      );
+      return { items: items?.n ?? 0, packingEntries: entries?.n ?? 0 };
     },
 
     async listItems() {

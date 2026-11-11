@@ -18,6 +18,7 @@ import {
   SegmentedControl,
   TextField,
 } from '@/components/ui';
+import { getRepositories } from '@/db/repositories';
 import { confirmAction } from '@/lib/confirm';
 import { toErrorMessage } from '@/lib/errors';
 import { successFeedback } from '@/lib/haptics';
@@ -33,6 +34,7 @@ import {
   INVENTORY_LIMITS,
   matchesFilters,
   sortItems,
+  isProtectedCategory,
   validateCategoryInput,
   type CategoryInput,
   type InventoryCategory,
@@ -170,7 +172,13 @@ function CategoryRow({
           {itemCount} {itemCount === 1 ? 'item' : 'items'}
         </AppText>
       </View>
-      <ReorderControls label={category.name} canMoveUp={index > 0} canMoveDown={index < total - 1} onMove={onMove} />
+      <ReorderControls
+        label={category.name}
+        canMoveUp={index > 0}
+        canMoveDown={index < total - 1}
+        onMove={onMove}
+        testID={`category-move-${category.name}`}
+      />
       <IconButton
         icon="pencil-outline"
         variant="plain"
@@ -274,6 +282,7 @@ function CategoryForm({ category, parent }: { category?: InventoryCategory; pare
     color: category?.color ?? parent?.color ?? CATEGORY_COLORS[1],
     parentId: category?.parentId ?? parent?.id ?? null,
     coverImageUri: category?.coverImageUri ?? null,
+    description: category?.description ?? '',
   });
   const [revealed, setRevealed] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -282,6 +291,7 @@ function CategoryForm({ category, parent }: { category?: InventoryCategory; pare
   const patch = (value: Partial<CategoryInput>) => setInput((current) => ({ ...current, ...value }));
   const isSub = Boolean(input.parentId);
   const itemCount = category ? items.filter((i) => i.categoryId === category.id || i.subcategoryId === category.id).length : 0;
+  const isProtected = category ? isProtectedCategory(category) : false;
 
   async function save() {
     setRevealed(true);
@@ -301,12 +311,24 @@ function CategoryForm({ category, parent }: { category?: InventoryCategory; pare
   }
 
   async function remove() {
-    if (!category) return;
+    if (!category || isProtected) return;
+    let packingEntries = 0;
+    try {
+      packingEntries = (await (await getRepositories()).inventory.categoryUsage(category.id)).packingEntries;
+    } catch {
+      // The count is only informative; deleting still never removes items or entries.
+    }
     const confirmed = await confirmAction({
       title: `Delete “${category.name}”?`,
       message: `${isSub ? 'The subcategory' : 'The category and its subcategories'} will be removed. Its ${itemCount} ${
         itemCount === 1 ? 'item stays' : 'items stay'
-      } in your inventory${isSub ? ' under the parent category' : ' as uncategorised'}; trip packing lists are unchanged.`,
+      } in your inventory${isSub ? ' under the parent category' : ' as uncategorised'}. ${
+        packingEntries === 0
+          ? 'No trip packing items use it.'
+          : `${packingEntries} trip packing ${packingEntries === 1 ? 'item stays' : 'items stay'} on ${
+              packingEntries === 1 ? 'its trip' : 'their trips'
+            }${isSub ? '' : ' under “Uncategorised”'}.`
+      }`,
       confirmLabel: 'Delete category',
       destructive: true,
     });
@@ -339,9 +361,18 @@ function CategoryForm({ category, parent }: { category?: InventoryCategory; pare
       <ScreenHeader
         showBack
         backIcon="close"
-        eyebrow={parent ? `Subcategory of ${parent.name}` : 'Inventory'}
+        eyebrow={parent ? `Subcategory of ${parent.name}` : 'Shared by My Inventory and trip packing'}
         title={category ? 'Edit category' : isSub ? 'New subcategory' : 'New category'}
       />
+      {isProtected ? (
+        <Notice
+          tone="info"
+          icon="shield-check-outline"
+          title="Starter category"
+          message="You can rename, recolour and reorder it. Starter categories cannot be deleted, so suggestions always have a home."
+          testID="category-protected"
+        />
+      ) : null}
       <TextField
         label="Name"
         value={input.name}
@@ -349,6 +380,15 @@ function CategoryForm({ category, parent }: { category?: InventoryCategory; pare
         error={revealed ? errors.name : undefined}
         maxLength={INVENTORY_LIMITS.categoryNameMax}
         testID="category-name-input"
+      />
+      <TextField
+        label="Description (optional)"
+        value={input.description ?? ''}
+        onChangeText={(description) => patch({ description })}
+        error={revealed ? errors.description : undefined}
+        maxLength={INVENTORY_LIMITS.categoryDescriptionMax}
+        multiline
+        testID="category-description-input"
       />
       <View style={styles.group}>
         <AppText variant="label" tone="textSecondary">
@@ -402,7 +442,7 @@ function CategoryForm({ category, parent }: { category?: InventoryCategory; pare
         />
       ) : null}
       {error ? <Notice tone="danger" title="Not saved" message={error} /> : null}
-      {category ? (
+      {category && !isProtected ? (
         <Button
           label={isSub ? 'Delete subcategory' : 'Delete category'}
           icon="trash-can-outline"

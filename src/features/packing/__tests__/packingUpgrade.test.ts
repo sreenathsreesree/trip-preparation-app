@@ -85,6 +85,27 @@ describe('category descriptions', () => {
   });
 });
 
+describe('category usage', () => {
+  it('counts items and trip entries in a category and its subcategories', async () => {
+    const { db, inventory, packing, tripA, tripB } = await setup();
+    const gear = await inventory.createCategory({ name: 'Camera gear', icon: 'camera-outline', color: '#6FD6C2', parentId: null, coverImageUri: null });
+    const lenses = await inventory.createCategory({ name: 'Lenses', icon: 'camera-outline', color: '#6FD6C2', parentId: gear.id, coverImageUri: null });
+    await inventory.createItem(itemInput({ name: '50mm lens', categoryId: gear.id, subcategoryId: lenses.id }));
+    await packing.addEntry(tripA.id, { name: 'Lens cloth', categoryId: gear.id });
+    await packing.addEntry(tripB.id, { name: 'Wide lens', categoryId: lenses.id });
+    expect(await inventory.categoryUsage(gear.id)).toEqual({ items: 1, packingEntries: 2 });
+    expect(await inventory.categoryUsage(lenses.id)).toEqual({ items: 1, packingEntries: 1 });
+    await inventory.deleteCategory(gear.id);
+    const entries = [...(await packing.load(tripA.id)).entries, ...(await packing.load(tripB.id)).entries];
+    expect(entries.map((e) => [e.name, e.categoryId])).toEqual([
+      ['Lens cloth', null],
+      ['Wide lens', null],
+    ]);
+    expect((await inventory.listItems()).map((i) => i.name)).toContain('50mm lens');
+    db.close();
+  });
+});
+
 describe('shopping list linked to packing entries', () => {
   it('creates one purchase per entry and never duplicates it', async () => {
     const { db, packing, purchases, tripA } = await setup();

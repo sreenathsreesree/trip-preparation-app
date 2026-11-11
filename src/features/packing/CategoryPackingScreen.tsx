@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -11,6 +11,7 @@ import {
   Card,
   EmptyState,
   ErrorState,
+  IconButton,
   LoadingState,
   Notice,
   OptionTile,
@@ -137,6 +138,16 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
         eyebrow={`${trip.name} · Packing`}
         title={name}
         subtitle={category?.description || (category ? undefined : 'Items without a category')}
+        trailing={
+          category ? (
+            <IconButton
+              icon="pencil-outline"
+              accessibilityLabel={`Edit category ${category.name}`}
+              onPress={() => router.push({ pathname: '/inventory/categories/[categoryId]', params: { categoryId: category.id } })}
+              testID="category-edit"
+            />
+          ) : undefined
+        }
       />
 
       <Card style={styles.summary}>
