@@ -6,6 +6,7 @@ import { createPackingRepository } from '@/features/packing/packingRepository';
 import { createPreferencesRepository } from '@/features/packing/preferencesRepository';
 import { createPurchaseRepository } from '@/features/packing/purchaseRepository';
 import { createRecommendationRepository } from '@/features/packing/recommendationRepository';
+import { createPlannerRepository } from '@/features/planner/plannerRepository';
 import { createChecklistRepository } from '@/features/preparation/checklistRepository';
 import { createTemplateRepository } from '@/features/preparation/templateRepository';
 import type { TripInput } from '@/features/trips/model';
@@ -52,5 +53,10 @@ export async function setupRepositories(db: TestDatabase = openTestDatabase(), c
     recommendations: createRecommendationRepository(db, deps),
     purchases: createPurchaseRepository(db, deps),
     preferences: createPreferencesRepository(db, deps),
+    planner: createPlannerRepository(db, deps),
+    /** Moves the shared clock forward (e.g. to test cache expiry). */
+    advanceClock: (ms: number) => {
+      time += ms;
+    },
   };
 }

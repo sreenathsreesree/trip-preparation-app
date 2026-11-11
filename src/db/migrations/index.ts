@@ -2,6 +2,7 @@ import type { Migration } from '../migrate';
 import { initialSchema } from './0001_initial_schema';
 import { tripManagementAndChecklists } from './0002_trip_management_and_checklists';
 import { inventoryAndPacking } from './0003_inventory_and_packing';
+import { destinationPlanner } from './0004_destination_planner';
 
 /**
  * Ordered list of schema migrations.
@@ -14,4 +15,5 @@ export const migrations: readonly Migration[] = [
   initialSchema,
   tripManagementAndChecklists,
   inventoryAndPacking,
+  destinationPlanner,
 ];

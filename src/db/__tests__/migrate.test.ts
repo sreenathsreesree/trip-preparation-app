@@ -16,7 +16,7 @@ describe('migrate', () => {
     expect(result).toEqual({
       fromVersion: 0,
       toVersion: migrations.length,
-      applied: ['initial_schema', 'trip_management_and_checklists', 'inventory_and_packing'],
+      applied: ['initial_schema', 'trip_management_and_checklists', 'inventory_and_packing', 'destination_planner'],
     });
     expect(await getSchemaVersion(db)).toBe(migrations.length);
 
@@ -33,10 +33,13 @@ describe('migrate', () => {
       'inventory_reservations',
       'packing_entries',
       'packing_recommendations',
+      'places',
       'purchase_items',
       'trip_destinations',
       'trip_luggage',
       'trip_packing',
+      'trip_plan_nodes',
+      'trip_route_stops',
       'trip_travellers',
       'trips',
       'user_preferences',

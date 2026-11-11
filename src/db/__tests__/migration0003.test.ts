@@ -2,8 +2,7 @@ import { setupRepositories, tripInput } from '../../../test/fixtures';
 import { openTestDatabase, sequentialIds } from '../../../test/nodeSqliteDatabase';
 import { tripOwner } from '../../features/preparation/model';
 import { buildStarterChecklist } from '../../features/preparation/starter';
-import { createTripRepository } from '../../features/trips/tripRepository';
-import { createChecklistRepository } from '../../features/preparation/checklistRepository';
+import { createChecklistRepository, insertPlan } from '../../features/preparation/checklistRepository';
 import { getSchemaVersion, migrate } from '../migrate';
 import { migrations } from '../migrations';
 
@@ -12,19 +11,36 @@ describe('migration 3: inventory and packing', () => {
     const db = openTestDatabase();
     await migrate(db, migrations.slice(0, 2));
     const deps = { createId: sequentialIds('v2'), now: () => new Date('2026-11-01T00:00:00Z') };
-    const trips = createTripRepository(db, deps);
+    // v2-era rows written directly (today's trip repository targets the latest schema).
+    await db.runAsync(
+      `INSERT INTO trips (id, name, destination, start_date, end_date, adults, children, transport_mode, category,
+         created_at, updated_at) VALUES ('trip-1', 'Goa Getaway', 'North Goa', '2026-12-20', '2026-12-24', 2, 1,
+         'car', 'beach', '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z')`,
+      [],
+    );
+    await db.runAsync(
+      `INSERT INTO trip_destinations (id, trip_id, name, position, created_at, updated_at)
+       VALUES ('d-1', 'trip-1', 'North Goa', 0, '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z')`,
+      [],
+    );
+    await db.withTransactionAsync(async () => {
+      await insertPlan(db, tripOwner('trip-1'), buildStarterChecklist(tripInput()), {
+        createId: deps.createId,
+        timestamp: '2026-11-01T00:00:00Z',
+      });
+    });
     const checklists = createChecklistRepository(db, deps);
-    const trip = await trips.create(tripInput(), buildStarterChecklist(tripInput()));
-    const task = (await checklists.load(tripOwner(trip.id))).tasks[0];
+    const task = (await checklists.load(tripOwner('trip-1'))).tasks[0];
     await checklists.setTaskDone(task?.id ?? '', true);
-    const tripBefore = await trips.getById(trip.id);
-    const checklistBefore = await checklists.load(tripOwner(trip.id));
+    const tables = ['trips', 'trip_destinations'] as const;
+    const before = await Promise.all(tables.map((t) => db.getAllAsync(`SELECT * FROM ${t}`, [])));
+    const checklistBefore = await checklists.load(tripOwner('trip-1'));
 
-    const result = await migrate(db, migrations);
+    const result = await migrate(db, migrations.slice(0, 3));
     expect(result.applied).toEqual(['inventory_and_packing']);
     expect(await getSchemaVersion(db)).toBe(3);
-    expect(await trips.getById(trip.id)).toEqual(tripBefore);
-    expect(await checklists.load(tripOwner(trip.id))).toEqual(checklistBefore);
+    expect(await Promise.all(tables.map((t) => db.getAllAsync(`SELECT * FROM ${t}`, [])))).toEqual(before);
+    expect(await checklists.load(tripOwner('trip-1'))).toEqual(checklistBefore);
     db.close();
   });
 

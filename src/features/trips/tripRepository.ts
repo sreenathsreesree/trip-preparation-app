@@ -2,6 +2,7 @@ import type { Database, SqlValue } from '@/db/types';
 import type { IdFactory } from '@/lib/id';
 
 import { closeTripReservations, copyPacking, revalidateTripReservations } from '../packing/packingRepository';
+import { copyPlan, syncPlanWithTripDestinations } from '../planner/plannerRepository';
 import { copyChecklist, insertPlan } from '../preparation/checklistRepository';
 import { tripOwner, type ChecklistPlan } from '../preparation/model';
 import { statsFromRow } from '../preparation/readiness';
@@ -298,6 +299,7 @@ export function createTripRepository(
           input.travellers.map(({ name, kind }) => ({ name, kind })),
           timestamp,
         );
+        await syncPlanWithTripDestinations(db, deps.createId, id, timestamp);
         await insertPlan(db, tripOwner(id), checklist, { createId: deps.createId, timestamp });
       });
 
@@ -329,6 +331,7 @@ export function createTripRepository(
         if (result.changes === 0) throw new TripDataError('That trip no longer exists.');
         await syncChildren('trip_destinations', id, input.destinations, timestamp);
         await syncChildren('trip_travellers', id, input.travellers, timestamp);
+        await syncPlanWithTripDestinations(db, deps.createId, id, timestamp);
         // Keep purchase history readable and reservations valid for the new dates.
         await db.runAsync('UPDATE purchase_items SET trip_name = ? WHERE trip_id = ?', [input.name.trim(), id]);
         await revalidateTripReservations(db, id, timestamp);
@@ -384,6 +387,7 @@ export function createTripRepository(
           source.travellers.flatMap((t, index) => (copied[index] ? [[t.id, copied[index].id] as const] : [])),
         );
         await copyPacking(db, deps.createId, id, copyId, travellerMap, timestamp);
+        await copyPlan(db, deps.createId, id, copyId, timestamp);
       });
       return mustGet(copyId);
     },

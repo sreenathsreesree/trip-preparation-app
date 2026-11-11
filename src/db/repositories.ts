@@ -3,6 +3,7 @@ import { createPackingRepository } from '@/features/packing/packingRepository';
 import { createPreferencesRepository } from '@/features/packing/preferencesRepository';
 import { createPurchaseRepository } from '@/features/packing/purchaseRepository';
 import { createRecommendationRepository } from '@/features/packing/recommendationRepository';
+import { createPlannerRepository } from '@/features/planner/plannerRepository';
 import { createChecklistRepository } from '@/features/preparation/checklistRepository';
 import { createTemplateRepository } from '@/features/preparation/templateRepository';
 import { createTripRepository } from '@/features/trips/tripRepository';
@@ -26,6 +27,7 @@ export async function getRepositories() {
     recommendations: createRecommendationRepository(db, { createId }),
     purchases: createPurchaseRepository(db, { createId }),
     preferences: createPreferencesRepository(db),
+    planner: createPlannerRepository(db, { createId }),
     schemaVersion: () => getSchemaVersion(db),
     countTasks: async () => {
       const row = await db.getFirstAsync<{ count: number }>(
