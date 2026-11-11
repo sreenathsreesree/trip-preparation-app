@@ -1,8 +1,11 @@
 # Google sign-in & cloud sync (Milestone G)
 
-Status: **G1 done** — cloud schema, Row Level Security and the sync protocol, tested against real
-Postgres. Project `okudcunrqusrzppqnppm` (Trip-prep, ap-southeast-1, Postgres 17) created; deployment
-in progress (see [Deploying the schema](#deploying-the-schema)). Nothing in the app talks to Supabase yet.
+Status: **G1 done and deployed** — cloud schema, Row Level Security and the sync protocol, tested
+against real Postgres and verified on project `okudcunrqusrzppqnppm` (Trip-prep, ap-southeast-1,
+Postgres 17). **G2 implemented** — Google sign-in (Supabase Auth, PKCE), session restore, sign-out and
+the account screens (see [§6](#6-google-sign-in-g2)). Google sign-in is **not yet enabled** in the
+Supabase project and needs a new development build, so it has not been tried end to end. The app
+makes **no data calls** to Supabase yet (sync is G4).
 
 ## 1. Architecture
 
@@ -135,17 +138,77 @@ commits after a faster one is not skipped — its rows appear in a later pull.
 
 **Status:** last synced time, items waiting, conflicts, and the last error, with *Sync now*.
 
-## 6. Google OAuth setup
+## 6. Google sign-in (G2)
 
-Flow (G2): `supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo, skipBrowserRedirect: true } })`
-→ open the URL with `expo-web-browser` (`openAuthSessionAsync`) → Google → Supabase
-`/auth/v1/callback` → redirect to the app's deep link with a PKCE code →
-`supabase.auth.exchangeCodeForSession(code)`. PKCE means an intercepted code is useless without the
-verifier kept in the app.
+### Flow
+1. **Sign in with Google** (Profile → Sign in) first asks Supabase's public `/auth/v1/settings`
+   whether the Google provider is enabled, so a disabled provider or no connection shows a clear
+   message instead of an error page in the browser.
+2. `supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo, skipBrowserRedirect: true } })`
+   with `flowType: 'pkce'`: supabase-js stores a code verifier and returns the authorise URL.
+3. `WebBrowser.openAuthSessionAsync(url, redirectTo)` opens the system browser (Custom Tabs on
+   Android, `ASWebAuthenticationSession` on iOS) → Google → Supabase `/auth/v1/callback` → redirect to
+   `tripprep://auth/callback?code=…`.
+4. The code is exchanged with `supabase.auth.exchangeCodeForSession(code)`. An intercepted code is
+   useless without the verifier, which never leaves the device.
 
-Redirect URIs used by the app: `tripprep://auth/callback` (Android/iOS builds; also a dedicated
-`com.sreenathsreesree.tripprep://auth/callback` scheme is planned in G2, which needs a new APK), and
-`http://localhost:8081/auth/callback` for web development.
+**Redirect URLs.** Native: `tripprep://auth/callback` — the scheme is `expo.scheme` in `app.json`
+(`tripprep`), and a test fails if the two ever differ. Web development:
+`<origin>/auth/callback` (normally `http://localhost:8081/auth/callback`). The previously planned
+second scheme (`com.sreenathsreesree.tripprep://`) was dropped: one scheme, one allow-list entry.
+
+**Duplicate-code protection.** The redirect can reach the app twice — as the auth browser's result
+and as a deep link that opens the `/auth/callback` route (Android, or a cold start if the app was
+killed while the browser was open). Codes are single-use, so every caller with the same code shares one
+exchange and its result (`exchangeCodeOnce`); a second exchange is never sent. Tapping *Sign in* twice
+also shares one attempt (one browser).
+
+**Outcomes and messages.**
+| Situation | Result |
+| --- | --- |
+| Browser closed / dismissed, or *Cancel* on Google's consent screen (`access_denied`) | "Sign-in cancelled" — still a guest, nothing changed |
+| Provider error in the redirect (`error_description`) | Shown as the error |
+| Code already used / verifier missing | "This sign-in link has expired or was already used" |
+| Offline / service unreachable | "Could not reach the sign-in service" (browser not opened) |
+| Google not enabled in Supabase | "Google sign-in is not enabled for Trip Prep yet" (browser not opened) |
+| No Supabase configuration in the build | Guest-only; no sign-in control is shown |
+
+### Session
+- Persisted by supabase-js in **expo-secure-store** (Android Keystore / iOS Keychain) under
+  `tripprep.auth`, split into chunks of ≤ 1,800 characters (`<key>.n` + `<key>.0…`); a damaged or
+  half-written session reads as signed out. Web development uses `localStorage`. The `expo-secure-store`
+  config plugin keeps these entries out of Android auto-backup.
+- **Restore at startup** runs in the background (never blocks the splash screen). The stored account is
+  shown immediately, then confirmed: a valid or refreshed session → signed in; **offline** → stays
+  signed in from the stored session (offline-first) and refreshes once back online; refresh token
+  **rejected** (revoked/expired) → guest with "Your sign-in expired". The same notice appears if
+  supabase-js signs the user out later. Tokens refresh while the app is in the foreground
+  (`startAutoRefresh` / `stopAutoRefresh` on `AppState`).
+- **Sign-out** is `signOut({ scope: 'local' })` — this device only. supabase-js removes the local
+  session before contacting the server, and the app clears the stored keys itself as well, with a
+  5-second cap, so sign-out always completes offline. When the server could not be reached the refresh
+  token is not revoked and simply expires; the app says so.
+
+### Guest data
+Signing in, restoring, expiring and signing out **never read, write, upload or delete local SQLite
+data**: the auth code (`src/features/auth/`) does not import the database or other features and calls
+no Supabase data API. Guest and signed-in users see the same on-device data until G3 introduces
+per-account data and the guest-adoption prompt. Tests enforce this (row-for-row database snapshot
+before and after a full sign-in/out cycle; import and API-call checks).
+
+### Code map
+| File | Role |
+| --- | --- |
+| `src/features/auth/config.ts` | Reads and validates `EXPO_PUBLIC_SUPABASE_URL` / `_PUBLISHABLE_KEY`; refuses secret keys |
+| `src/features/auth/supabase.ts` | Lazy supabase-js client (PKCE, secure storage, foreground refresh); `null` when unconfigured |
+| `src/features/auth/secureStorage.ts` | Chunked SecureStore adapter; web `localStorage` |
+| `src/features/auth/redirect.ts` | Redirect URL and callback parsing (code / error / cancellation) |
+| `src/features/auth/authService.ts` | Provider check, sign-in, once-only exchange, restore, offline-safe sign-out |
+| `src/features/auth/authStore.ts` | Zustand: `initializing` / `guest` / `signedIn`, pending action, error and notices |
+| `src/features/auth/SignInScreen.tsx`, `AccountScreen.tsx`, `AuthCallbackScreen.tsx`, `components/` | UI |
+| `src/app/auth/sign-in.tsx`, `src/app/auth/callback.tsx`, `src/app/account/index.tsx` | Routes; `account` is wrapped in `Stack.Protected` (signed-in only) |
+
+Everything else in the app stays available to guests; nothing is gated behind sign-in.
 
 ## 7. Security and RLS
 
@@ -159,8 +222,8 @@ Redirect URIs used by the app: `tripprep://auth/callback` (Android/iOS builds; a
   the sequence or helper functions. `anon` has no access to anything.
 - The app holds only the project URL and publishable key. **No service-role key, no OAuth client
   secret** in the app or the repository (the Google secret lives in Supabase's provider settings).
-- Session (G2): stored with `expo-secure-store` (encrypted; large sessions split/encrypted as
-  Supabase recommends), refreshed automatically; signing out clears it.
+- Session (G2): stored with `expo-secure-store` (chunked, see §6), refreshed automatically while the
+  app is in the foreground; signing out clears it on the device even when offline.
 
 Tested (`npm run test:cloud`, real Postgres 17 via PGlite with a stand-in for Supabase's `auth`
 schema): RLS isolation, forged owners, cross-account references, anonymous access, idempotent
@@ -172,7 +235,7 @@ graph round trip, cursor paging over 1,200 rows, and exclusion of in-progress tr
 | Part | Scope | Needs from you | Native change (new APK) |
 | --- | --- | --- | --- |
 | **G1** | Cloud schema, RLS, sync RPCs, registry, tests, this design | — | No |
-| G2 | supabase-js client, Google sign-in / guest / sign-out, session restore, Account screen, deep-link callback, error states | Supabase project + Google OAuth client (below) | Yes (secure store, web browser, scheme) |
+| **G2** | supabase-js client, Google sign-in / guest / sign-out, session restore, Account screen, deep-link callback, error states — **implemented; not yet tried end to end** | Google OAuth client + Supabase provider and URL settings (C, D below) | **Yes** — `expo-secure-store` and `expo-web-browser` are native modules (scheme unchanged) |
 | G3 | Local migration v5 (outbox triggers, base revisions, deterministic ids), per-account database files, guest adoption, initial upload with progress | Migrations applied to the project | No |
 | G4 | Push/pull engine, backoff, reconnect, conflicts UI, repairs, Sync status | — | Possibly (network state module) |
 | G5 | Second-device restore, incremental sync, sign-out / account switching, reliability tests (multi-device simulation against PGlite) | A second test Google account | No |
@@ -205,20 +268,37 @@ manager. Never use the `service_role` / secret key in the app.
 3. Copy the **Client ID** and **Client secret** into Supabase → **Authentication → Sign In / Providers
    → Google** → enable. The secret stays in Supabase.
 
-### D. Supabase redirect settings
-Authentication → **URL Configuration**:
-- Site URL: `tripprep://auth/callback`
-- Additional redirect URLs: `tripprep://auth/callback`, `com.sreenathsreesree.tripprep://auth/callback`,
-  `http://localhost:8081/auth/callback`
+### D. Supabase URL configuration (not set yet)
+Authentication → **URL Configuration**. The two settings do different jobs:
 
-### E. App configuration (EAS environment variables — not set yet)
-expo.dev → SreeDream Labs → project → **Environment variables** → add, for the **development** and
-**preview** environments (production later):
+- **Redirect URLs** — the allow-list that every `redirectTo` the app sends must match exactly. Add:
+  - `tripprep://auth/callback` (Android/iOS builds)
+  - `http://localhost:8081/auth/callback` (web development only; optional)
+- **Site URL** — only the *default* destination, used when no allowed `redirectTo` is given and in email
+  templates (Trip Prep sends no auth emails). The app always sends an allow-listed `redirectTo`, so it
+  never relies on the Site URL. Set it to `tripprep://auth/callback` so a fallback lands in the app
+  rather than on the template default `http://localhost:3000`.
+
+As of G2 the project still has the defaults (Site URL `http://localhost:3000`, empty allow-list,
+Google provider disabled; read-only check). Until C and D are done, *Sign in with Google* reports that
+Google sign-in is not enabled.
+
+### E. App configuration (EAS environment variables) — done
+Both variables exist for **development, preview and production** with Plain text (`PUBLIC`)
+visibility; the key has the `sb_publishable_` form (checked without revealing values). They are
+currently **account-wide** (`SHARED` scope) — consider re-creating them at **Project** scope so other
+projects in the account do not receive Trip Prep's settings.
 
 | Name | Value | Visibility |
 | --- | --- | --- |
 | `EXPO_PUBLIC_SUPABASE_URL` | `https://okudcunrqusrzppqnppm.supabase.co` | Plain text |
 | `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | the project's publishable key (`sb_publishable_…`) | Plain text or Sensitive |
+
+### F. New development build (for G2 testing)
+`expo-secure-store` and `expo-web-browser` add native code, so APKs built before G2 cannot run the new
+code. Build a new development APK when you want to try sign-in (only on request), sign in with a test
+user from the consent screen, then check: cancel, sign-in, app restart (session restored), airplane
+mode restart (still signed in), sign-out (local data unchanged).
 
 `EXPO_PUBLIC_` variables are compiled into the app bundle, so they are public by design (Row Level
 Security protects the data). Never add the `sb_secret_…` / `service_role` key, the database password

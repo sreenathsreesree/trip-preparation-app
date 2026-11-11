@@ -5,10 +5,11 @@ import { useFocusEffect } from 'expo-router';
 
 import { Screen } from '@/components/layout/Screen';
 import { ScreenHeader } from '@/components/layout/ScreenHeader';
-import { AppText, Card, Icon } from '@/components/ui';
+import { AppText, Card } from '@/components/ui';
 import { getRepositories } from '@/db/repositories';
+import { AccountCard } from '@/features/auth/components/AccountCard';
 import { toErrorMessage } from '@/lib/errors';
-import { colors, radii, spacing } from '@/theme';
+import { colors, spacing } from '@/theme';
 
 interface StorageStats {
   trips: number;
@@ -68,20 +69,7 @@ export function ProfileScreen() {
     <Screen testID="profile-screen">
       <ScreenHeader eyebrow="Explorer" title="Profile" />
 
-      <Card variant="accent" padding="xl">
-        <View style={styles.offline}>
-          <View style={styles.offlineIcon}>
-            <Icon name="cloud-off-outline" tone="accent" size={24} />
-          </View>
-          <View style={styles.flex}>
-            <AppText variant="h3">Offline-first, no account needed</AppText>
-            <AppText variant="body" tone="textSecondary">
-              Everything you plan is stored on this device and works without a connection.
-              Accounts and sync are not part of this version.
-            </AppText>
-          </View>
-        </View>
-      </Card>
+      <AccountCard />
 
       <View style={styles.group}>
         <AppText variant="label" tone="textMuted">
@@ -125,23 +113,6 @@ export function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  offline: {
-    flexDirection: 'row',
-    gap: spacing.lg,
-    alignItems: 'flex-start',
-  },
-  offlineIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: radii.md,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  flex: {
-    flex: 1,
-    gap: spacing.xs,
-  },
   group: {
     gap: spacing.sm,
   },

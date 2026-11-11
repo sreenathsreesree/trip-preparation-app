@@ -19,6 +19,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ErrorState } from '@/components/ui';
 import { getDatabase } from '@/db/client';
+import { useAuthStore } from '@/features/auth/authStore';
 import { colors } from '@/theme';
 import { navigationTheme } from '@/theme/navigation';
 
@@ -55,6 +56,14 @@ export default function RootLayout() {
       .catch(() => undefined)
       .finally(() => setDatabaseSettled(true));
   }, []);
+
+  // Restore the account session in the background; it never blocks the app and
+  // never touches local data. Guests are unaffected.
+  const initializeAuth = useAuthStore((state) => state.initialize);
+  const signedIn = useAuthStore((state) => state.status === 'signedIn');
+  useEffect(() => {
+    void initializeAuth();
+  }, [initializeAuth]);
 
   const fontsReady = fontsLoaded || Boolean(fontError);
   const ready = fontsReady && databaseSettled;
@@ -108,6 +117,11 @@ export default function RootLayout() {
             <Stack.Screen name="templates/[templateId]/edit" options={{ presentation: 'modal' }} />
             <Stack.Screen name="templates/[templateId]/sections" />
             <Stack.Screen name="templates/[templateId]/tasks/[taskId]" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="auth/sign-in" options={{ presentation: 'modal' }} />
+            <Stack.Screen name="auth/callback" options={{ animation: 'fade' }} />
+            <Stack.Protected guard={signedIn}>
+              <Stack.Screen name="account/index" />
+            </Stack.Protected>
           </Stack>
         </ThemeProvider>
       </SafeAreaProvider>

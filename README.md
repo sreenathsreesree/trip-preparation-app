@@ -39,6 +39,7 @@ npm start          # Expo dev server — press i (iOS), a (Android) or w (web)
 | `npm run e2e:web` | Browser smoke test (trips, checklists, templates) against `dist/`, or a running server via `BASE_URL` (needs Playwright + Chromium installed separately) |
 | `npm run e2e:inventory` | Browser test of inventory, packing, reservations, suggestions, shopping and luggage (same requirements) |
 | `npm run e2e:planner` | Browser test of the destination planner, route stops and its entry points (same requirements) |
+| `npm run e2e:auth` | Account routes in a build without Supabase configuration: guest-only, no sign-in control, protected account screen (same requirements) |
 | `npm run e2e:planner-reliability` | Planner offline (network cut) and with a 100-place plan, plus rapid taps (same requirements) |
 | `npm run doctor` | `expo-doctor` (needs network access to Expo's API) |
 | `npm run build:android:dev` | EAS cloud build of the Android development APK (needs an Expo account) |
@@ -285,10 +286,12 @@ creating a trip, and Home's *Continue planning*)
 
 ## In progress — Google sign-in & cloud sync (Milestone G)
 
-G1 is done: the Supabase cloud schema with Row Level Security and the sync protocol
-(`supabase/migrations/`), tested against real Postgres with `npm run test:cloud`. Sign-in and sync
-in the app come next and need a Supabase project and a Google OAuth client — see
-[docs/cloud-sync.md](docs/cloud-sync.md).
+G1 is done and deployed: the Supabase cloud schema with Row Level Security and the sync protocol
+(`supabase/migrations/`), tested against real Postgres with `npm run test:cloud`. G2 adds optional
+Google sign-in (Supabase Auth, PKCE) with secure session storage, restore and offline-safe sign-out
+on the Profile tab; guests keep using the app exactly as before and no data is uploaded. Google
+sign-in still has to be enabled in Supabase and needs a new development build — see
+[docs/cloud-sync.md](docs/cloud-sync.md). Moving guest data to an account (G3) and sync (G4) are next.
 
 ## In progress — Milestone 5
 
@@ -297,6 +300,6 @@ Google Cloud configuration), destination details and nearby discovery (D) and th
 
 ## Not yet built
 
-AI recommendations and image recognition, weather, external shopping integrations, accounts and
-cloud sync, household sharing, subscriptions, reminders and notifications, and localisation are
+AI recommendations and image recognition, weather, external shopping integrations, cloud sync,
+household sharing, subscriptions, reminders and notifications, and localisation are
 planned for later milestones.
