@@ -8,6 +8,7 @@ import {
   findReservationConflicts,
   isAccommodation,
   isActivity,
+  isEntryUnit,
   isLuggageKind,
   LUGGAGE_META,
   PACKING_LIMITS,
@@ -32,6 +33,7 @@ interface EntryRow {
   name: string;
   category_id: string | null;
   quantity: number;
+  unit: string;
   traveller_id: string | null;
   luggage_id: string | null;
   is_packed: number;
@@ -81,6 +83,7 @@ export function mapEntry(row: EntryRow): PackingEntry {
     name: row.name,
     categoryId: row.category_id,
     quantity: row.quantity,
+    unit: isEntryUnit(row.unit) ? row.unit : 'pcs',
     travellerId: row.traveller_id,
     luggageId: row.luggage_id,
     isPacked: row.is_packed === 1,
@@ -270,6 +273,10 @@ function cleanName(name: string): string {
   return clean;
 }
 
+function cleanUnit(unit: unknown): string {
+  return isEntryUnit(unit) ? unit : 'pcs';
+}
+
 function cleanQuantity(quantity: number): number {
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > PACKING_LIMITS.quantityMax) {
     throw new PackingError(`Quantity must be between 1 and ${PACKING_LIMITS.quantityMax}.`);
@@ -308,9 +315,9 @@ export async function insertEntry(
     [tripId],
   );
   await db.runAsync(
-    `INSERT INTO packing_entries (id, trip_id, inventory_item_id, name, category_id, quantity, traveller_id, luggage_id,
+    `INSERT INTO packing_entries (id, trip_id, inventory_item_id, name, category_id, quantity, unit, traveller_id, luggage_id,
                                   is_packed, notes, source, recommendation_id, position, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       tripId,
@@ -318,6 +325,7 @@ export async function insertEntry(
       cleanName(name),
       categoryId,
       cleanQuantity(input.quantity ?? 1),
+      cleanUnit(input.unit),
       input.travellerId ?? null,
       input.luggageId ?? null,
       (input.notes ?? '').trim().slice(0, PACKING_LIMITS.notesMax),
@@ -401,9 +409,9 @@ export async function copyPacking(
   const entries = await db.getAllAsync<EntryRow>('SELECT * FROM packing_entries WHERE trip_id = ? ORDER BY position', [fromTripId]);
   for (const entry of entries) {
     await db.runAsync(
-      `INSERT INTO packing_entries (id, trip_id, inventory_item_id, name, category_id, quantity, traveller_id, luggage_id,
+      `INSERT INTO packing_entries (id, trip_id, inventory_item_id, name, category_id, quantity, unit, traveller_id, luggage_id,
                                     is_packed, notes, source, recommendation_id, position, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, ?, ?, ?)`,
       [
         createId(),
         toTripId,
@@ -411,6 +419,7 @@ export async function copyPacking(
         entry.name,
         entry.category_id,
         entry.quantity,
+        cleanUnit(entry.unit),
         entry.traveller_id ? travellerMap.get(entry.traveller_id) ?? null : null,
         entry.luggage_id ? luggageMap.get(entry.luggage_id) ?? null : null,
         entry.notes,
@@ -542,6 +551,7 @@ export function createPackingRepository(
         name: patch.name !== undefined ? cleanName(patch.name) : entry.name,
         categoryId: patch.categoryId !== undefined ? patch.categoryId : entry.category_id,
         quantity: patch.quantity !== undefined ? cleanQuantity(patch.quantity) : entry.quantity,
+        unit: patch.unit !== undefined ? cleanUnit(patch.unit) : cleanUnit(entry.unit),
         travellerId: patch.travellerId !== undefined ? patch.travellerId : entry.traveller_id,
         luggageId: patch.luggageId !== undefined ? patch.luggageId : entry.luggage_id,
         isPacked: patch.isPacked !== undefined ? patch.isPacked : entry.is_packed === 1,
@@ -549,9 +559,9 @@ export function createPackingRepository(
       };
       await db.withTransactionAsync(async () => {
         await db.runAsync(
-          `UPDATE packing_entries SET name = ?, category_id = ?, quantity = ?, traveller_id = ?, luggage_id = ?,
+          `UPDATE packing_entries SET name = ?, category_id = ?, quantity = ?, unit = ?, traveller_id = ?, luggage_id = ?,
                   is_packed = ?, notes = ?, updated_at = ? WHERE id = ?`,
-          [next.name, next.categoryId, next.quantity, next.travellerId, next.luggageId, next.isPacked ? 1 : 0, next.notes, timestamp, entryId],
+          [next.name, next.categoryId, next.quantity, next.unit, next.travellerId, next.luggageId, next.isPacked ? 1 : 0, next.notes, timestamp, entryId],
         );
         if (entry.inventory_item_id && next.quantity !== entry.quantity) {
           await assertNoConflicts(db, entry.trip_id, [entry.inventory_item_id]);

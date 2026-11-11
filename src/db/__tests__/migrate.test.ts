@@ -16,7 +16,13 @@ describe('migrate', () => {
     expect(result).toEqual({
       fromVersion: 0,
       toVersion: migrations.length,
-      applied: ['initial_schema', 'trip_management_and_checklists', 'inventory_and_packing', 'destination_planner'],
+      applied: [
+        'initial_schema',
+        'trip_management_and_checklists',
+        'inventory_and_packing',
+        'destination_planner',
+        'packing_units_and_category_descriptions',
+      ],
     });
     expect(await getSchemaVersion(db)).toBe(migrations.length);
 

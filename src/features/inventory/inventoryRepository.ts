@@ -8,6 +8,7 @@ import {
   INVENTORY_LIMITS,
   isAvailability,
   isCategoryKey,
+  isProtectedCategory,
   isCondition,
   validateCategoryInput,
   validateItemInput,
@@ -28,6 +29,7 @@ interface CategoryRow {
   position: number;
   cover_image_uri: string | null;
   system_key: string | null;
+  description: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -72,6 +74,7 @@ export function mapCategory(row: CategoryRow): InventoryCategory {
     position: row.position,
     coverImageUri: row.cover_image_uri,
     systemKey: isCategoryKey(row.system_key) ? row.system_key : null,
+    description: row.description ?? '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -256,7 +259,11 @@ export function createInventoryRepository(
   function cleanCategory(input: CategoryInput): CategoryInput {
     const first = Object.values(validateCategoryInput(input))[0];
     if (first) throw new InventoryError(first);
-    return { ...input, name: input.name.trim().replace(/\s+/g, ' ') };
+    return {
+      ...input,
+      name: input.name.trim().replace(/\s+/g, ' '),
+      description: input.description === undefined ? undefined : input.description.trim(),
+    };
   }
 
   return {
@@ -281,9 +288,9 @@ export function createInventoryRepository(
         [clean.parentId],
       );
       await db.runAsync(
-        `INSERT INTO inventory_categories (id, parent_id, name, icon, color, position, cover_image_uri, system_key, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
-        [id, clean.parentId, clean.name, clean.icon, clean.color, next?.next ?? 0, clean.coverImageUri, timestamp, timestamp],
+        `INSERT INTO inventory_categories (id, parent_id, name, icon, color, position, cover_image_uri, system_key, description, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+        [id, clean.parentId, clean.name, clean.icon, clean.color, next?.next ?? 0, clean.coverImageUri, clean.description ?? '', timestamp, timestamp],
       );
       return (await getCategory(id)) as InventoryCategory;
     },
@@ -294,8 +301,8 @@ export function createInventoryRepository(
       const clean = cleanCategory(input);
       // The hierarchy level of a category is fixed once created.
       await db.runAsync(
-        `UPDATE inventory_categories SET name = ?, icon = ?, color = ?, cover_image_uri = ?, updated_at = ? WHERE id = ?`,
-        [clean.name, clean.icon, clean.color, clean.coverImageUri, stamp(), id],
+        `UPDATE inventory_categories SET name = ?, icon = ?, color = ?, cover_image_uri = ?, description = ?, updated_at = ? WHERE id = ?`,
+        [clean.name, clean.icon, clean.color, clean.coverImageUri, clean.description ?? existing.description, stamp(), id],
       );
       return (await getCategory(id)) as InventoryCategory;
     },
@@ -328,6 +335,9 @@ export function createInventoryRepository(
     async deleteCategory(id) {
       const category = await getCategory(id);
       if (!category) return { orphanedImageUri: null };
+      if (isProtectedCategory(category)) {
+        throw new InventoryError(`${category.name} is a starter category. You can rename or reorder it, but not delete it.`);
+      }
       // Items keep existing: FK actions set category/subcategory to NULL, and
       // trip packing entries simply lose the category label.
       await db.runAsync('DELETE FROM inventory_categories WHERE id = ?', [id]);

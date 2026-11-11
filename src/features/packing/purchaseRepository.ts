@@ -57,7 +57,15 @@ const OPEN_STATUSES = "('needed', 'purchased')";
 export async function insertPurchase(
   db: Database,
   createId: IdFactory,
-  input: { tripId: string; name: string; quantity: number; categoryId: string | null; recommendationId?: string | null },
+  input: {
+    tripId: string;
+    name: string;
+    quantity: number;
+    categoryId: string | null;
+    recommendationId?: string | null;
+    /** The packing entry this purchase is for (keeps the requirement and the purchase together). */
+    packingEntryId?: string | null;
+  },
   timestamp: string,
 ): Promise<{ id: string; duplicate: boolean }> {
   const name = input.name.trim().replace(/\s+/g, ' ');
@@ -66,11 +74,21 @@ export async function insertPurchase(
     throw new PackingError('Quantity must be between 1 and 99.');
   }
   const normalized = normalizeName(name);
-  const existing = await db.getFirstAsync<{ id: string }>(
-    `SELECT id FROM purchase_items WHERE trip_id = ? AND normalized_name = ? AND status IN ${OPEN_STATUSES}`,
+  const existing = await db.getFirstAsync<{ id: string; packing_entry_id: string | null }>(
+    `SELECT id, packing_entry_id FROM purchase_items WHERE trip_id = ? AND normalized_name = ? AND status IN ${OPEN_STATUSES}`,
     [input.tripId, normalized],
   );
-  if (existing) return { id: existing.id, duplicate: true };
+  if (existing) {
+    // Same item already on the list: link it to the packing entry if it is not linked yet.
+    if (input.packingEntryId && !existing.packing_entry_id) {
+      await db.runAsync('UPDATE purchase_items SET packing_entry_id = ?, updated_at = ? WHERE id = ?', [
+        input.packingEntryId,
+        timestamp,
+        existing.id,
+      ]);
+    }
+    return { id: existing.id, duplicate: true };
+  }
   const trip = await db.getFirstAsync<{ name: string }>('SELECT name FROM trips WHERE id = ?', [input.tripId]);
   if (!trip) throw new PackingError('That trip no longer exists.');
   const id = createId();
@@ -78,8 +96,20 @@ export async function insertPurchase(
     `INSERT INTO purchase_items (id, trip_id, trip_name, name, normalized_name, quantity, category_id, status,
                                  recommendation_id, inventory_item_id, packing_entry_id, notes, created_at, updated_at,
                                  purchased_at, resolved_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'needed', ?, NULL, NULL, '', ?, ?, NULL, NULL)`,
-    [id, input.tripId, trip.name, name, normalized, input.quantity, input.categoryId, input.recommendationId ?? null, timestamp, timestamp],
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'needed', ?, NULL, ?, '', ?, ?, NULL, NULL)`,
+    [
+      id,
+      input.tripId,
+      trip.name,
+      name,
+      normalized,
+      input.quantity,
+      input.categoryId,
+      input.recommendationId ?? null,
+      input.packingEntryId ?? null,
+      timestamp,
+      timestamp,
+    ],
   );
   return { id, duplicate: false };
 }
@@ -98,6 +128,12 @@ export interface PurchaseRepository {
   addToInventory(id: string): Promise<PurchaseItem>;
   /** Put it on the trip's packing list (unpacked). Linked to inventory if it was added there. */
   addToTrip(id: string): Promise<PurchaseItem>;
+  /**
+   * "Need to buy" for an item already on a trip's packing list. Returns the
+   * existing open purchase for that entry (or with the same name) instead of
+   * creating a duplicate.
+   */
+  addForEntry(packingEntryId: string): Promise<{ item: PurchaseItem; duplicate: boolean }>;
 }
 
 export function createPurchaseRepository(
@@ -180,7 +216,17 @@ export function createPurchaseRepository(
         name: row.name,
         quantity: row.quantity,
       });
-      await db.runAsync('UPDATE purchase_items SET inventory_item_id = ?, updated_at = ? WHERE id = ?', [item.id, stamp(), id]);
+      const timestamp = stamp();
+      await db.withTransactionAsync(async () => {
+        await db.runAsync('UPDATE purchase_items SET inventory_item_id = ?, updated_at = ? WHERE id = ?', [item.id, timestamp, id]);
+        // The trip entry this was bought for now points at the new belonging (if it had none).
+        if (row.packing_entry_id) {
+          await db.runAsync(
+            'UPDATE packing_entries SET inventory_item_id = ?, updated_at = ? WHERE id = ? AND inventory_item_id IS NULL',
+            [item.id, timestamp, row.packing_entry_id],
+          );
+        }
+      });
       return mapPurchase(await get(id));
     },
 
@@ -210,6 +256,29 @@ export function createPurchaseRepository(
         await db.runAsync('UPDATE purchase_items SET packing_entry_id = ?, updated_at = ? WHERE id = ?', [entryId, timestamp, id]);
       });
       return mapPurchase(await get(id));
+    },
+
+    async addForEntry(packingEntryId) {
+      const entry = await db.getFirstAsync<{ trip_id: string; name: string; quantity: number; category_id: string | null }>(
+        'SELECT trip_id, name, quantity, category_id FROM packing_entries WHERE id = ?',
+        [packingEntryId],
+      );
+      if (!entry) throw new PackingError('That packing item no longer exists.');
+      const linked = await db.getFirstAsync<{ id: string }>(
+        `SELECT id FROM purchase_items WHERE packing_entry_id = ? AND status IN ${OPEN_STATUSES}`,
+        [packingEntryId],
+      );
+      if (linked) return { item: mapPurchase(await get(linked.id)), duplicate: true };
+      let result = { id: '', duplicate: false };
+      await db.withTransactionAsync(async () => {
+        result = await insertPurchase(
+          db,
+          deps.createId,
+          { tripId: entry.trip_id, name: entry.name, quantity: entry.quantity, categoryId: entry.category_id, packingEntryId },
+          stamp(),
+        );
+      });
+      return { item: mapPurchase(await get(result.id)), duplicate: result.duplicate };
     },
   };
 }

@@ -166,8 +166,27 @@ describe('categories', () => {
     const afterSub = await inventory.getItem(shirt.id);
     expect(afterSub).toMatchObject({ name: 'Linen shirt', quantity: 2 });
 
-    await inventory.deleteCategory(clothing.id);
-    expect((await inventory.listCategories()).some((c) => c.name === 'Tops')).toBe(false);
+    // Starter categories are protected; custom categories can be deleted.
+    await expect(inventory.deleteCategory(clothing.id)).rejects.toThrow('starter category');
+    const gear = await inventory.createCategory({
+      name: 'Camera gear',
+      icon: 'camera-outline',
+      color: '#6FD6C2',
+      parentId: null,
+      coverImageUri: null,
+      description: 'Bodies, lenses and batteries',
+    });
+    const lenses = await inventory.createCategory({
+      name: 'Lenses',
+      icon: 'camera-outline',
+      color: '#6FD6C2',
+      parentId: gear.id,
+      coverImageUri: null,
+    });
+    await packing.updateEntry(entry.id, { categoryId: gear.id });
+    await inventory.updateItem(shirt.id, itemInput({ name: 'Linen shirt', quantity: 2, categoryId: gear.id, subcategoryId: lenses.id }));
+    await inventory.deleteCategory(gear.id);
+    expect((await inventory.listCategories()).some((c) => c.id === lenses.id)).toBe(false);
     expect((await inventory.getItem(shirt.id))?.quantity).toBe(2);
     const [kept] = (await packing.load(trip.id)).entries;
     expect(kept).toMatchObject({ name: 'Linen shirt', quantity: 1, categoryId: null, inventoryItemId: shirt.id });

@@ -42,6 +42,9 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     pk: 'id',
     rank: 1,
     columns: ['id', 'parent_id', 'name', 'icon', 'color', 'position', 'cover_image_uri', 'system_key', 'created_at', 'updated_at'],
+    localOnly: {
+      description: 'Added locally in v5; synced once the matching cloud migration is approved (before G4).',
+    },
   },
   {
     name: 'places',
@@ -115,6 +118,9 @@ export const SYNC_TABLES: readonly SyncTable[] = [
     pk: 'id',
     rank: 4,
     columns: ['id', 'trip_id', 'inventory_item_id', 'name', 'category_id', 'quantity', 'traveller_id', 'luggage_id', 'is_packed', 'notes', 'source', 'recommendation_id', 'position', 'created_at', 'updated_at'],
+    localOnly: {
+      unit: 'Added locally in v5; synced once the matching cloud migration is approved (before G4).',
+    },
   },
   {
     name: 'packing_recommendations',

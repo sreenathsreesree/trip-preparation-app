@@ -25,7 +25,7 @@ import { useCategoryMaps, useEnsureInventoryLoaded } from '../inventory/hooks';
 import { useInventoryStore } from '../inventory/inventoryStore';
 import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
-import { LUGGAGE_META, PACKING_LIMITS, type EntryPatch, type PackingEntry } from './model';
+import { ENTRY_UNITS, LUGGAGE_META, PACKING_LIMITS, UNIT_META, type EntryPatch, type PackingEntry } from './model';
 import { usePackingStore, useTripPacking } from './packingStore';
 
 function ChipRow({ label, children }: { label: string; children: React.ReactNode }) {
@@ -49,6 +49,7 @@ function Form({ trip, entry }: { trip: TripSummary; entry: PackingEntry }) {
     name: entry.name,
     categoryId: entry.categoryId,
     quantity: entry.quantity,
+    unit: entry.unit,
     travellerId: entry.travellerId,
     luggageId: entry.luggageId,
     isPacked: entry.isPacked,
@@ -147,6 +148,19 @@ function Form({ trip, entry }: { trip: TripSummary; entry: PackingEntry }) {
         onChange={(quantity) => patch({ quantity })}
         testID="entry-quantity"
       />
+      <ChipRow label="Counted in">
+        {ENTRY_UNITS.map((unit) => (
+          <OptionTile
+            key={unit}
+            layout="chip"
+            label={UNIT_META[unit].label}
+            icon={UNIT_META[unit].icon}
+            selected={draft.unit === unit}
+            onPress={() => patch({ unit })}
+            testID={`entry-unit-${unit}`}
+          />
+        ))}
+      </ChipRow>
       <ToggleRow icon="bag-checked" label="Packed" value={draft.isPacked} onChange={(isPacked) => patch({ isPacked })} testID="entry-packed" />
 
       <ChipRow label="Who is it for">

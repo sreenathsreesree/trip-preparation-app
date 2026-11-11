@@ -113,6 +113,25 @@ export interface Luggage {
 
 export type EntrySource = 'manual' | 'inventory' | 'recommendation' | 'purchase';
 
+/** How an entry's quantity is counted. Stored as text; unknown values read as `pcs`. */
+export const ENTRY_UNITS = ['pcs', 'pairs', 'sets', 'bottles', 'packs'] as const;
+export type EntryUnit = (typeof ENTRY_UNITS)[number];
+export const UNIT_META: Record<EntryUnit, { label: string; one: string; many: string; icon: IconName }> = {
+  pcs: { label: 'Pieces', one: 'pc', many: 'pcs', icon: 'numeric' },
+  pairs: { label: 'Pairs', one: 'pair', many: 'pairs', icon: 'shoe-print' },
+  sets: { label: 'Sets', one: 'set', many: 'sets', icon: 'layers-outline' },
+  bottles: { label: 'Bottles', one: 'bottle', many: 'bottles', icon: 'bottle-tonic-outline' },
+  packs: { label: 'Packs', one: 'pack', many: 'packs', icon: 'package-variant-closed' },
+};
+export const isEntryUnit = (v: unknown): v is EntryUnit =>
+  typeof v === 'string' && (ENTRY_UNITS as readonly string[]).includes(v);
+
+/** "×4 pairs", "×1 pc". */
+export function formatQuantity(quantity: number, unit: EntryUnit): string {
+  const meta = UNIT_META[unit];
+  return `×${quantity} ${quantity === 1 ? meta.one : meta.many}`;
+}
+
 /**
  * A trip-specific packing decision. It may reference an inventory item but
  * owns its name, category, quantity, assignment and packed state.
@@ -125,6 +144,7 @@ export interface PackingEntry {
   name: string;
   categoryId: string | null;
   quantity: number;
+  unit: EntryUnit;
   travellerId: string | null;
   luggageId: string | null;
   isPacked: boolean;
@@ -140,6 +160,7 @@ export interface EntryPatch {
   name?: string;
   categoryId?: string | null;
   quantity?: number;
+  unit?: EntryUnit;
   travellerId?: string | null;
   luggageId?: string | null;
   isPacked?: boolean;
@@ -151,6 +172,7 @@ export interface NewEntryInput {
   name: string;
   categoryId?: string | null;
   quantity?: number;
+  unit?: EntryUnit;
   travellerId?: string | null;
   luggageId?: string | null;
   notes?: string;

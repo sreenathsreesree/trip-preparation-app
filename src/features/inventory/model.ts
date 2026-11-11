@@ -62,12 +62,16 @@ export interface InventoryCategory {
   coverImageUri: string | null;
   /** Identity of a starter category (survives renaming); null for user categories. */
   systemKey: CategoryKey | null;
+  /** Optional text shown with the category (may be empty). */
+  description: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CategoryInput {
   name: string;
+  /** Optional; omitted keeps the current description (or empty for new categories). */
+  description?: string;
   icon: IconName;
   color: string;
   parentId: string | null;
@@ -171,7 +175,13 @@ export const INVENTORY_LIMITS = {
   quantityMax: 999,
   weightMaxGrams: 100_000,
   categoryNameMax: 40,
+  categoryDescriptionMax: 200,
 } as const;
+
+/** Starter categories (with a system key) can be renamed and reordered but not deleted. */
+export function isProtectedCategory(category: Pick<InventoryCategory, 'systemKey'>): boolean {
+  return category.systemKey !== null;
+}
 
 export function emptyItemInput(categoryId: string | null = null): ItemInput {
   return {
@@ -257,6 +267,8 @@ export function validateCategoryInput(input: CategoryInput): Partial<Record<keyo
   else if (name.length > INVENTORY_LIMITS.categoryNameMax)
     errors.name = `Keep it under ${INVENTORY_LIMITS.categoryNameMax} characters.`;
   if (!/^#[0-9A-Fa-f]{6}$/.test(input.color)) errors.color = 'Choose a colour.';
+  if ((input.description ?? '').trim().length > INVENTORY_LIMITS.categoryDescriptionMax)
+    errors.description = `Keep it under ${INVENTORY_LIMITS.categoryDescriptionMax} characters.`;
   return errors;
 }
 

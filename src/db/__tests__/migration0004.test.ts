@@ -49,13 +49,20 @@ describe('migration 4: destination planner', () => {
       });
     });
     const camera = await inventory.createItem(itemInput({ name: 'Camera', quantity: 1 }));
-    await packing.addEntry('trip-1', { inventoryItemId: camera.id, name: '', quantity: 1 });
+    // v3-era SQL: the current packing repository writes v5 columns.
+    await db.runAsync(
+      `INSERT INTO packing_entries (id, trip_id, inventory_item_id, name, category_id, quantity, traveller_id, luggage_id,
+         is_packed, notes, source, recommendation_id, position, created_at, updated_at)
+       VALUES ('e-1', 'trip-1', ?, 'Camera', NULL, 1, NULL, NULL, 0, '', 'inventory', NULL, 0,
+         '2026-11-01T00:00:00Z', '2026-11-01T00:00:00Z')`,
+      [camera.id],
+    );
     const checklistBefore = await checklists.load(tripOwner('trip-1'));
     const packingBefore = await packing.load('trip-1');
     const itemsBefore = await inventory.listItems();
     const tripRow = await db.getFirstAsync('SELECT * FROM trips WHERE id = ?', ['trip-1']);
 
-    const result = await migrate(db, migrations);
+    const result = await migrate(db, migrations.slice(0, 4));
     expect(result.applied).toEqual(['destination_planner']);
     expect(await getSchemaVersion(db)).toBe(4);
 
@@ -87,7 +94,7 @@ describe('migration 4: destination planner', () => {
   it('upgrades an empty v3 database', async () => {
     const db = openTestDatabase();
     await migrate(db, migrations.slice(0, 3));
-    await migrate(db, migrations);
+    await migrate(db, migrations.slice(0, 4));
     expect(await getSchemaVersion(db)).toBe(4);
     expect(await db.getAllAsync('SELECT * FROM trip_plan_nodes', [])).toEqual([]);
     db.close();
