@@ -18,7 +18,7 @@ const item = (name: string, unit: EntryUnit, ...keywords: string[]): CatalogueIt
 export const PACKING_CATALOGUE: Readonly<Record<CategoryKey, readonly CatalogueItem[]>> = {
   clothing: [
     item('T-shirts', 'pcs', 't-shirt', 'tshirt', 'tee'),
-    item('Shirts', 'pcs', 'shirt'),
+    item('Shirts', 'pcs', 'formal shirt', 'casual shirt', 'linen shirt', 'dress shirt'),
     item('Jeans', 'pcs', 'jeans'),
     item('Trousers', 'pcs', 'trouser', 'pants'),
     item('Shorts', 'pcs', 'shorts'),

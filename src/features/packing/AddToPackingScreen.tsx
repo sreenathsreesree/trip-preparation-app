@@ -20,20 +20,99 @@ import { successFeedback } from '@/lib/haptics';
 import { colors, radii, spacing } from '@/theme';
 
 import { ItemImage } from '../inventory/components/ItemImage';
-import { placeholderFor, useCategoryMaps, useEnsureInventoryLoaded } from '../inventory/hooks';
+import { placeholderFor, useCategoryMaps, useEnsureInventoryLoaded, type CategoryMaps } from '../inventory/hooks';
 import { useInventoryStore } from '../inventory/inventoryStore';
-import { DEFAULT_FILTERS, matchesFilters, sortItems, type InventoryItemSummary } from '../inventory/model';
+import type { CategoryKey, InventoryItemSummary } from '../inventory/model';
 import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
-import { PACKING_LIMITS } from './model';
+import { blockedReason, canCreate, inventoryChoices, suggestionChoices, type SuggestionChoice } from './addOptions';
 import { UNCATEGORISED } from './categories';
+import { PACKING_LIMITS, UNIT_META, type EntryUnit, type NewEntryInput } from './model';
 import { usePackingStore, useTripPacking } from './packingStore';
 
-function blockedReason(item: InventoryItemSummary): string | null {
-  if (item.availability === 'damaged') return 'Marked damaged';
-  if (item.availability === 'borrowed') return 'Lent out';
-  if (item.quantity === 0) return 'None owned';
-  return null;
+/** Something the user chose to add. Nothing is added until they confirm. */
+type Pick =
+  | { kind: 'inventory'; itemId: string; name: string; quantity: number; elsewhere: boolean }
+  | { kind: 'suggestion'; name: string; unit: EntryUnit; categoryKey: CategoryKey; quantity: number }
+  | { kind: 'new'; name: string; quantity: number };
+
+const inventoryKey = (id: string) => `inv:${id}`;
+const suggestionKey = (name: string) => `sug:${name}`;
+const newKey = (name: string) => `new:${name.trim().toLowerCase()}`;
+
+function SelectRow({
+  selected,
+  disabled,
+  onPress,
+  label,
+  accessibilityLabel,
+  testID,
+  leading,
+  title,
+  caption,
+  captionTone = 'textMuted',
+  quantity,
+  quantityMax,
+  onQuantity,
+  quantityTestID,
+}: {
+  selected: boolean;
+  disabled?: boolean;
+  onPress: () => void;
+  label: string;
+  accessibilityLabel: string;
+  testID: string;
+  leading?: React.ReactNode;
+  title: string;
+  caption: string;
+  captionTone?: 'textMuted' | 'warning' | 'danger';
+  quantity?: number;
+  quantityMax: number;
+  onQuantity: (value: number) => void;
+  quantityTestID: string;
+}) {
+  return (
+    <View style={[styles.row, selected && styles.rowSelected, disabled && styles.rowBlocked]}>
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: selected, disabled: Boolean(disabled) }}
+        accessibilityLabel={accessibilityLabel}
+        disabled={disabled}
+        onPress={onPress}
+        style={styles.rowMain}
+        testID={testID}
+      >
+        <Icon name={selected ? 'checkbox-marked' : 'checkbox-blank-outline'} tone={selected ? 'accent' : 'textMuted'} />
+        {leading}
+        <View style={styles.flex}>
+          <AppText variant="bodyStrong" numberOfLines={1}>
+            {title}
+          </AppText>
+          <AppText variant="caption" tone={captionTone} numberOfLines={1}>
+            {caption}
+          </AppText>
+        </View>
+      </Pressable>
+      {selected && quantity !== undefined ? (
+        <MiniStepper value={quantity} min={1} max={quantityMax} label={label} onChange={onQuantity} testID={quantityTestID} />
+      ) : null}
+    </View>
+  );
+}
+
+function Section({ title, children, testID }: { title: string; children: React.ReactNode; testID?: string }) {
+  return (
+    <View style={styles.group} testID={testID}>
+      <AppText variant="label" tone="textMuted">
+        {title}
+      </AppText>
+      <View style={styles.list}>{children}</View>
+    </View>
+  );
+}
+
+function starterCategoryId(maps: CategoryMaps, key: CategoryKey): string | null {
+  return maps.topLevel.find((category) => category.systemKey === key)?.id ?? null;
 }
 
 function Picker({ trip, categoryKey }: { trip: TripSummary; categoryKey?: string }) {
@@ -42,20 +121,21 @@ function Picker({ trip, categoryKey }: { trip: TripSummary; categoryKey?: string
   const packing = useTripPacking(trip.id);
   const maps = useCategoryMaps();
   const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState<Record<string, number>>({});
+  const [picks, setPicks] = useState<Record<string, Pick>>({});
   const [travellerId, setTravellerId] = useState<string | null>(null);
   const [free, setFree] = useState<Record<string, number> | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const active = useMemo(
-    () =>
-      sortItems(
-        items.filter((item) => matchesFilters(item, { ...DEFAULT_FILTERS, query }, maps.names)),
-        'category',
-        maps.names,
-      ),
-    [items, query, maps.names],
+  const scope = categoryKey ?? null; // null: opened without a category
+  const category = scope && scope !== UNCATEGORISED ? maps.byId.get(scope) ?? null : null;
+  const systemKey = category?.systemKey ?? null;
+
+  const inventory = useMemo(() => inventoryChoices(items, scope, maps.byId, query), [items, scope, maps.byId, query]);
+  // Owned items shown on this screen take the place of matching suggestions.
+  const suggestions = useMemo(
+    () => suggestionChoices(systemKey, packing.entries, query, [...inventory.here, ...inventory.elsewhere]),
+    [systemKey, packing.entries, query, inventory],
   );
   const onList = useMemo(() => {
     const counts = new Map<string, number>();
@@ -79,32 +159,64 @@ function Picker({ trip, categoryKey }: { trip: TripSummary; categoryKey?: string
     };
   }, [trip.id, itemIds]);
 
-  const count = Object.keys(selected).length;
-  const toggle = (item: InventoryItemSummary) =>
-    setSelected((current) => {
+  const togglePick = (key: string, pick: Pick) =>
+    setPicks((current) => {
       const next = { ...current };
-      if (next[item.id]) delete next[item.id];
-      else next[item.id] = 1;
+      if (next[key]) delete next[key];
+      else next[key] = pick;
       return next;
     });
+  const setQuantity = (key: string, quantity: number) =>
+    setPicks((current) => (current[key] ? { ...current, [key]: { ...current[key], quantity } } : current));
+
+  const newPicks = Object.entries(picks).filter((entry): entry is [string, Extract<Pick, { kind: 'new' }>] => entry[1].kind === 'new');
+  const knownNames = [
+    ...packing.entries.map((e) => e.name),
+    ...inventory.here.map((i) => i.name),
+    ...inventory.elsewhere.map((i) => i.name),
+    ...suggestions.map((s) => s.name),
+    ...newPicks.map(([, p]) => p.name),
+  ];
+  const offerCreate = canCreate(query, knownNames) && query.trim().length <= PACKING_LIMITS.nameMax;
+
+  function createFromQuery() {
+    const name = query.trim().replace(/\s+/g, ' ');
+    if (!name) return;
+    setPicks((current) => ({ ...current, [newKey(name)]: { kind: 'new', name, quantity: 1 } }));
+    setQuery('');
+  }
+
+  const count = Object.keys(picks).length;
+  const targetCategory = scope === null ? undefined : scope === UNCATEGORISED ? null : scope;
 
   async function add() {
     setSaving(true);
     setError(null);
     try {
-      const byId = new Map(items.map((i) => [i.id, i]));
-      await usePackingStore.getState().addEntries(
-        trip.id,
-        Object.entries(selected).map(([id, quantity]) => ({
-          inventoryItemId: id,
-          name: byId.get(id)?.name ?? '',
-          quantity,
-          travellerId,
-          // Added from a category screen: the entry belongs to that category on this trip.
-          ...(categoryKey ? { categoryId: categoryKey === UNCATEGORISED ? null : categoryKey } : {}),
-          source: 'inventory' as const,
-        })),
-      );
+      const inputs: NewEntryInput[] = Object.values(picks).map((pick) => {
+        const base = { quantity: pick.quantity, travellerId };
+        if (pick.kind === 'inventory') {
+          return {
+            ...base,
+            inventoryItemId: pick.itemId,
+            name: pick.name,
+            source: 'inventory' as const,
+            // Items of this category go here; items found in other categories keep their own.
+            ...(targetCategory !== undefined && !pick.elsewhere ? { categoryId: targetCategory } : {}),
+          };
+        }
+        if (pick.kind === 'suggestion') {
+          return {
+            ...base,
+            name: pick.name,
+            unit: pick.unit,
+            source: 'manual' as const,
+            categoryId: targetCategory !== undefined ? targetCategory : starterCategoryId(maps, pick.categoryKey),
+          };
+        }
+        return { ...base, name: pick.name, source: 'manual' as const, categoryId: targetCategory ?? null };
+      });
+      await usePackingStore.getState().addEntries(trip.id, inputs);
       successFeedback();
       goBackOrHome();
     } catch (err) {
@@ -113,6 +225,68 @@ function Picker({ trip, categoryKey }: { trip: TripSummary; categoryKey?: string
     }
   }
 
+  const renderInventory = (item: InventoryItemSummary, elsewhere: boolean) => {
+    const key = inventoryKey(item.id);
+    const blocked = blockedReason(item);
+    const freeUnits = free?.[item.id] ?? 0;
+    const pick = picks[key];
+    const placeholder = placeholderFor(item, maps);
+    const listed = onList.get(item.id);
+    return (
+      <SelectRow
+        key={key}
+        selected={Boolean(pick)}
+        disabled={Boolean(blocked)}
+        onPress={() => togglePick(key, { kind: 'inventory', itemId: item.id, name: item.name, quantity: 1, elsewhere })}
+        label={item.name}
+        accessibilityLabel={`${item.name}, ${blocked ?? `${freeUnits} of ${item.quantity} free`}`}
+        testID={`pick-${item.name}`}
+        leading={<ItemImage image={item.image} fallbackIcon={placeholder.icon} fallbackColor={placeholder.color} size={40} rounded={radii.sm} />}
+        title={item.name}
+        caption={`${blocked ?? `${freeUnits} of ${item.quantity} free for these dates`}${listed ? ` · on this trip ×${listed}` : ''}`}
+        captionTone={blocked ? 'danger' : freeUnits === 0 ? 'warning' : 'textMuted'}
+        quantity={pick?.quantity}
+        quantityMax={Math.max(1, Math.min(item.quantity, PACKING_LIMITS.quantityMax))}
+        onQuantity={(value) => setQuantity(key, value)}
+        quantityTestID={`pick-qty-${item.name}`}
+      />
+    );
+  };
+
+  const renderSuggestion = (suggestion: SuggestionChoice) => {
+    const key = suggestionKey(suggestion.name);
+    const pick = picks[key];
+    return (
+      <SelectRow
+        key={key}
+        selected={Boolean(pick)}
+        onPress={() =>
+          togglePick(key, {
+            kind: 'suggestion',
+            name: suggestion.name,
+            unit: suggestion.unit,
+            categoryKey: suggestion.categoryKey,
+            quantity: 1,
+          })
+        }
+        label={suggestion.name}
+        accessibilityLabel={`${suggestion.name}, suggested`}
+        testID={`suggest-${suggestion.name}`}
+        title={suggestion.name}
+        caption={`Suggested · counted in ${UNIT_META[suggestion.unit].label.toLowerCase()} · trip only`}
+        quantity={pick?.quantity}
+        quantityMax={PACKING_LIMITS.quantityMax}
+        onQuantity={(value) => setQuantity(key, value)}
+        quantityTestID={`suggest-qty-${suggestion.name}`}
+      />
+    );
+  };
+
+  const ownsNothing = items.filter((i) => !i.archivedAt).length === 0;
+  const loading = status !== 'ready' || (itemIds !== '' && free === null);
+  const nothingFound =
+    !loading && inventory.here.length + inventory.elsewhere.length + suggestions.length === 0 && !offerCreate;
+
   return (
     <Screen
       testID="packing-add"
@@ -120,7 +294,7 @@ function Picker({ trip, categoryKey }: { trip: TripSummary; categoryKey?: string
         <View style={styles.footer}>
           <Button label="Cancel" variant="secondary" onPress={goBackOrHome} disabled={saving} />
           <Button
-            label={count === 0 ? 'Select items' : `Add ${count} ${count === 1 ? 'item' : 'items'}`}
+            label={count === 0 ? 'Choose items' : `Add ${count} ${count === 1 ? 'item' : 'items'}`}
             icon="plus"
             onPress={() => void add()}
             disabled={count === 0}
@@ -131,9 +305,15 @@ function Picker({ trip, categoryKey }: { trip: TripSummary; categoryKey?: string
         </View>
       }
     >
-      <ScreenHeader showBack backIcon="close" eyebrow={trip.name} title="Add from inventory" />
+      <ScreenHeader
+        showBack
+        backIcon="close"
+        eyebrow={trip.name}
+        title={category ? `Add to ${category.name}` : scope === UNCATEGORISED ? 'Add without a category' : 'Add items'}
+        subtitle="For this trip. New items start unpacked."
+      />
       {packing.state?.confirmedAt ? (
-        <Notice tone="info" icon="calendar-lock" title="This list is confirmed" message="Added items are reserved straight away, so they must be free for these dates." />
+        <Notice tone="info" icon="calendar-lock" title="This list is confirmed" message="Items you own are reserved straight away, so they must be free for these dates." />
       ) : null}
       {trip.travellers.length > 1 ? (
         <View style={styles.group}>
@@ -155,74 +335,85 @@ function Picker({ trip, categoryKey }: { trip: TripSummary; categoryKey?: string
           </ScrollView>
         </View>
       ) : null}
-      <SearchField value={query} onChangeText={setQuery} placeholder="Search your inventory" testID="packing-add-search" />
+      <SearchField value={query} onChangeText={setQuery} placeholder="Search or type a new item" testID="packing-add-search" />
       {error ? <Notice tone="danger" title="Not added" message={error} /> : null}
 
-      {status !== 'ready' || (itemIds !== '' && free === null) ? (
+      {offerCreate ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Create ${query.trim()} for this trip`}
+          onPress={createFromQuery}
+          style={({ pressed }) => [styles.create, pressed && styles.pressed]}
+          testID="packing-create"
+        >
+          <Icon name="plus-circle-outline" tone="accent" />
+          <View style={styles.flex}>
+            <AppText variant="bodyStrong" numberOfLines={1}>
+              Create “{query.trim()}”
+            </AppText>
+            <AppText variant="caption" tone="textMuted">
+              Trip-only item · not added to My Inventory
+            </AppText>
+          </View>
+        </Pressable>
+      ) : null}
+
+      {newPicks.length > 0 ? (
+        <Section title="New for this trip" testID="packing-add-new">
+          {newPicks.map(([key, pick]) => (
+            <SelectRow
+              key={key}
+              selected
+              onPress={() => togglePick(key, pick)}
+              label={pick.name}
+              accessibilityLabel={`${pick.name}, new trip-only item`}
+              testID={`new-${pick.name}`}
+              title={pick.name}
+              caption="Trip only"
+              quantity={pick.quantity}
+              quantityMax={PACKING_LIMITS.quantityMax}
+              onQuantity={(value) => setQuantity(key, value)}
+              quantityTestID={`new-qty-${pick.name}`}
+            />
+          ))}
+        </Section>
+      ) : null}
+
+      {loading ? (
         <LoadingState label="Checking what is free…" />
-      ) : items.filter((i) => !i.archivedAt).length === 0 ? (
-        <EmptyState
-          icon="archive-outline"
-          title="Your inventory is empty"
-          message="Add the things you own once, then reuse them on every trip."
-          action={{ label: 'Add an item', icon: 'plus', onPress: () => router.push('/inventory/item/new') }}
-        />
-      ) : active.length === 0 ? (
-        <AppText variant="caption" tone="textMuted">
-          No items match “{query}”.
-        </AppText>
       ) : (
-        <View style={styles.list}>
-          {active.map((item) => {
-            const blocked = blockedReason(item);
-            const freeUnits = free?.[item.id] ?? 0;
-            const quantity = selected[item.id];
-            const placeholder = placeholderFor(item, maps);
-            const listed = onList.get(item.id);
-            return (
-              <View key={item.id} style={[styles.row, quantity ? styles.rowSelected : null, blocked ? styles.rowBlocked : null]}>
-                <Pressable
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: Boolean(quantity), disabled: Boolean(blocked) }}
-                  accessibilityLabel={`${item.name}, ${blocked ?? `${freeUnits} of ${item.quantity} free`}`}
-                  disabled={Boolean(blocked)}
-                  onPress={() => toggle(item)}
-                  style={styles.rowMain}
-                  testID={`pick-${item.name}`}
-                >
-                  <Icon
-                    name={quantity ? 'checkbox-marked' : 'checkbox-blank-outline'}
-                    tone={quantity ? 'accent' : 'textMuted'}
-                  />
-                  <ItemImage image={item.image} fallbackIcon={placeholder.icon} fallbackColor={placeholder.color} size={40} rounded={radii.sm} />
-                  <View style={styles.flex}>
-                    <AppText variant="bodyStrong" numberOfLines={1}>
-                      {item.name}
-                    </AppText>
-                    <AppText
-                      variant="caption"
-                      tone={blocked ? 'danger' : freeUnits === 0 ? 'warning' : 'textMuted'}
-                      numberOfLines={1}
-                    >
-                      {blocked ?? `${freeUnits} of ${item.quantity} free for these dates`}
-                      {listed ? ` · on list ×${listed}` : ''}
-                    </AppText>
-                  </View>
-                </Pressable>
-                {quantity ? (
-                  <MiniStepper
-                    value={quantity}
-                    min={1}
-                    max={Math.max(1, Math.min(item.quantity, PACKING_LIMITS.quantityMax))}
-                    label={item.name}
-                    onChange={(value) => setSelected((current) => ({ ...current, [item.id]: value }))}
-                    testID={`pick-qty-${item.name}`}
-                  />
-                ) : null}
-              </View>
-            );
-          })}
-        </View>
+        <>
+          {inventory.here.length > 0 ? (
+            <Section title={category ? `You own · ${category.name}` : 'You own'} testID="packing-add-inventory">
+              {inventory.here.map((item) => renderInventory(item, false))}
+            </Section>
+          ) : null}
+          {inventory.elsewhere.length > 0 ? (
+            <Section title="You own · other categories (they keep their category)" testID="packing-add-inventory-other">
+              {inventory.elsewhere.map((item) => renderInventory(item, true))}
+            </Section>
+          ) : null}
+          {suggestions.length > 0 ? (
+            <Section title="Suggested" testID="packing-add-suggestions">
+              {suggestions.map(renderSuggestion)}
+            </Section>
+          ) : null}
+          {ownsNothing ? (
+            <Button
+              label="Add things you own to My Inventory"
+              icon="archive-plus-outline"
+              variant="ghost"
+              size="sm"
+              onPress={() => router.push('/inventory/item/new')}
+              style={styles.left}
+            />
+          ) : null}
+          {nothingFound ? (
+            <AppText variant="caption" tone="textMuted">
+              {query.trim() ? `Nothing matches “${query.trim()}”.` : 'Type a name to search or create an item for this trip.'}
+            </AppText>
+          ) : null}
+        </>
       )}
     </Screen>
   );
@@ -239,7 +430,7 @@ export function AddToPackingScreen({ tripId, categoryKey }: { tripId: string | u
   if (trip) return <Picker trip={trip} categoryKey={categoryKey} />;
   return (
     <Screen bottomInset>
-      <ScreenHeader showBack backIcon="close" title="Add from inventory" />
+      <ScreenHeader showBack backIcon="close" title="Add items" />
       {status === 'ready' ? (
         <EmptyState icon="map-marker-question-outline" title="Trip not found" message="It may have been deleted." />
       ) : (
@@ -266,6 +457,9 @@ const styles = StyleSheet.create({
   list: {
     gap: spacing.sm,
   },
+  left: {
+    alignSelf: 'flex-start',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -289,6 +483,19 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.sm,
     minHeight: 56,
+  },
+  create: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.accentBorder,
+  },
+  pressed: {
+    opacity: 0.75,
   },
   flex: {
     flex: 1,

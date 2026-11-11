@@ -64,6 +64,10 @@ async function addItem(page, { name, category, quantity = 1, weight, damaged, ac
   return page.url();
 }
 
+/** A category row on the packing list (level 1), found by its visible name. */
+const categoryRow = (page, name) =>
+  byId(page, 'items-tab').locator('[data-testid^="packing-category-"]', { hasText: name }).first();
+
 const packingTab = async (page, tab) => {
   await byId(page, 'packing-screen').getByTestId(`segment-${tab}`).click();
   await byId(page, `${tab === 'buy' ? 'buy' : tab}-tab`).waitFor();
@@ -192,26 +196,39 @@ await run('Inventory & packing test', async () => {
 
   setStep('pack trip A from the inventory');
   await page.goto(`${tripA}/packing`);
-  await byId(page, 'packing-screen').waitFor();
-  await byId(page, 'packing-add-inventory').click();
+  await byId(page, 'items-tab').waitFor();
+  await categoryRow(page, 'Clothing').getByRole('button', { name: 'Add items' }).click();
   await byId(page, 'packing-add').waitFor();
-  check(await byId(page, 'pick-Headlamp').isDisabled(), 'damaged items cannot be picked');
   await byId(page, 'pick-Merino T-shirt').click();
   await byId(page, 'pick-qty-Merino T-shirt-plus').click();
+  await byId(page, 'packing-add-search').fill('head');
+  await byId(page, 'packing-add-inventory-other').waitFor();
+  check(await byId(page, 'pick-Headlamp').isDisabled(), 'damaged items cannot be picked');
+  await byId(page, 'packing-add-search').fill('camera');
   await byId(page, 'pick-Camera').click();
   check(await within(page, 'packing-add', '1 of 1 free for these dates').isVisible(), 'shows what is free for the dates');
   await shot(page, 'm4-08-add-from-inventory');
   await byId(page, 'packing-add-confirm').click();
   await byId(page, 'items-tab').waitFor();
-  await within(page, 'packing-screen', 'Merino T-shirt').waitFor();
-  await byId(page, 'one-time-input').fill('Sandwiches');
-  await byId(page, 'one-time-add').click();
-  await within(page, 'packing-screen', 'Sandwiches').waitFor();
-  await within(page, 'packing-screen', 'One-time').waitFor();
-  check(true, 'inventory items and a one-time item on the list');
+  await categoryRow(page, 'Food and essentials').getByRole('button', { name: 'Add items' }).click();
+  await byId(page, 'packing-add').waitFor();
+  await byId(page, 'packing-add-search').fill('Sandwiches');
+  await byId(page, 'packing-create').click();
+  await byId(page, 'packing-add-confirm').click();
+  await byId(page, 'items-tab').waitFor();
+  check((await text(page, 'packing-categories')).includes('Photography'), 'an item from another category keeps its own category');
+  await categoryRow(page, 'Food and essentials').click();
+  await within(page, 'packing-category-screen', 'Sandwiches').waitFor();
+  await within(page, 'packing-category-screen', 'Trip only', { exact: false }).waitFor();
+  check(true, 'inventory items and a trip-only item on the list');
+  await page.goto(`${tripA}/packing`);
+  await byId(page, 'items-tab').waitFor();
+  await categoryRow(page, 'Photography').click();
   await page.getByRole('checkbox', { name: 'Camera packed' }).click();
-  await waitText(page, 'packing-screen', (v) => v.includes('1 of 4 packed'));
-  check(true, 'packing progress counts units');
+  await waitText(page, 'category-progress', (v) => v.includes('1 of 1 packed'));
+  await byId(page, 'packing-category-screen').getByTestId('header-back').click();
+  await waitText(page, 'packing-screen', (v) => v.includes('1 of 3 items packed'));
+  check(true, 'packing progress counts items across categories');
 
   setStep('confirm trip A (reserves)');
   await byId(page, 'packing-confirm').click();
@@ -225,29 +242,31 @@ await run('Inventory & packing test', async () => {
 
   setStep('trip B cannot over-book the camera');
   await page.goto(`${tripB}/packing`);
-  await byId(page, 'packing-screen').waitFor();
-  await byId(page, 'packing-add-inventory').click();
+  await byId(page, 'items-tab').waitFor();
+  await categoryRow(page, 'Photography').getByRole('button', { name: 'Add items' }).click();
   await byId(page, 'packing-add').waitFor();
   check(await within(page, 'packing-add', '0 of 1 free for these dates').isVisible(), 'camera shows as taken for these dates');
   await byId(page, 'pick-Camera').click();
   await byId(page, 'packing-add-confirm').click();
   await byId(page, 'items-tab').waitFor();
-  await within(page, 'packing-screen', 'Camera').waitFor();
-  check(true, 'a draft list may still include it');
+  await categoryRow(page, 'Photography').waitFor();
+  check((await text(page, 'packing-categories')).includes('1 item'), 'a draft list may still include it');
   await byId(page, 'packing-confirm').click();
   await byId(page, 'packing-conflicts').waitFor();
   check((await text(page, 'packing-conflicts')).includes('Camera: 1 needed, only 0 free'), 'confirming explains the clash');
   await within(page, 'packing-screen', 'Draft · nothing reserved yet').waitFor();
   await shot(page, 'm4-10-conflict');
-  await byId(page, 'packing-screen').locator('[data-testid^="entry-open-"]', { hasText: 'Camera' }).click();
+  await categoryRow(page, 'Photography').click();
+  await byId(page, 'packing-category-screen').waitFor();
+  await byId(page, 'packing-category-screen').locator('[data-testid^="entry-menu-"]').first().click();
+  await byId(page, 'sheet-action-edit').click();
   await byId(page, 'entry-editor').waitFor();
   await shot(page, 'm4-10b-entry-editor');
   await byId(page, 'entry-remove').click();
-  await byId(page, 'packing-screen').waitFor();
+  await byId(page, 'packing-category-screen').waitFor();
   check(dialogs.some((d) => d.includes('stays in your inventory')), 'removing explains the item stays in the inventory');
-  await byId(page, 'packing-add-inventory').waitFor();
-  await page.waitForTimeout(300);
-  check((await byId(page, 'packing-screen').getByText('Camera', { exact: true }).count()) === 0, 'entry removed');
+  await within(page, 'packing-category-screen', 'Nothing in Photography yet').waitFor();
+  check(true, 'entry removed');
 
   setStep('suggestions for trip A');
   await page.goto(`${tripA}/packing?tab=suggest`);
@@ -297,10 +316,13 @@ await run('Inventory & packing test', async () => {
   await byId(page, 'suggestion-restore-electronics.power_bank').waitFor();
   check(true, 'skipped suggestion stays skipped after regenerating');
   await packingTab(page, 'items');
+  await categoryRow(page, 'Photography').click();
+  await byId(page, 'packing-category-screen').waitFor();
   check(
-    (await byId(page, 'packing-screen').getByText('Camera', { exact: true }).count()) === 1,
+    (await byId(page, 'packing-category-screen').getByText('Camera', { exact: true }).count()) === 1,
     'linking did not duplicate the camera entry',
   );
+  await byId(page, 'packing-category-screen').getByTestId('header-back').click();
 
   setStep('shopping list lifecycle');
   await packingTab(page, 'buy');
@@ -328,8 +350,12 @@ await run('Inventory & packing test', async () => {
   await page.waitForTimeout(300);
   await shot(page, 'm4-13-buy');
   await packingTab(page, 'items');
+  await categoryRow(page, 'Uncategorised').click();
+  await byId(page, 'packing-category-screen').waitFor();
   const adapter = page.getByRole('checkbox', { name: 'Travel adapter packed' });
   check(!(await adapter.isChecked()), 'a purchase is added unpacked');
+  await byId(page, 'packing-category-screen').getByTestId('header-back').click();
+  await byId(page, 'items-tab').waitFor();
 
   setStep('luggage');
   await packingTab(page, 'bags');
@@ -360,8 +386,11 @@ await run('Inventory & packing test', async () => {
   await page.goto(`${tripA}/packing`);
   await byId(page, 'packing-screen').waitFor({ timeout: 60_000 });
   await within(page, 'packing-screen', 'Confirmed · inventory reserved for these dates').waitFor();
-  await within(page, 'packing-screen', 'Travel adapter').waitFor();
+  await categoryRow(page, 'Uncategorised').click();
+  await within(page, 'packing-category-screen', 'Travel adapter').waitFor();
   check(true, 'packing list and confirmation persisted');
+  await byId(page, 'packing-category-screen').getByTestId('header-back').click();
+  await byId(page, 'items-tab').waitFor();
   await packingTab(page, 'bags');
   await byId(page, 'bag-Cabin bag').waitFor();
   check(true, 'bags persisted');

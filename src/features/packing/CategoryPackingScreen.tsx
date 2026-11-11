@@ -25,6 +25,7 @@ import { useCategoryMaps, useEnsureInventoryLoaded } from '../inventory/hooks';
 import { useInventoryStore } from '../inventory/inventoryStore';
 import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
+import { quickInventory, suggestionChoices } from './addOptions';
 import { categoryProgress, entriesInCategory, UNCATEGORISED } from './categories';
 import { addToPackingCategory } from './components/ItemsTab';
 import { EntryRow, openEntry, TravellerChips, type TravellerFilter } from './components/PackingParts';
@@ -61,6 +62,17 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
       (!subId || entry.categoryId === subId),
   );
   const progress = categoryProgress(visible);
+
+  // One-tap options: things you own in this category and default suggestions not yet on the trip.
+  const QUICK_LIMIT = 8;
+  const ownedOptions = useMemo(
+    () => (categoryKey === UNCATEGORISED ? [] : quickInventory(items, categoryKey, maps.byId, packing.entries)),
+    [items, categoryKey, maps.byId, packing.entries],
+  );
+  const systemKey = category?.systemKey ?? null;
+  const suggestedOptions = suggestionChoices(systemKey, packing.entries, '', ownedOptions);
+  const quickTraveller = traveller !== 'all' && traveller !== 'shared' ? traveller : null;
+  const quickCategory = categoryKey === UNCATEGORISED ? null : categoryKey;
 
   const run = (fn: () => Promise<unknown>, fallback: string) => {
     setError(null);
@@ -175,6 +187,72 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
         </View>
       )}
 
+      {ownedOptions.length + suggestedOptions.length > 0 ? (
+        <View style={styles.quick} testID="category-quick-add">
+          <AppText variant="label" tone="textMuted">
+            Quick add · tap to add, starts unpacked
+          </AppText>
+          {ownedOptions.length > 0 ? (
+            <View style={styles.chips} testID="quick-owned">
+              {ownedOptions.slice(0, QUICK_LIMIT).map((item) => (
+                <OptionTile
+                  key={item.id}
+                  layout="chip"
+                  label={item.name}
+                  icon="archive-check-outline"
+                  selected={false}
+                  onPress={() =>
+                    run(
+                      () =>
+                        store().addEntry(trip.id, {
+                          inventoryItemId: item.id,
+                          name: item.name,
+                          categoryId: quickCategory,
+                          travellerId: quickTraveller,
+                          source: 'inventory',
+                        }),
+                      'Could not add the item.',
+                    )
+                  }
+                  testID={`quick-owned-${item.name}`}
+                />
+              ))}
+            </View>
+          ) : null}
+          {suggestedOptions.length > 0 ? (
+            <View style={styles.chips} testID="quick-suggested">
+              {suggestedOptions.slice(0, QUICK_LIMIT).map((suggestion) => (
+                <OptionTile
+                  key={suggestion.name}
+                  layout="chip"
+                  label={suggestion.name}
+                  icon="plus"
+                  selected={false}
+                  onPress={() =>
+                    run(
+                      () =>
+                        store().addEntry(trip.id, {
+                          name: suggestion.name,
+                          unit: suggestion.unit,
+                          categoryId: quickCategory,
+                          travellerId: quickTraveller,
+                          source: 'manual',
+                        }),
+                      'Could not add the item.',
+                    )
+                  }
+                  testID={`quick-suggested-${suggestion.name}`}
+                />
+              ))}
+            </View>
+          ) : null}
+          <AppText variant="caption" tone="textMuted">
+            Archive icon: you own it (from My Inventory). Plus: a suggestion just for this trip. Use Add item to search,
+            set quantities or create your own.
+          </AppText>
+        </View>
+      ) : null}
+
       <ActionSheet
         visible={menuFor !== null}
         title={menuFor?.name ?? ''}
@@ -225,6 +303,9 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   list: {
+    gap: spacing.sm,
+  },
+  quick: {
     gap: spacing.sm,
   },
 });

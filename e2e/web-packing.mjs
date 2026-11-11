@@ -105,6 +105,39 @@ await run('Packing categories test', async () => {
   await byId(page, 'items-tab').waitFor();
   check((await text(page, 'packing-categories')).includes('100%'), 'level 1 shows the category complete');
 
+  setStep('add screen: owned item, suggestion and a trip-only item');
+  await categoryRow(page, 'Electronics').getByRole('button', { name: 'Add items' }).click();
+  await byId(page, 'packing-add').waitFor();
+  await byId(page, 'packing-add-inventory').getByText('Phone charger').waitFor();
+  await byId(page, 'packing-add-suggestions').waitFor();
+  await byId(page, 'pick-Phone charger').click();
+  await byId(page, 'suggest-Power bank').click();
+  await byId(page, 'suggest-qty-Power bank-plus').click();
+  await byId(page, 'packing-add-search').fill('Universal plug');
+  await byId(page, 'packing-create').click();
+  await byId(page, 'new-Universal plug').waitFor();
+  check((await byId(page, 'packing-add-search').inputValue()) === '', 'creating clears the search');
+  await shot(page, 'p-04-add-screen');
+  await byId(page, 'packing-add-confirm').click();
+  await byId(page, 'items-tab').waitFor();
+  await waitText(page, 'packing-categories', (v) => v.includes('3 items · 0 packed'));
+  check(true, 'three items added to Electronics, none packed');
+
+  setStep('category quick add hides what is already on the list');
+  await categoryRow(page, 'Electronics').click();
+  await byId(page, 'packing-category-screen').waitFor();
+  await within(page, 'packing-category-screen', '×2 pcs').waitFor(); // power bank
+  await byId(page, 'quick-suggested').waitFor();
+  check((await byId(page, 'quick-suggested-Phone charger').count()) === 0, 'phone charger is not suggested again');
+  check((await byId(page, 'quick-suggested-Power bank').count()) === 0, 'power bank is not suggested again');
+  await byId(page, 'quick-suggested-Earphones').click();
+  await within(page, 'packing-category-screen', '×1 pair').waitFor();
+  await waitText(page, 'category-progress', (v) => v.includes('0 of 4 packed'));
+  check((await byId(page, 'quick-suggested-Earphones').count()) === 0, 'a quick-added suggestion disappears from quick add');
+  await shot(page, 'p-05-quick-add');
+  await byId(page, 'packing-category-screen').getByTestId('header-back').click();
+  await byId(page, 'items-tab').waitFor();
+
   setStep('the same inventory item on another trip');
   await page.goto(`${tripB}/packing`);
   await byId(page, 'items-tab').waitFor();
