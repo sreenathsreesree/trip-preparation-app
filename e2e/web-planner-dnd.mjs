@@ -59,6 +59,17 @@ export async function treeOrder(page, scope) {
   }, scope);
 }
 
+/** Navigation rows in order, indented by nesting. */
+async function navOrder(page) {
+  await page.waitForTimeout(200);
+  return page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid^="nav-row-"]')].map((row) => {
+      const name = row.getAttribute('data-testid').slice('nav-row-'.length);
+      return `${'  '.repeat(Math.round(parseFloat(getComputedStyle(row).marginLeft) / 16))}${name}`;
+    }),
+  );
+}
+
 /** Route stop names in order. */
 export async function routeOrder(page, trip) {
   if (trip) {
@@ -151,6 +162,82 @@ await run('Planner drag-and-drop test', async () => {
   await plannerTab(page, 'destinations');
   check(JSON.stringify(await treeOrder(page, 'planner-tree')) === JSON.stringify(treeBeforeRoute), 'reordering the route never changes the hierarchy');
 
+  setStep('navigation: add places (nested under parents already in Navigation), no duplicates');
+  await page.goto(`${trip}/plan?tab=navigation`);
+  await byId(page, 'plan-navigation').waitFor();
+  await byId(page, 'nav-empty').waitFor();
+  await page.evaluate(() => {
+    window.__opened = [];
+    window.open = (url) => {
+      window.__opened.push(String(url));
+      return null;
+    };
+  });
+  for (const name of ['Echo Point', 'Mattupetty Dam', 'Kochi', 'Munnar', 'Tea Museum', 'Athirappilly']) {
+    await byId(page, `nav-add-${name}`).click();
+    await byId(page, `nav-row-${name}`).waitFor();
+  }
+  const navStart = await navOrder(page);
+  check(
+    JSON.stringify(navStart) === JSON.stringify(['Echo Point', '  Mattupetty Dam', 'Kochi', 'Munnar', 'Tea Museum', 'Athirappilly']),
+    `Navigation keeps parent-child nesting (${navStart.join(' | ')})`,
+  );
+  await plannerTab(page, 'destinations');
+  await byId(page, 'plan-more-Kochi').click();
+  await byId(page, 'sheet-action-nav-remove').waitFor();
+  check((await byId(page, 'sheet-action-nav-add').count()) === 0, 'a place already in Navigation cannot be added twice');
+  await page.keyboard.press('Escape');
+  await page.mouse.click(180, 100);
+  const treeBeforeNav = await treeOrder(page, 'planner-tree');
+  const routeBeforeNav = await routeOrder(page, trip);
+  await plannerTab(page, 'navigation');
+  await page.evaluate(() => {
+    window.__opened = [];
+    window.open = (url) => {
+      window.__opened.push(String(url));
+      return null;
+    };
+  });
+
+  setStep('navigation: drag to reorder and nest, independent of plan and route');
+  const navHandle = (name) => byId(page, `nav-row-${name}`).locator('[data-testid^="drag-"]');
+  await dragElement(page, navHandle('Kochi'), byId(page, 'nav-row-Athirappilly'), 'inside');
+  await waitText(page, 'nav-list', (v) => v.indexOf('Kochi') > v.indexOf('Athirappilly'));
+  await dragElement(page, navHandle('Munnar'), byId(page, 'nav-row-Echo Point'), 'before');
+  await page.waitForTimeout(300);
+  const navMoved = await navOrder(page);
+  check(
+    JSON.stringify(navMoved) === JSON.stringify(['Munnar', 'Echo Point', '  Mattupetty Dam', 'Tea Museum', 'Athirappilly', '  Kochi']),
+    `Navigation reordered and nested (${navMoved.join(' | ')})`,
+  );
+  await shot(page, 'dnd-04-navigation');
+
+  setStep('navigation: Google Maps links');
+  await byId(page, 'nav-go-Munnar').click();
+  let opened = await page.evaluate(() => window.__opened);
+  check(opened.length === 1 && opened[0].includes('/maps/dir/?api=1') && new URL(opened[0]).searchParams.get('destination') === 'Munnar', `one place opens Google Maps directions (${opened[0]})`);
+  await byId(page, 'nav-journey-go').click();
+  await byId(page, 'nav-legs').waitFor();
+  check((await byId(page, 'nav-legs').locator('[data-testid^="nav-leg-"]').count()) === 2, 'six stops become two legs (3 waypoints per link)');
+  await byId(page, 'nav-leg-1').click();
+  await byId(page, 'nav-leg-2').click();
+  opened = await page.evaluate(() => window.__opened);
+  const leg1 = new URL(opened[1]).searchParams;
+  const leg2 = new URL(opened[2]).searchParams;
+  check(leg1.get('waypoints')?.split('|').length === 3 && leg1.get('destination') === 'Tea Museum' && !leg1.has('origin'), 'leg 1: from your location through 3 stops');
+  check(leg2.get('origin') === 'Tea Museum' && leg2.get('waypoints') === 'Athirappilly' && leg2.get('destination') === 'Kochi', 'leg 2 starts where leg 1 ended; no stop dropped');
+  await shot(page, 'dnd-05-legs');
+
+  setStep('navigation: remove keeps the plan and route');
+  await byId(page, 'nav-remove-Tea Museum').click();
+  await byId(page, 'nav-row-Tea Museum').waitFor({ state: 'detached' });
+  await plannerTab(page, 'destinations');
+  check(JSON.stringify(await treeOrder(page, 'planner-tree')) === JSON.stringify(treeBeforeNav), 'Navigation changes never touch the hierarchy');
+  check(JSON.stringify(await routeOrder(page, trip)) === JSON.stringify(routeBeforeNav), 'Navigation changes never touch the route');
+  await page.goto(`${trip}/plan?tab=navigation`);
+  await byId(page, 'nav-list').waitFor();
+  const navSaved = await navOrder(page);
+
   setStep('hierarchy persists after a restart');
   const saved = await (async () => {
     await page.goto(`${trip}/plan`);
@@ -164,6 +251,10 @@ await run('Planner drag-and-drop test', async () => {
   await page.waitForTimeout(300);
   check(JSON.stringify(await treeOrder(page, 'planner-tree')) === JSON.stringify(saved), 'same hierarchy after restart');
   check(JSON.stringify(await routeOrder(page, trip)) === JSON.stringify(finalRoute), 'same route order after restart');
+  await page.goto(`${trip}/plan?tab=navigation`);
+  await byId(page, 'nav-list').waitFor();
+  await page.waitForTimeout(300);
+  check(JSON.stringify(await navOrder(page)) === JSON.stringify(navSaved), 'same Navigation list after restart');
 
   check(errors.length === 0, `no uncaught page errors (${errors.join('; ') || 'none'})`);
 });

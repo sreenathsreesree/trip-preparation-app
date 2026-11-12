@@ -13,12 +13,13 @@ import type { TripSummary } from '../trips/model';
 import type { ScrollBinding } from './components/DraggableList';
 import { useNodeActions } from './components/NodeActions';
 import { PlanTree } from './components/PlanTree';
+import { NavigationTab } from './components/NavigationTab';
 import { RouteTab } from './components/RouteTab';
 import { buildTree, type TripPlan } from './model';
 import { usePlannerStore, useTripPlan } from './plannerStore';
 
-export type PlannerTab = 'destinations' | 'route';
-export const isPlannerTab = (v: unknown): v is PlannerTab => v === 'destinations' || v === 'route';
+export type PlannerTab = 'destinations' | 'route' | 'navigation';
+export const isPlannerTab = (v: unknown): v is PlannerTab => v === 'destinations' || v === 'route' || v === 'navigation';
 
 function PlannerBody({ trip, initialTab }: { trip: TripSummary; initialTab: PlannerTab }) {
   const state = useTripPlan(trip.id);
@@ -69,12 +70,14 @@ function PlannerBody({ trip, initialTab }: { trip: TripSummary; initialTab: Plan
   const tabs: SegmentOption<PlannerTab>[] = [
     { value: 'destinations', label: 'Destinations' },
     { value: 'route', label: `Route${plan && plan.route.length ? ` ${plan.route.length}` : ''}` },
+    { value: 'navigation', label: 'Navigation' },
   ];
 
   const destinations = (current: TripPlan) => (
     <>
       <Button label="Add destination" icon="map-marker-plus-outline" onPress={addDestination} fullWidth testID="planner-add" />
       {error || actions.error ? <Notice tone="danger" title="Not changed" message={error ?? actions.error ?? ''} /> : null}
+      {actions.notice ? <Notice tone="success" title={actions.notice} testID="planner-notice" /> : null}
       {total === 0 ? (
         <EmptyState
           icon="map-marker-plus-outline"
@@ -160,6 +163,15 @@ function PlannerBody({ trip, initialTab }: { trip: TripSummary; initialTab: Plan
           <SegmentedControl options={tabs} value={tab} onChange={setTab} accessibilityLabel="Planner sections" />
           {tab === 'route' ? (
             <RouteTab tripId={trip.id} plan={plan} visited={visited} scroll={scroll} onDragActiveChange={setDragging} />
+          ) : tab === 'navigation' ? (
+            <NavigationTab
+              tripId={trip.id}
+              plan={plan}
+              companion={state.companion}
+              visited={visited}
+              scroll={scroll}
+              onDragActiveChange={setDragging}
+            />
           ) : (
             destinations(plan)
           )}

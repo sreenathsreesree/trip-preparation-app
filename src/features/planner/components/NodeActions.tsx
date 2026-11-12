@@ -6,7 +6,7 @@ import { confirmAction } from '@/lib/confirm';
 import { toErrorMessage } from '@/lib/errors';
 
 import { childrenOf, removalImpact, type TripPlan } from '../model';
-import { usePlannerStore } from '../plannerStore';
+import { usePlannerStore, useTripPlan } from '../plannerStore';
 
 /** Plain-language summary of a removal, shown before anything is deleted. */
 export function describeRemoval(plan: TripPlan, nodeId: string, mode: 'keepChildren' | 'withChildren'): string {
@@ -42,10 +42,13 @@ export function useNodeActions(tripId: string, plan: TripPlan | null, options: {
   const [targetId, setTargetId] = useState<string | null>(null);
   const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const store = usePlannerStore.getState;
+  const navigation = useTripPlan(tripId).companion?.navigation ?? [];
 
   const run = (fn: () => Promise<unknown>, fallback: string) => {
     setError(null);
+    setNotice(null);
     fn().catch((err: unknown) => setError(toErrorMessage(err, fallback)));
   };
 
@@ -133,6 +136,28 @@ export function useNodeActions(tripId: string, plan: TripPlan | null, options: {
             description: 'As the last stop',
             onPress: () => run(() => store().addRouteStop(tripId, node.id), 'Could not change the route.'),
           },
+      navigation.some((item) => item.nodeId === node.id)
+        ? {
+            key: 'nav-remove',
+            label: 'Remove from Navigation',
+            icon: 'navigation-variant-outline',
+            description: 'Stays in your plan and route',
+            onPress: () => {
+              const item = navigation.find((i) => i.nodeId === node.id);
+              if (item) run(() => store().removeFromNavigation(tripId, item.id), 'Could not change Navigation.');
+            },
+          }
+        : {
+            key: 'nav-add',
+            label: 'Add to Navigation',
+            icon: 'navigation-variant',
+            description: 'Places you want Google Maps directions to',
+            onPress: () =>
+              run(async () => {
+                const status = await store().addToNavigation(tripId, node.id);
+                setNotice(status === 'duplicate' ? `${node.name} is already in Navigation.` : `${node.name} added to Navigation.`);
+              }, 'Could not change Navigation.'),
+          },
       {
         key: 'remove',
         label: 'Remove…',
@@ -175,6 +200,8 @@ export function useNodeActions(tripId: string, plan: TripPlan | null, options: {
       setTargetId(nodeId);
     },
     error,
+    /** Confirmation of a non-destructive action (e.g. added to Navigation). */
+    notice,
     clearError: () => setError(null),
     sheet: (
       <>
