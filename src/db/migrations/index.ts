@@ -8,6 +8,7 @@ import { destinationCompanion } from './0006_destination_companion';
 import { journeyJournal } from './0007_journey_journal';
 import { drivePhotoUploads } from './0008_drive_photo_uploads';
 import { sharedTrips } from './0009_shared_trips';
+import { tripExpenses } from './0010_trip_expenses';
 
 /**
  * Ordered list of schema migrations.
@@ -26,4 +27,5 @@ export const migrations: readonly Migration[] = [
   journeyJournal,
   drivePhotoUploads,
   sharedTrips,
+  tripExpenses,
 ];

@@ -163,4 +163,14 @@ export const LOCAL_ONLY_TABLES: Readonly<Record<string, string>> = {
   shared_members: 'Members of a shared trip as last seen (local v9).',
   shared_outbox: 'Shared journal entries waiting to be sent to the shared trip (local v9).',
   shared_entries: 'Other members’ shared entries, cached for offline reading (local v9).',
+  // Trip Calculator (local v10). Personal expenses never leave the device; group records of a
+  // shared trip go through the separate shared-trip tables.
+  expense_participants: 'Expense participants (local v10); shared-trip copy via shared_expense_participants.',
+  expense_categories: 'Custom expense categories (local v10).',
+  expenses: 'Expenses (local v10); only group expenses of shared trips are sent (shared_expenses).',
+  expense_splits: 'Exact shares of group expenses (local v10).',
+  expense_settlements: 'Settlements (local v10); shared-trip copy via shared_expense_settlements.',
+  expense_budgets: 'Trip budgets (local v10); shared-trip copy via shared_expense_budgets.',
+  expense_settings: 'Default currency per trip (local v10).',
+  expense_outbox: 'Shared-trip expense records waiting to be sent (local v10).',
 };

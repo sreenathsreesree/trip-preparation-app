@@ -1,4 +1,5 @@
 import { createPhotoUploadRepository } from '@/features/journal/drive/photoUploadRepository';
+import { createExpenseRepository } from '@/features/expenses/expenseRepository';
 import { createJournalRepository } from '@/features/journal/journalRepository';
 import { createSharingRepository } from '@/features/sharing/sharingRepository';
 import { createInventoryRepository } from '@/features/inventory/inventoryRepository';
@@ -34,6 +35,7 @@ export async function getRepositories() {
     planner: createPlannerRepository(db, { createId }),
     companion: createCompanionRepository(db, { createId }),
     journal: createJournalRepository(db, { createId }),
+    expenses: createExpenseRepository(db, { createId }),
     sharing: createSharingRepository(db, {}),
     photoUploads: createPhotoUploadRepository(db, { createId }),
     schemaVersion: () => getSchemaVersion(db),

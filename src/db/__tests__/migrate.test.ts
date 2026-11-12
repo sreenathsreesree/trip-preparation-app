@@ -26,6 +26,7 @@ describe('migrate', () => {
         'journey_journal',
         'drive_photo_uploads',
         'shared_trips',
+        'trip_expenses',
       ],
     });
     expect(await getSchemaVersion(db)).toBe(migrations.length);
@@ -40,6 +41,14 @@ describe('migrate', () => {
       'checklist_templates',
       'drive_files',
       'drive_photo_uploads',
+      'expense_budgets',
+      'expense_categories',
+      'expense_outbox',
+      'expense_participants',
+      'expense_settings',
+      'expense_settlements',
+      'expense_splits',
+      'expenses',
       'inventory_categories',
       'inventory_items',
       'inventory_reservations',
