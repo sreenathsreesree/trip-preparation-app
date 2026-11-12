@@ -7,6 +7,7 @@ import { createPackingRepository } from '@/features/packing/packingRepository';
 import { createPreferencesRepository } from '@/features/packing/preferencesRepository';
 import { createPurchaseRepository } from '@/features/packing/purchaseRepository';
 import { createRecommendationRepository } from '@/features/packing/recommendationRepository';
+import { createPhotoUploadRepository } from '@/features/journal/drive/photoUploadRepository';
 import { createJournalRepository } from '@/features/journal/journalRepository';
 import { createCompanionRepository } from '@/features/planner/companionRepository';
 import { createPlannerRepository } from '@/features/planner/plannerRepository';
@@ -61,6 +62,7 @@ export async function setupRepositories(db: TestDatabase = openTestDatabase(), c
     planner: createPlannerRepository(shared, deps),
     companion: createCompanionRepository(shared, deps),
     journal: createJournalRepository(shared, deps),
+    photoUploads: createPhotoUploadRepository(shared, deps),
     /** Moves the shared clock forward (e.g. to test cache expiry). */
     advanceClock: (ms: number) => {
       time += ms;

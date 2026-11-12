@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -7,6 +6,9 @@ import { toErrorMessage } from '@/lib/errors';
 import { deleteStoredImage, pickAndStoreImage } from '@/lib/imageStore';
 import { colors, radii, spacing } from '@/theme';
 
+import { DrivePhoto } from '../../journal/components/DrivePhoto';
+import { PhotoUploadStatus } from '../../journal/components/PhotoUploadStatus';
+import { usePhotoUploadStore } from '../../journal/drive/photoUploadStore';
 import { COMPANION_LIMITS } from '../companion';
 import { useDetailAction, type DetailContext } from './shared';
 
@@ -25,20 +27,27 @@ export function MemoriesTab({ ctx }: { ctx: DetailContext }) {
   async function addPhoto() {
     try {
       const uri = await pickAndStoreImage('library');
-      if (uri) await act((c) => c.saveMemory(ctx.node.id, { photos: [...photos, uri] }), 'Could not save the photo.');
+      if (!uri) return;
+      const saved = await act((c) => c.saveMemory(ctx.node.id, { photos: [...photos, uri] }), 'Could not save the photo.');
+      // Uploads to the user's own Google Drive right away when Drive is connected.
+      if (saved) await usePhotoUploadStore.getState().photoSelected({ tripId: ctx.tripId, source: 'memory', sourceId: ctx.node.id, uri });
     } catch (err) {
       setError(toErrorMessage(err, 'Could not add the photo.'));
     }
   }
 
   async function removePhoto(uri: string) {
-    if (await act((c) => c.saveMemory(ctx.node.id, { photos: photos.filter((p) => p !== uri) }))) deleteStoredImage(uri);
+    if (await act((c) => c.saveMemory(ctx.node.id, { photos: photos.filter((p) => p !== uri) }))) {
+      deleteStoredImage(uri);
+      // The original already in Google Drive is kept; Trip Prep just forgets it.
+      await usePhotoUploadStore.getState().photoRemoved([uri]);
+    }
   }
 
   return (
     <View style={styles.root} testID="detail-memories">
       <AppText variant="caption" tone="textMuted">
-        Your memories stay on this device and are never shared.
+        Your memories are private. Photos are kept on this device and, once you connect Google Drive, uploaded to your own Drive.
       </AppText>
       <View style={styles.group}>
         <AppText variant="label" tone="textSecondary">
@@ -79,13 +88,14 @@ export function MemoriesTab({ ctx }: { ctx: DetailContext }) {
         <View style={styles.photos}>
           {photos.map((uri, i) => (
             <View key={uri} style={styles.photo}>
-              <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={`Photo ${i + 1}`} />
+              <DrivePhoto uri={uri} style={StyleSheet.absoluteFill} label={`Photo ${i + 1}`} testID={`detail-memory-photo-${i}`} />
               <View style={styles.photoAction}>
                 <IconButton icon="close" size="sm" accessibilityLabel={`Remove photo ${i + 1}`} onPress={() => void removePhoto(uri)} />
               </View>
             </View>
           ))}
         </View>
+        {photos.length > 0 ? <PhotoUploadStatus tripId={ctx.tripId} /> : null}
         {photos.length < COMPANION_LIMITS.photosMax ? (
           <Button label="Add photo" icon="image-plus" variant="secondary" size="sm" onPress={() => void addPhoto()} style={styles.left} testID="detail-memory-photo" />
         ) : null}

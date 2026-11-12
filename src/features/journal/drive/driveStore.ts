@@ -6,6 +6,7 @@ import { toErrorMessage } from '@/lib/errors';
 import { readImageBytes, saveImageBytes } from '@/lib/imageStore';
 
 import { useJournalStore } from '../journalStore';
+import { usePhotoUploadStore } from './photoUploadStore';
 import { connectDrive, disconnectDrive, driveConnection, driveToken, isDriveConfigured, isExpired, type DriveConnection } from './driveAuth';
 import { backupTrip, listBackups, restoreBackup, type BackupResult, type RestoreResult } from './driveBackup';
 import { createDriveClient, isDriveError } from './driveClient';
@@ -82,11 +83,18 @@ export const useDriveStore = create<DriveState>()((set, get) => {
         if (!user) throw new Error('Sign in with Google first.');
         const outcome = await connectDrive(user);
         if (outcome.status === 'error') throw new Error(outcome.message);
-        if (outcome.status === 'connected') set({ connection: outcome.connection, needsReconnect: false });
+        if (outcome.status === 'connected') {
+          set({ connection: outcome.connection, needsReconnect: false });
+          // Queued photos (e.g. picked while the connection had expired) continue now.
+          await usePhotoUploadStore.getState().refresh();
+          void usePhotoUploadStore.getState().process();
+        }
       }),
 
     async disconnect() {
       await disconnectDrive();
+      // Queued photos stay queued on the device and continue after reconnecting.
+      await usePhotoUploadStore.getState().refresh();
       set({ connection: null, needsReconnect: false, backups: null, lastBackup: null, lastRestore: null, error: null });
     },
 

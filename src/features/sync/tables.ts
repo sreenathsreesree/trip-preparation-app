@@ -157,4 +157,5 @@ export const LOCAL_ONLY_TABLES: Readonly<Record<string, string>> = {
   journal_entries: 'Personal journal (local v7); optional backup to the user’s Google Drive, shared entries go through shared trips.',
   journal_photos: 'Journal photos (local v7); optional backup to the user’s Google Drive.',
   drive_files: 'Device record of what is already in Google Drive (local v7).',
+  drive_photo_uploads: 'Upload queue and Drive references for photos (local v8); per Google account, never synced.',
 };

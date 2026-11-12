@@ -90,6 +90,7 @@ export interface JournalRepository {
   ): Promise<{ entries: number; photos: number }>;
   driveRecord(kind: DriveKind, localId: string): Promise<DriveRecord | null>;
   saveDriveRecord(record: Omit<DriveRecord, 'syncedAt'>): Promise<void>;
+  forgetDriveRecord(kind: DriveKind, localId: string): Promise<void>;
 }
 
 export function createJournalRepository(db: Database, deps: { createId: IdFactory; now?: () => Date }): JournalRepository {
@@ -274,6 +275,10 @@ export function createJournalRepository(db: Database, deps: { createId: IdFactor
         [kind, localId],
       );
       return row ? { kind: row.local_kind, localId: row.local_id, driveFileId: row.drive_file_id, contentHash: row.content_hash, syncedAt: row.synced_at } : null;
+    },
+
+    async forgetDriveRecord(kind, localId) {
+      await db.runAsync('DELETE FROM drive_files WHERE local_kind = ? AND local_id = ?', [kind, localId]);
     },
 
     async saveDriveRecord(record) {

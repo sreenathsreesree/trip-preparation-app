@@ -42,7 +42,7 @@ own Google Drive, with restore on another device.
   entry_date (YYYY-MM-DD), title, body, mood (`great|good|okay|tired|bad` or null), visibility
   (`private|shared`, default private), position, created_at, updated_at.
 - `journal_photos` — id, entry_id (cascade), uri, caption, position, created_at.
-- `drive_files` — local_kind (`journal|photo`), local_id, drive_file_id, content_hash, synced_at;
+- `drive_files` (v7) and `drive_photo_uploads` (v8, see the correction below) — local_kind (`journal|photo`), local_id, drive_file_id, content_hash, synced_at;
   the record of what is already in Drive, so backups upload only what changed.
 
 All three are local-only in the sync registry (personal journal; Drive is its backup).
@@ -82,6 +82,32 @@ configured. Endpoints follow Drive API v3 (`files`, `upload/drive/v3/files?uploa
 project; add `.../auth/drive.file` to the OAuth consent screen; set
 `EXPO_PUBLIC_GOOGLE_DRIVE_ENABLED=true` in EAS. Until then the journal works fully and the Drive card
 says "not set up".
+
+### Phase K correction — automatic photo upload (requirements audit)
+
+Approved requirement: *photos selected in Memories upload automatically to the user's own Google
+Drive immediately after selection.*
+
+| Check | Committed Phase K (`a0eaa0f`) | After the correction |
+| --- | --- | --- |
+| Automatic per-photo upload | **Missing.** Only a manual *Back up now* for journal photos; destination Memories photos never reached Drive | Picking a photo in Memories or the journal queues it and starts the upload at once (when Drive is connected and *Upload photos automatically* is on — default on) |
+| Originals in the user's Drive, not Supabase Storage | Drive only (manual); Supabase Storage never used | Same: Drive only. No Supabase Storage bucket, no Trip Prep server sees photos |
+| Trip Prep keeps only references and metadata | `drive_files` (id, hash) for backups | `drive_photo_uploads` (local v8): Drive file id, status, attempts, timestamps per photo and Google account. A device copy is kept for offline use until the user frees space |
+| Progress, retry, offline queue/resume | Backup progress bar only; offline backup simply failed | Persistent queue; retries after 1, 2, 5, 15, 30, 60 min; after 8 tries waits for *Retry*; resumes on launch, on returning to the app, every minute while photos wait, and after reconnecting; per-photo badges and a status line |
+| Photos display in Memories from Drive | Device copies only | Device copy when present; otherwise downloaded from the user's Drive (cached), or a clear "In Drive — connect to view" |
+| Disconnect / reconnect / expiry | Reconnect prompt for backup | Expired or revoked access pauses the queue without failing anything; reconnecting continues it. Disconnect keeps the queue on the device. Photos are tied to the Google account that queued them and never go to another account's Drive |
+| Journal deletion vs Drive original | Entry deletion removed device photos; Drive copies stayed (stated) | Unchanged and explicit: removing a photo or an entry removes it from Trip Prep and forgets its upload record; **the original in Drive is never deleted by Trip Prep** |
+| No upload to Trip Prep infrastructure | None | None: the only network destination for photos is `googleapis.com` with the user's own token |
+
+Also added: *Upload N earlier photos* for photos picked before Drive was connected (never uploaded
+silently), *Free up space on this phone* (Android/iOS) for photos already in Drive, and the manual
+journal backup now skips photos the queue already uploaded (and vice versa). Tests:
+`photoUploads.test.ts` (upload into the trip folder, offline backoff and resume, expiry pause and
+resume, Drive off / full, account isolation, missing device copy, deleted Drive folder recreated,
+removal keeps the original, display from Drive and cache, earlier photos, setting).
+
+**Not verifiable here:** real uploads to Google Drive and native file reads/writes (needs the Drive
+API configured and a device).
 
 ## 4. Phase L — Shared Trips, invitations, roles, private/shared spaces
 

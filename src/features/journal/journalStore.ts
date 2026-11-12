@@ -4,6 +4,7 @@ import { getRepositories } from '@/db/repositories';
 import { toErrorMessage } from '@/lib/errors';
 import { deleteStoredImage } from '@/lib/imageStore';
 
+import { usePhotoUploadStore } from './drive/photoUploadStore';
 import type { EntryInput, JournalEntry, MemoryItem } from './model';
 
 export interface TripJournal {
@@ -58,15 +59,22 @@ export const useJournalStore = create<JournalState>()((set, get) => {
     update: (tripId, id, input) => write(tripId, (repo) => repo.update(id, input)),
     remove: (tripId, id) =>
       write(tripId, async (repo) => {
-        for (const uri of await repo.remove(id)) deleteStoredImage(uri);
+        const uris = await repo.remove(id);
+        for (const uri of uris) deleteStoredImage(uri);
+        // Forget the upload records; originals already in Google Drive are kept.
+        await usePhotoUploadStore.getState().photoRemoved(uris);
       }),
     addPhoto: (tripId, entryId, uri) =>
       write(tripId, async (repo) => {
-        await repo.addPhoto(entryId, uri);
+        const photo = await repo.addPhoto(entryId, uri);
+        // Uploads to the user's Google Drive right away when Drive is connected.
+        await usePhotoUploadStore.getState().photoSelected({ tripId, source: 'journal', sourceId: photo.id, uri });
       }),
     removePhoto: (tripId, photoId) =>
       write(tripId, async (repo) => {
-        deleteStoredImage(await repo.removePhoto(photoId));
+        const uri = await repo.removePhoto(photoId);
+        deleteStoredImage(uri);
+        if (uri) await usePhotoUploadStore.getState().photoRemoved([uri]);
       }),
   };
 });

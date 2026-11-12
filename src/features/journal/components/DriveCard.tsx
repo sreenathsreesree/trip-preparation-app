@@ -1,12 +1,14 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Button, Card, Icon, Notice, ProgressBar } from '@/components/ui';
+import { AppText, Button, Card, Icon, Notice, ProgressBar, ToggleRow } from '@/components/ui';
 import { colors, radii, spacing } from '@/theme';
 
 import { useAuthStore } from '../../auth/authStore';
 import { useDriveStatus, useDriveStore } from '../drive/driveStore';
+import { usePhotoUploadStore } from '../drive/photoUploadStore';
+import { PhotoUploadStatus } from './PhotoUploadStatus';
 
 /** Optional backup of this trip's journal to the user's own Google Drive. */
 export function DriveCard({ trip }: { trip: { id: string; name: string; startDate: string } }) {
@@ -14,6 +16,8 @@ export function DriveCard({ trip }: { trip: { id: string; name: string; startDat
   const s = useDriveStore();
   const userId = useAuthStore((a) => a.user?.id ?? null);
   const [choosing, setChoosing] = useState(false);
+  const uploads = usePhotoUploadStore();
+  const [freed, setFreed] = useState<number | null>(null);
   useEffect(() => {
     void useDriveStore.getState().refresh();
   }, [userId]);
@@ -88,6 +92,47 @@ export function DriveCard({ trip }: { trip: { id: string; name: string; startDat
           <Button label="Disconnect" variant="ghost" size="sm" disabled={!!s.busy} onPress={() => void s.disconnect()} testID="journal-drive-disconnect" />
         </View>
       )}
+
+      {status === 'connected' || status === 'expired' ? (
+        <View style={styles.uploads} testID="journal-drive-uploads">
+          <ToggleRow
+            label="Upload photos automatically"
+            description="Photos you add to Memories and the journal go to your own Google Drive as soon as you pick them."
+            icon="cloud-upload-outline"
+            value={uploads.autoUpload}
+            onChange={(on) => void uploads.setAutoUpload(on)}
+            testID="journal-drive-auto"
+          />
+          <PhotoUploadStatus tripId={trip.id} />
+          {uploads.unqueued > 0 && uploads.autoUpload ? (
+            <Button
+              label={`Upload ${uploads.unqueued} earlier ${uploads.unqueued === 1 ? 'photo' : 'photos'}`}
+              icon="cloud-upload-outline"
+              variant="secondary"
+              size="sm"
+              onPress={() => void uploads.queueExisting()}
+              style={styles.left}
+              testID="journal-drive-upload-existing"
+            />
+          ) : null}
+          {Platform.OS !== 'web' && uploads.counts.uploaded > 0 ? (
+            <Button
+              label="Free up space on this phone"
+              icon="broom"
+              variant="ghost"
+              size="sm"
+              onPress={() => void uploads.freeUpSpace().then(setFreed)}
+              style={styles.left}
+              testID="journal-drive-free"
+            />
+          ) : null}
+          {freed !== null ? (
+            <AppText variant="caption" tone="textSecondary">
+              Removed {freed} device {freed === 1 ? 'copy' : 'copies'} of photos already in your Drive. They now load from Drive.
+            </AppText>
+          ) : null}
+        </View>
+      ) : null}
 
       {s.progress ? <ProgressBar value={s.progress.total ? s.progress.done / s.progress.total : 0} accessibilityLabel="Google Drive progress" /> : null}
 
@@ -172,6 +217,10 @@ const styles = StyleSheet.create({
   list: {
     gap: spacing.sm,
     marginTop: spacing.sm,
+  },
+  uploads: {
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
   backup: {
     flexDirection: 'row',

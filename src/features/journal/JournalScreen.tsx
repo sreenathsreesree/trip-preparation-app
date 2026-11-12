@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
@@ -12,6 +11,7 @@ import { usePlannerStore, useTripPlan } from '../planner/plannerStore';
 import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
 import { DriveCard } from './components/DriveCard';
+import { DrivePhoto } from './components/DrivePhoto';
 import { useJournalStore, useTripJournal } from './journalStore';
 import { buildTimeline, MOOD_META, type JournalEntry, type MemoryItem } from './model';
 
@@ -23,7 +23,7 @@ function Photos({ uris }: { uris: string[] }) {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photos}>
       {uris.map((uri, i) => (
-        <Image key={`${uri}-${i}`} source={{ uri }} style={styles.photo} contentFit="cover" accessibilityLabel={`Photo ${i + 1}`} />
+        <DrivePhoto key={`${uri}-${i}`} uri={uri} style={styles.photo} label={`Photo ${i + 1}`} />
       ))}
     </ScrollView>
   );

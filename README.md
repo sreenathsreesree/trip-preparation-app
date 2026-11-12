@@ -336,8 +336,10 @@ creating a trip, and Home's *Continue planning*)
 
 - Day-by-day entries with title, text, mood, an optional destination and photos; a timeline grouped
   by trip day that also shows destination memories. Private, on the device, works offline.
-- Optional backup to the user's **own Google Drive** (`drive.file` scope: Trip Prep sees only the files
-  it creates) and additive restore on another device. Needs the Drive API and scope configured in
+- Photos picked in destination Memories and the journal **upload automatically to the user's own
+  Google Drive** right after selection (`drive.file` scope: Trip Prep sees only the files it creates),
+  with an offline queue, retries, per-photo status and display from Drive. Plus a full journal backup
+  and additive restore on another device. Photos never go to Trip Prep's servers. Needs the Drive API and scope configured in
   Google Cloud plus `EXPO_PUBLIC_GOOGLE_DRIVE_ENABLED=true`; until then the journal says Drive isn't
   set up. See [docs/journal-sharing-expenses.md](docs/journal-sharing-expenses.md).
 

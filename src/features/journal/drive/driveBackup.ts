@@ -42,7 +42,7 @@ export interface BackupResult {
 /** Drive's appProperties values are short; keep names well inside the limit. */
 const short = (value: string) => value.slice(0, 60);
 
-async function folder(deps: BackupDeps, localId: string, name: string, parentId: string | null, properties: Record<string, string>) {
+async function folder(deps: Pick<BackupDeps, 'client' | 'repo'>, localId: string, name: string, parentId: string | null, properties: Record<string, string>) {
   const record = await deps.repo.driveRecord('folder', localId);
   if (record) return record.driveFileId;
   const existing = (await deps.client.list({ ...properties })).find((f) => f.mimeType === FOLDER_MIME);
@@ -61,11 +61,22 @@ async function uploadOrRecreate(client: DriveClient, input: Parameters<DriveClie
   }
 }
 
+/** The trip's folder in Drive ("Trip Prep" / "<trip> (<start>)"), created once and remembered. */
+export async function ensureTripFolder(trip: { id: string; name: string; startDate: string }, deps: Pick<BackupDeps, 'client' | 'repo'>): Promise<string> {
+  const root = await folder(deps, 'root', ROOT_FOLDER_NAME, null, { kind: 'root' });
+  return folder(deps, trip.id, `${trip.name} (${trip.startDate})`, root, { kind: 'trip', tripId: trip.id, tripName: short(trip.name) });
+}
+
+/** Forgets remembered folders (after the user deleted them in Drive). */
+export async function forgetFolders(repo: JournalRepository, tripId: string): Promise<void> {
+  await repo.forgetDriveRecord('folder', tripId);
+  await repo.forgetDriveRecord('folder', 'root');
+}
+
 export async function backupTrip(trip: { id: string; name: string; startDate: string }, deps: BackupDeps): Promise<BackupResult> {
   const now = deps.now ?? (() => new Date());
   const entries = await deps.repo.list(trip.id);
-  const root = await folder(deps, 'root', ROOT_FOLDER_NAME, null, { kind: 'root' });
-  const tripFolder = await folder(deps, trip.id, `${trip.name} (${trip.startDate})`, root, { kind: 'trip', tripId: trip.id, tripName: short(trip.name) });
+  const tripFolder = await ensureTripFolder(trip, deps);
 
   const photos = entries.flatMap((e) => e.photos);
   const result: BackupResult = { photosUploaded: 0, photosSkipped: 0, journalUploaded: false, photosMissing: 0 };

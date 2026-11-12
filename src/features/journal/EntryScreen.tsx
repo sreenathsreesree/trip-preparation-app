@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -16,6 +15,7 @@ import { trailOf } from '../planner/compare';
 import { usePlannerStore, useTripPlan } from '../planner/plannerStore';
 import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
+import { DrivePhoto } from './components/DrivePhoto';
 import { useJournalStore, useTripJournal } from './journalStore';
 import { defaultEntryDate, JOURNAL_LIMITS, MOOD_META, MOODS, validateEntry, type JournalEntry, type Mood } from './model';
 
@@ -163,7 +163,7 @@ function Editor({ trip, entry }: { trip: TripSummary; entry: JournalEntry | null
         <View style={styles.photos}>
           {photos.map((p, i) => (
             <View key={p.key} style={styles.photo}>
-              <Image source={{ uri: p.uri }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={`Photo ${i + 1}`} />
+              <DrivePhoto uri={p.uri} style={StyleSheet.absoluteFill} label={`Photo ${i + 1}`} testID={`journal-photo-${i}`} />
               <View style={styles.photoAction}>
                 <IconButton icon="close" size="sm" accessibilityLabel={`Remove photo ${i + 1}`} onPress={() => void removePhoto(p.key, p.uri)} />
               </View>
@@ -179,7 +179,7 @@ function Editor({ trip, entry }: { trip: TripSummary; entry: JournalEntry | null
       </View>
 
       <AppText variant="caption" tone="textMuted">
-        Private: saved on this device only{entry ? '' : ' (and in your Google Drive if you back it up)'}.
+        Private. Photos are uploaded to your own Google Drive as soon as you add them when Drive is connected.
       </AppText>
       {touched && invalid ? <Notice tone="warning" title={invalid} testID="journal-invalid" /> : null}
       {error ? <Notice tone="danger" title={error} /> : null}
