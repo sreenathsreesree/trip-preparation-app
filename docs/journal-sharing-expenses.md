@@ -134,6 +134,40 @@ pushes shared records and pulls changes by revision when online; conflicts follo
 
 **Approval needed before it works live:** deploying the shared-trip migration to Supabase.
 
+**Built:**
+
+- Cloud: `supabase/pending/20261113090000_shared_trips.sql` (kept out of `supabase/migrations/` so the
+  deploy workflow cannot apply it). Tables `shared_trips`, `shared_trip_members`, `shared_trip_invites`
+  (SHA-256 token hashes only), `shared_journal_entries` (text only: title, body, mood, place name,
+  author name), `shared_content_tables`; RLS forced on all; membership changes only through
+  security-definer functions that check `auth.uid()`; author stamped by trigger; stale writes and
+  hard deletes refused; `shared_pull` with the G1 commit-order cursor. Independent of the G1 tables
+  (a test proves the G1 catalog is unchanged).
+- `supabase/tests/sharing.test.mjs` (17 tests, real Postgres): non-members and anonymous callers see
+  nothing; only the owner invites, renames, changes roles, removes, transfers or deletes; tokens are
+  hashed; wrong / revoked / expired / used-up invitations fail; rejoining keeps the role; viewers
+  cannot write; only the author edits an entry (not even the owner); forged authors are replaced;
+  demoted editors stop writing; removed members lose access at once; owner must transfer before
+  leaving; deleting cascades; pull pages exactly once and never leaks another trip.
+- Device (local schema **v9**): `shared_spaces`, `shared_members`, `shared_outbox`, `shared_entries`.
+  `src/features/sharing/`: `sharingApi.ts` (supabase-js client, error mapping incl. "not switched on
+  yet"), `sharingRepository.ts`, `sharedSync.ts` (membership → push queued entries, re-reading each:
+  shared → upload, private/deleted → withdraw → pull others' entries), `sharingService.ts` (share,
+  invite, join — creates a local trip — leave/stop: local trip and journal stay, entries become
+  private), `sharingStore.ts`, `SharedTripsWatcher` (launch, foreground, every 2 min).
+- Screens: *Share trip* (trip menu): what is and isn't shared, members and roles (owner can change
+  role, make owner, remove), invite links to edit or view (7 days, 10 uses, revocable), sync status,
+  leave / stop sharing; `/join/<token>` (deep link `tripprep://join/<token>`) with an explicit *Join*;
+  journal entries get a *Share with trip members* switch (only in a shared trip, owners/editors) and
+  the timeline shows members' shared entries.
+- Tests: `sharing.test.ts` (9, against an in-memory server following the SQL rules), migration list,
+  browser suite `npm run e2e:sharing` (unconfigured build: explainer, no fake controls, join links).
+
+**Limits:** shared entries are text only (photos remain in each author's own Drive; sharing Drive
+files would need Drive permissions and is deferred). Data a member already downloaded stays on their
+device after removal (it cannot be recalled). The owner cannot edit or hide another member's entry.
+Live sharing is untested end to end until the migration is deployed.
+
 ## 5. Phase M — Trip Calculator and Splitwise-style expenses
 
 - **Personal workspace** (private, per trip, local only) and **shared workspace** (per shared trip,
@@ -157,6 +191,6 @@ persistence, Android bundle export, docs and a final report.
 | Phase | Status |
 | --- | --- |
 | K | Done — journal, timeline, Drive backup/restore (Drive live once configured) |
-| L | Planned |
+| L | Done — cloud migration written and tested, **pending approval, not deployed**; app side complete |
 | M | Planned |
 | N | Planned |

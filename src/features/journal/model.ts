@@ -80,7 +80,18 @@ export interface MemoryItem {
   photos: string[];
 }
 
-export type TimelineItem = { kind: 'entry'; entry: JournalEntry } | { kind: 'memory'; memory: MemoryItem };
+/** Another member's shared entry (text only), read from a shared trip. */
+export interface OtherEntry {
+  id: string;
+  authorName: string;
+  entryDate: string;
+  title: string;
+  body: string;
+  mood: string | null;
+  placeName: string;
+}
+
+export type TimelineItem = { kind: 'entry'; entry: JournalEntry } | { kind: 'memory'; memory: MemoryItem } | { kind: 'other'; other: OtherEntry };
 
 export interface TimelineDay {
   date: string;
@@ -100,11 +111,13 @@ export function buildTimeline(
   entries: readonly JournalEntry[],
   memories: readonly MemoryItem[],
   trip: { startDate: string; endDate: string },
+  others: readonly OtherEntry[] = [],
 ): TimelineDay[] {
   const days = new Map<string, TimelineItem[]>();
   const push = (date: string, item: TimelineItem) => days.set(date, [...(days.get(date) ?? []), item]);
   for (const memory of memories) if (isIsoDate(memory.visitedOn)) push(memory.visitedOn, { kind: 'memory', memory });
   for (const entry of [...entries].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) push(entry.entryDate, { kind: 'entry', entry });
+  for (const other of others) if (isIsoDate(other.entryDate)) push(other.entryDate, { kind: 'other', other });
   const span = daysBetween(trip.startDate, trip.endDate);
   return [...days.entries()]
     .sort((a, b) => b[0].localeCompare(a[0]))
@@ -113,7 +126,7 @@ export function buildTimeline(
       return {
         date,
         dayNumber: n >= 0 && n <= span ? n + 1 : null,
-        items: [...items.filter((i) => i.kind === 'memory'), ...items.filter((i) => i.kind === 'entry')],
+        items: [...items.filter((i) => i.kind === 'memory'), ...items.filter((i) => i.kind === 'entry'), ...items.filter((i) => i.kind === 'other')],
       };
     });
 }

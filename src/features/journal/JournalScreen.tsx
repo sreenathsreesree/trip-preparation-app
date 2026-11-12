@@ -13,7 +13,8 @@ import type { TripSummary } from '../trips/model';
 import { DriveCard } from './components/DriveCard';
 import { DrivePhoto } from './components/DrivePhoto';
 import { useJournalStore, useTripJournal } from './journalStore';
-import { buildTimeline, MOOD_META, type JournalEntry, type MemoryItem } from './model';
+import { useSharingStore, useTripSharing } from '../sharing/sharingStore';
+import { buildTimeline, isMood, MOOD_META, type JournalEntry, type MemoryItem, type OtherEntry } from './model';
 
 const longDate = (iso: string) =>
   new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
@@ -50,10 +51,11 @@ function EntryCard({ trip, entry, place }: { trip: TripSummary; entry: JournalEn
           </AppText>
         ) : null}
         <Photos uris={entry.photos.map((p) => p.uri)} />
-        {place || mood ? (
+        {place || mood || entry.visibility === 'shared' ? (
           <View style={styles.tags}>
             {place ? <Tag label={place} icon="map-marker-outline" color={colors.info} /> : null}
             {mood ? <Tag label={mood.label} icon={mood.icon} /> : null}
+            {entry.visibility === 'shared' ? <Tag label="Shared" icon="account-multiple-outline" color={colors.accent} /> : null}
           </View>
         ) : null}
       </View>
@@ -95,11 +97,39 @@ function MemoryCard({ trip, memory }: { trip: TripSummary; memory: MemoryItem })
   );
 }
 
+/** Another member's shared entry (read only). */
+function OtherCard({ other }: { other: OtherEntry }) {
+  const mood = isMood(other.mood) ? MOOD_META[other.mood] : null;
+  return (
+    <Card variant="outline" testID={`journal-other-${other.title || other.id}`}>
+      <View style={styles.cardBody}>
+        <View style={styles.inline}>
+          <Icon name="account-circle-outline" size={20} color={colors.info} />
+          <AppText variant="title" style={styles.flex} numberOfLines={2}>
+            {other.title || 'Untitled'}
+          </AppText>
+        </View>
+        {other.body ? (
+          <AppText variant="body" tone="textSecondary" numberOfLines={4}>
+            {other.body}
+          </AppText>
+        ) : null}
+        <View style={styles.tags}>
+          <Tag label={`By ${other.authorName || 'a member'}`} icon="account-outline" color={colors.info} />
+          {other.placeName ? <Tag label={other.placeName} icon="map-marker-outline" /> : null}
+          {mood ? <Tag label={mood.label} icon={mood.icon} /> : null}
+        </View>
+      </View>
+    </Card>
+  );
+}
+
 function Journal({ trip }: { trip: TripSummary }) {
   const journal = useTripJournal(trip.id);
   const plan = useTripPlan(trip.id).plan;
   const names = new Map((plan?.nodes ?? []).map((n) => [n.id, n.name]));
-  const days = buildTimeline(journal.entries, journal.memories, trip);
+  const sharing = useTripSharing(trip.id);
+  const days = buildTimeline(journal.entries, journal.memories, trip, sharing.others);
   const newEntry = () => router.push({ pathname: '/trips/[tripId]/journal/entry', params: { tripId: trip.id } });
   const count = journal.entries.length;
 
@@ -138,8 +168,10 @@ function Journal({ trip }: { trip: TripSummary }) {
             {day.items.map((item) =>
               item.kind === 'entry' ? (
                 <EntryCard key={item.entry.id} trip={trip} entry={item.entry} place={item.entry.nodeId ? (names.get(item.entry.nodeId) ?? null) : null} />
-              ) : (
+              ) : item.kind === 'memory' ? (
                 <MemoryCard key={`m-${item.memory.nodeId}`} trip={trip} memory={item.memory} />
+              ) : (
+                <OtherCard key={`o-${item.other.id}`} other={item.other} />
               ),
             )}
           </View>
@@ -156,6 +188,10 @@ export function JournalScreen({ tripId }: { tripId: string | undefined }) {
       if (!tripId) return;
       void useJournalStore.getState().load(tripId);
       void usePlannerStore.getState().load(tripId);
+      void useSharingStore
+        .getState()
+        .load(tripId)
+        .then(() => useSharingStore.getState().sync(tripId));
     }, [tripId]),
   );
   if (!trip) {

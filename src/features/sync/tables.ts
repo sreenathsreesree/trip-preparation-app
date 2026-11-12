@@ -158,4 +158,9 @@ export const LOCAL_ONLY_TABLES: Readonly<Record<string, string>> = {
   journal_photos: 'Journal photos (local v7); optional backup to the user’s Google Drive.',
   drive_files: 'Device record of what is already in Google Drive (local v7).',
   drive_photo_uploads: 'Upload queue and Drive references for photos (local v8); per Google account, never synced.',
+  // Shared trips (local v9): synced through the separate shared-trip tables, not the personal sync.
+  shared_spaces: 'Link between a local trip and a cloud shared trip (local v9).',
+  shared_members: 'Members of a shared trip as last seen (local v9).',
+  shared_outbox: 'Shared journal entries waiting to be sent to the shared trip (local v9).',
+  shared_entries: 'Other members’ shared entries, cached for offline reading (local v9).',
 };

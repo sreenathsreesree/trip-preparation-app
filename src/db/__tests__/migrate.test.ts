@@ -25,6 +25,7 @@ describe('migrate', () => {
         'destination_companion',
         'journey_journal',
         'drive_photo_uploads',
+        'shared_trips',
       ],
     });
     expect(await getSchemaVersion(db)).toBe(migrations.length);
@@ -53,6 +54,10 @@ describe('migrate', () => {
       'plan_node_profiles',
       'plan_node_tasks',
       'purchase_items',
+      'shared_entries',
+      'shared_members',
+      'shared_outbox',
+      'shared_spaces',
       'trip_destinations',
       'trip_luggage',
       'trip_navigation_items',

@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { Screen } from '@/components/layout/Screen';
 import { ScreenHeader } from '@/components/layout/ScreenHeader';
-import { AppText, Button, IconButton, LoadingState, Notice, OptionTile, TextField } from '@/components/ui';
+import { AppText, Button, IconButton, LoadingState, Notice, OptionTile, TextField, ToggleRow } from '@/components/ui';
 import { confirmAction } from '@/lib/confirm';
 import { toErrorMessage } from '@/lib/errors';
 import { successFeedback } from '@/lib/haptics';
@@ -13,6 +13,7 @@ import { colors, radii, spacing } from '@/theme';
 
 import { trailOf } from '../planner/compare';
 import { usePlannerStore, useTripPlan } from '../planner/plannerStore';
+import { useTripSharing } from '../sharing/sharingStore';
 import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
 import { DrivePhoto } from './components/DrivePhoto';
@@ -30,6 +31,9 @@ function Editor({ trip, entry }: { trip: TripSummary; entry: JournalEntry | null
   const [title, setTitle] = useState(entry?.title ?? '');
   const [body, setBody] = useState(entry?.body ?? '');
   const [mood, setMood] = useState<Mood | null>(entry?.mood ?? null);
+  const sharing = useTripSharing(trip.id);
+  const canShare = sharing.space?.role === 'owner' || sharing.space?.role === 'editor';
+  const [shared, setShared] = useState(entry?.visibility === 'shared');
   const [nodeId, setNodeId] = useState<string | null>(entry?.nodeId ?? null);
   /** Photos picked for a new entry, attached when it is saved. */
   const [pending, setPending] = useState<string[]>([]);
@@ -48,11 +52,14 @@ function Editor({ trip, entry }: { trip: TripSummary; entry: JournalEntry | null
     setError(null);
     try {
       const store = useJournalStore.getState();
+      const visibility = canShare && shared ? 'shared' : 'private';
       if (entry) {
         await store.update(trip.id, entry.id, input);
+        if (entry.visibility !== visibility && (canShare || visibility === 'private')) await store.setVisibility(trip.id, entry.id, visibility);
       } else {
         const created = await store.create(trip.id, input);
         for (const uri of pending) await store.addPhoto(trip.id, created.id, uri);
+        if (visibility === 'shared') await store.setVisibility(trip.id, created.id, 'shared');
       }
       successFeedback();
       router.back();
@@ -178,8 +185,18 @@ function Editor({ trip, entry }: { trip: TripSummary; entry: JournalEntry | null
         ) : null}
       </View>
 
-      <AppText variant="caption" tone="textMuted">
-        Private. Photos are uploaded to your own Google Drive as soon as you add them when Drive is connected.
+      {canShare ? (
+        <ToggleRow
+          label="Share with trip members"
+          description="Members see the title, text, mood and place. Photos stay in your own Google Drive."
+          icon="account-multiple-outline"
+          value={shared}
+          onChange={setShared}
+          testID="journal-share-toggle"
+        />
+      ) : null}
+      <AppText variant="caption" tone="textMuted" testID="journal-privacy">
+        {canShare && shared ? 'Shared with this trip’s members.' : 'Private: only you can see this entry.'} Photos are uploaded to your own Google Drive as soon as you add them when Drive is connected.
       </AppText>
       {touched && invalid ? <Notice tone="warning" title={invalid} testID="journal-invalid" /> : null}
       {error ? <Notice tone="danger" title={error} /> : null}

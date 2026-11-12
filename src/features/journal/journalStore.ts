@@ -5,7 +5,8 @@ import { toErrorMessage } from '@/lib/errors';
 import { deleteStoredImage } from '@/lib/imageStore';
 
 import { usePhotoUploadStore } from './drive/photoUploadStore';
-import type { EntryInput, JournalEntry, MemoryItem } from './model';
+import { useSharingStore } from '../sharing/sharingStore';
+import type { EntryInput, JournalEntry, MemoryItem, Visibility } from './model';
 
 export interface TripJournal {
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -24,6 +25,8 @@ interface JournalState {
   remove: (tripId: string, id: string) => Promise<void>;
   addPhoto: (tripId: string, entryId: string, uri: string) => Promise<void>;
   removePhoto: (tripId: string, photoId: string) => Promise<void>;
+  /** Private (default) or shared with the trip's members; shared entries are sent as text only. */
+  setVisibility: (tripId: string, id: string, visibility: Visibility) => Promise<void>;
 }
 
 export const useJournalStore = create<JournalState>()((set, get) => {
@@ -56,10 +59,23 @@ export const useJournalStore = create<JournalState>()((set, get) => {
       }
     },
     create: (tripId, input) => write(tripId, (repo) => repo.create(tripId, input)),
-    update: (tripId, id, input) => write(tripId, (repo) => repo.update(id, input)),
+    update: (tripId, id, input) =>
+      write(tripId, async (repo) => {
+        const entry = await repo.update(id, input);
+        if (entry.visibility === 'shared') await useSharingStore.getState().entryChanged(tripId, id);
+        return entry;
+      }),
+    setVisibility: (tripId, id, visibility) =>
+      write(tripId, async (repo) => {
+        await repo.setVisibility(id, visibility);
+        // Shared → its text goes to the trip's members; private → the shared copy is withdrawn.
+        await useSharingStore.getState().entryChanged(tripId, id);
+      }),
     remove: (tripId, id) =>
       write(tripId, async (repo) => {
+        const wasShared = (await repo.get(id))?.visibility === 'shared';
         const uris = await repo.remove(id);
+        if (wasShared) await useSharingStore.getState().entryChanged(tripId, id);
         for (const uri of uris) deleteStoredImage(uri);
         // Forget the upload records; originals already in Google Drive are kept.
         await usePhotoUploadStore.getState().photoRemoved(uris);

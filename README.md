@@ -43,6 +43,7 @@ npm start          # Expo dev server — press i (iOS), a (Android) or w (web)
 | `npm run e2e:auth` | Account routes in a build without Supabase configuration: guest-only, no sign-in control, protected account screen (same requirements) |
 | `npm run e2e:planner-reliability` | Planner offline (network cut) and with a 100-place plan, plus rapid taps (same requirements) |
 | `npm run e2e:planner-dnd` | Drag-and-drop tree, route and Navigation, journey legs, visited status, arrival permission denied, restart persistence (same requirements) |
+| `npm run e2e:sharing` | Shared-trip screens in a build without the cloud: explainer, honest unavailable states, private journal entries, join links (same requirements) |
 | `npm run e2e:journal` | Journey Journal: entries with mood, place and photos, timeline with destination memories, validation, offline, delete confirmation, restart persistence (same requirements) |
 | `npm run e2e:destination` | Destination page tabs, location, notices, tasks, notes, memories, quick actions, saved & compare, restart persistence (same requirements) |
 | `npm run doctor` | `expo-doctor` (needs network access to Expo's API) |
@@ -342,6 +343,15 @@ creating a trip, and Home's *Continue planning*)
   and additive restore on another device. Photos never go to Trip Prep's servers. Needs the Drive API and scope configured in
   Google Cloud plus `EXPO_PUBLIC_GOOGLE_DRIVE_ENABLED=true`; until then the journal says Drive isn't
   set up. See [docs/journal-sharing-expenses.md](docs/journal-sharing-expenses.md).
+
+**Shared trips** (trip menu → *Share trip*; needs sign-in and the pending cloud migration)
+
+- Invite people by link to edit or view; owner manages roles, removes members, transfers ownership.
+- Private by default: members see only the trip's name and dates, the member list and journal
+  entries you switch to *Shared* (text only). Everything else stays on your device; photos stay in
+  your Google Drive. Enforced by the database (Row Level Security and checked functions).
+- Until the migration in `supabase/pending/` is approved and deployed, the app says sharing isn't
+  available.
 
 ## In progress — Google sign-in & cloud sync (Milestone G)
 

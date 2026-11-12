@@ -21,6 +21,7 @@ import { ErrorState } from '@/components/ui';
 import { getDatabase } from '@/db/client';
 import { useAuthStore } from '@/features/auth/authStore';
 import { PhotoUploadWatcher } from '@/features/journal/components/PhotoUploadWatcher';
+import { SharedTripsWatcher } from '@/features/sharing/SharedTripsWatcher';
 import { ArrivalWatcher } from '@/features/planner/components/ArrivalWatcher';
 import { colors } from '@/theme';
 import { navigationTheme } from '@/theme/navigation';
@@ -128,6 +129,7 @@ export default function RootLayout() {
           </Stack>
           <ArrivalWatcher />
           <PhotoUploadWatcher />
+          <SharedTripsWatcher />
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

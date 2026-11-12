@@ -58,7 +58,7 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:cloud": "node --test --no-warnings supabase/tests/cloud.test.mjs",
+    "test:cloud": "node --test --no-warnings supabase/tests/cloud.test.mjs supabase/tests/sharing.test.mjs",
     "supabase:bundle": "node scripts/build-supabase-bundle.mjs",
     "supabase:verify": "node --no-warnings scripts/verify-supabase.mjs",
     "doctor": "npx expo-doctor",
@@ -73,6 +73,7 @@
     "e2e:planner-dnd": "node e2e/web-planner-dnd.mjs",
     "e2e:destination": "node e2e/web-destination.mjs",
     "e2e:journal": "node e2e/web-journal.mjs",
+    "e2e:sharing": "node e2e/web-sharing.mjs",
     "build:android:dev": "npx eas-cli@latest build --platform android --profile development",
     "build:android:preview": "npx eas-cli@latest build --platform android --profile preview"
   },

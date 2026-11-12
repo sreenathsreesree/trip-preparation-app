@@ -70,6 +70,13 @@ export function useTripActions(trip: TripSummary | undefined, options: TripActio
         onPress: () => router.push({ pathname: '/trips/[tripId]/plan', params: { tripId: trip.id } }),
       },
       {
+        key: 'share',
+        label: 'Share trip',
+        icon: 'account-multiple-plus-outline',
+        description: 'Invite people; you choose what they see',
+        onPress: () => router.push({ pathname: '/trips/[tripId]/share', params: { tripId: trip.id } }),
+      },
+      {
         key: 'journal',
         label: 'Journey journal',
         icon: 'book-open-page-variant-outline',
