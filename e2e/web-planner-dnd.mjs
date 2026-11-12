@@ -4,7 +4,7 @@
 //   npx expo export --platform web --output-dir dist && npm run e2e:planner-dnd
 //   SCREENSHOT_DIR=/tmp/shots npm run e2e:planner-dnd
 
-import { BASE, byId, check, iso, launch, run, setStep, shot, text, waitText } from './harness.mjs';
+import { BASE, byId, check, dragElement, dragRouteStop, iso, launch, plannerTab, run, setStep, shot, text, waitText } from './harness.mjs';
 
 const now = new Date();
 const day = (d) => new Date(now.getFullYear(), now.getMonth() + 1, d);
@@ -47,25 +47,6 @@ export async function dragRow(page, scope, from, to, position) {
   await dragElement(page, handle, target, position);
 }
 
-export async function dragElement(page, handle, target, position) {
-  // Bring the handle to the middle of the screen (away from the auto-scroll edges).
-  await handle.evaluate((el) => el.scrollIntoView({ block: 'center' }));
-  await page.waitForTimeout(200);
-  const hb = await handle.boundingBox();
-  const tb = await target.boundingBox();
-  if (!hb || !tb) throw new Error('drag: element not visible');
-  const fraction = position === 'before' ? 0.1 : position === 'inside' ? 0.5 : 0.92;
-  const x = hb.x + hb.width / 2;
-  await page.mouse.move(x, hb.y + hb.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(x, hb.y + hb.height / 2 + 6, { steps: 3 });
-  await page.mouse.move(x, tb.y + tb.height * fraction, { steps: 14 });
-  await page.waitForTimeout(150);
-  if (process.env.DEBUG_DRAG) await page.screenshot({ path: `${process.env.DEBUG_DRAG}/drag-${Date.now()}.png` });
-  await page.mouse.up();
-  await page.waitForTimeout(500);
-}
-
 /** Visible order of rows in a tree, with their indentation (left offset) to show nesting. */
 export async function treeOrder(page, scope) {
   return page.evaluate((id) => {
@@ -80,8 +61,10 @@ export async function treeOrder(page, scope) {
 
 /** Route stop names in order. */
 export async function routeOrder(page, trip) {
-  await page.goto(`${trip}/plan/route`);
-  await byId(page, 'plan-route').waitFor();
+  if (trip) {
+    await page.goto(`${trip}/plan/route`);
+    await byId(page, 'plan-route').waitFor();
+  }
   await page.waitForTimeout(200);
   return page.evaluate(() =>
     [...document.querySelectorAll('[data-testid^="route-stop-"]')].map((el) => el.getAttribute('data-testid').slice('route-stop-'.length)),
@@ -143,6 +126,31 @@ await run('Planner drag-and-drop test', async () => {
   setStep('route is untouched by hierarchy changes');
   check(JSON.stringify(await routeOrder(page, trip)) === JSON.stringify(routeBefore), `route stops and their order are unchanged (${routeBefore.join(', ')})`);
 
+  setStep('route: drag to reorder, stops renumber, hierarchy untouched');
+  await page.goto(`${trip}/plan`);
+  await byId(page, 'planner-tree').waitFor();
+  const treeBeforeRoute = await treeOrder(page, 'planner-tree');
+  await plannerTab(page, 'route');
+  for (const name of ['Munnar', 'Tea Museum']) await byId(page, `route-add-${name}`).click();
+  await page.waitForTimeout(300);
+  const initialRoute = await routeOrder(page);
+  check(initialRoute.length === 4, `four stops (${initialRoute.join(', ')})`);
+  const last = initialRoute[3];
+  await dragRouteStop(page, last, initialRoute[0], 'before');
+  const reordered = await routeOrder(page);
+  check(reordered[0] === last && reordered.length === 4, `dragged the last stop to the top (${reordered.join(', ')})`);
+  check((await text(page, `route-number-${last}`)) === '1', 'stops renumber after a move');
+  await dragRouteStop(page, reordered[0], reordered[2], 'after');
+  const reordered2 = await routeOrder(page);
+  check(reordered2[2] === last, `moved it back down (${reordered2.join(', ')})`);
+  await byId(page, `route-remove-${reordered2[3]}`).click();
+  await page.waitForTimeout(300);
+  const finalRoute = await routeOrder(page);
+  check(finalRoute.length === 3, 'a stop can still be removed');
+  await shot(page, 'dnd-03-route');
+  await plannerTab(page, 'destinations');
+  check(JSON.stringify(await treeOrder(page, 'planner-tree')) === JSON.stringify(treeBeforeRoute), 'reordering the route never changes the hierarchy');
+
   setStep('hierarchy persists after a restart');
   const saved = await (async () => {
     await page.goto(`${trip}/plan`);
@@ -155,6 +163,7 @@ await run('Planner drag-and-drop test', async () => {
   await byId(page, 'planner-tree').waitFor({ timeout: 60_000 });
   await page.waitForTimeout(300);
   check(JSON.stringify(await treeOrder(page, 'planner-tree')) === JSON.stringify(saved), 'same hierarchy after restart');
+  check(JSON.stringify(await routeOrder(page, trip)) === JSON.stringify(finalRoute), 'same route order after restart');
 
   check(errors.length === 0, `no uncaught page errors (${errors.join('; ') || 'none'})`);
 });

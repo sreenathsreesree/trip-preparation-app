@@ -160,3 +160,37 @@ export async function plannerMove(page, name, direction) {
   await byId(page, `sheet-action-${direction}`).click();
   await byId(page, 'plan-node-actions').waitFor({ state: 'hidden' });
 }
+
+/** Switches the destination planner to a tab ('destinations', 'route' or 'navigation'). */
+export async function plannerTab(page, tab) {
+  await byId(page, 'planner-screen').getByTestId(`segment-${tab}`).click();
+  await byId(page, tab === 'route' ? 'plan-route' : tab === 'navigation' ? 'plan-navigation' : 'planner-add').waitFor();
+}
+
+/**
+ * Drags `handle` onto `target`: 'before' (top of the row), 'inside' (middle) or 'after' (bottom).
+ * The handle is first brought to the middle of the screen, away from the auto-scroll edges.
+ */
+export async function dragElement(page, handle, target, position) {
+  await handle.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await page.waitForTimeout(200);
+  const hb = await handle.boundingBox();
+  const tb = await target.boundingBox();
+  if (!hb || !tb) throw new Error('drag: element not visible');
+  const fraction = position === 'before' ? 0.1 : position === 'inside' ? 0.5 : 0.92;
+  const x = hb.x + hb.width / 2;
+  await page.mouse.move(x, hb.y + hb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(x, hb.y + hb.height / 2 + 6, { steps: 3 });
+  await page.mouse.move(x, tb.y + tb.height * fraction, { steps: 14 });
+  await page.waitForTimeout(150);
+  if (process.env.DEBUG_DRAG) await page.screenshot({ path: `${process.env.DEBUG_DRAG}/drag-${Date.now()}.png` });
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+}
+
+/** Drags a route stop onto another stop ('before' or 'after'). */
+export async function dragRouteStop(page, from, to, position) {
+  const handle = byId(page, `route-stop-${from}`).locator('[data-testid^="drag-"]');
+  await dragElement(page, handle, byId(page, `route-stop-${to}`), position);
+}

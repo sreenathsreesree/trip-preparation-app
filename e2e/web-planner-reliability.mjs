@@ -11,7 +11,7 @@
 // 2. Scale: a 100-place plan (10 main destinations x 9 places): expand /
 //    collapse, scrolling, action sheets, reordering and the small-screen layout.
 
-import { BASE, byId, check, iso, launch, plannerAdd, run, setStep, shot, text, waitText, within, plannerMove } from './harness.mjs';
+import { BASE, byId, check, iso, launch, plannerAdd, run, setStep, shot, text, waitText, within, plannerMove, plannerTab, dragRouteStop } from './harness.mjs';
 
 const now = new Date();
 const day = (d) => new Date(now.getFullYear(), now.getMonth() + 1, d);
@@ -62,9 +62,8 @@ await run('Planner reliability test', async () => {
   await byId(page, 'sheet-action-move').click();
   await byId(page, 'plan-move').waitFor();
   await goBack(page);
-  await byId(page, 'planner-route').click();
-  await byId(page, 'plan-route').waitFor();
-  await goBack(page);
+  await plannerTab(page, 'route'); // Route is a tab of the planner (no navigation)
+  await plannerTab(page, 'destinations');
   await byId(page, 'planner-screen').waitFor();
   await goBack(page); // no history: goes Home inside the app (no reload)
   await byId(page, 'home-continue-planning').waitFor();
@@ -106,10 +105,10 @@ await run('Planner reliability test', async () => {
   check(true, 'promoted and nested offline');
 
   await plannerMove(page, 'Kaza', 'up');
-  await byId(page, 'planner-route').click();
+  await plannerTab(page, 'route');
   await byId(page, 'plan-route').waitFor();
   await byId(page, 'route-add-Key Monastery').click();
-  await byId(page, 'route-move-Key Monastery-up').click();
+  await dragRouteStop(page, 'Key Monastery', 'Chandratal', 'before'); // one place up
   await byId(page, 'route-remove-Kaza').click();
   await page.waitForTimeout(300);
   const stops = await page.locator('[data-testid^="route-stop-"]').evaluateAll((els) => els.map((e) => e.dataset.testid));
@@ -119,7 +118,7 @@ await run('Planner reliability test', async () => {
       JSON.stringify(['route-stop-Manali', 'route-stop-Old Manali', 'route-stop-Key Monastery', 'route-stop-Chandratal']),
     `route edited offline (${stops.join(', ')})`,
   );
-  await goBack(page);
+  await plannerTab(page, 'destinations');
   await byId(page, 'plan-more-Old Manali').click();
   await byId(page, 'sheet-action-remove').click();
   await byId(page, 'sheet-action-keep-children').click();

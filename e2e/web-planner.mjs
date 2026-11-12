@@ -10,7 +10,7 @@
 // explained route impact, rename from the place screen, use the Home and
 // trip-menu entry points, then restart the browser to check persistence.
 
-import { BASE, byId, check, iso, launch, plannerAdd, plannerMove, run, setStep, shot, text, waitText, within } from './harness.mjs';
+import { BASE, byId, check, iso, launch, plannerAdd, plannerMove, dragRouteStop, run, setStep, shot, text, waitText, within } from './harness.mjs';
 
 const now = new Date();
 const day = (d) => new Date(now.getFullYear(), now.getMonth() + 1, d);
@@ -139,7 +139,7 @@ await run('Planner test', async () => {
   );
 
   setStep('manage the route separately');
-  await byId(page, 'route-move-Athirappilly Waterfalls-up').click();
+  await dragRouteStop(page, 'Athirappilly Waterfalls', 'Munnar', 'before');
   await byId(page, 'route-add-Echo Point').click();
   await byId(page, 'route-remove-Munnar').click();
   await page.waitForTimeout(300);
