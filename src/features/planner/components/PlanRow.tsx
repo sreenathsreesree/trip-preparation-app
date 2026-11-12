@@ -1,26 +1,29 @@
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Icon, IconButton, ReorderControls } from '@/components/ui';
+import { AppText, Icon, IconButton } from '@/components/ui';
 import { colors, radii, spacing } from '@/theme';
 
 import type { PlanTreeNode } from '../model';
 
 /** Indentation stops growing after a few levels so deep trees stay readable on phones. */
-const INDENT = 16;
-const MAX_VISUAL_DEPTH = 5;
+export const PLAN_INDENT = 16;
+export const MAX_VISUAL_DEPTH = 5;
+export const indentFor = (depth: number) => Math.min(depth, MAX_VISUAL_DEPTH) * PLAN_INDENT;
 
 export function PlanRow({
   item,
   descendants,
   expanded,
   routeNumber,
-  reorder,
-  canMoveUp,
-  canMoveDown,
+  visited = false,
+  inNavigation = false,
+  handle,
+  highlight = false,
+  dimmed = false,
   onToggle,
   onOpen,
   onMore,
-  onMove,
 }: {
   item: PlanTreeNode;
   /** Places nested anywhere below this one. */
@@ -28,59 +31,69 @@ export function PlanRow({
   expanded: boolean;
   /** 1-based position in the route, or null when not a route stop. */
   routeNumber: number | null;
-  reorder: boolean;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
+  visited?: boolean;
+  inNavigation?: boolean;
+  /** Drag handle (from DraggableList). */
+  handle?: ReactNode;
+  /** Shown as the parent a dragged place would be dropped into. */
+  highlight?: boolean;
+  /** Another place is being dragged. */
+  dimmed?: boolean;
   onToggle: () => void;
   onOpen: () => void;
   onMore: () => void;
-  onMove: (direction: -1 | 1) => void;
 }) {
   const { node, depth } = item;
   const main = depth === 0;
-  const inside = descendants;
   const meta = [
-    inside > 0 ? `${inside} ${inside === 1 ? 'place' : 'places'} inside` : '',
+    descendants > 0 ? `${descendants} ${descendants === 1 ? 'place' : 'places'} inside` : '',
+    visited ? 'Visited' : '',
     node.place?.formattedAddress ?? '',
   ]
     .filter(Boolean)
     .join(' · ');
-  const visualDepth = Math.min(depth, MAX_VISUAL_DEPTH);
 
   return (
     <View
-      style={[styles.row, main ? styles.main : styles.nested, { marginLeft: visualDepth * INDENT }]}
+      style={[
+        styles.row,
+        main ? styles.main : styles.nested,
+        { marginLeft: indentFor(depth) },
+        highlight && styles.highlight,
+        dimmed && styles.dimmed,
+      ]}
       testID={`plan-row-${node.name}`}
     >
-      {item.children.length > 0 ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`${expanded ? 'Collapse' : 'Expand'} ${node.name}`}
-          accessibilityState={{ expanded }}
-          onPress={onToggle}
-          hitSlop={4}
-          style={styles.toggle}
-          testID={`plan-toggle-${node.name}`}
-        >
-          <Icon name={expanded ? 'chevron-down' : 'chevron-right'} tone="textSecondary" />
-        </Pressable>
-      ) : (
-        <View style={styles.toggle}>
-          <Icon name="circle-small" tone="textMuted" />
-        </View>
-      )}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${node.name}${main ? ', main destination' : ''}${routeNumber ? `, route stop ${routeNumber}` : ''}. Open`}
+        accessibilityLabel={`${expanded ? 'Collapse' : 'Expand'} ${node.name}`}
+        accessibilityState={{ expanded }}
+        onPress={onToggle}
+        hitSlop={4}
+        style={styles.toggle}
+        testID={`plan-toggle-${node.name}`}
+      >
+        <Icon
+          name={expanded ? 'chevron-down' : 'chevron-right'}
+          tone={item.children.length > 0 ? 'textSecondary' : 'textMuted'}
+        />
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${node.name}${main ? ', main destination' : ''}${routeNumber ? `, route stop ${routeNumber}` : ''}${visited ? ', visited' : ''}. Open`}
         onPress={onOpen}
         style={({ pressed }) => [styles.body, pressed && styles.pressed]}
         testID={`plan-open-${node.name}`}
       >
-        <View style={[styles.icon, main ? styles.iconMain : styles.iconNested]}>
-          <Icon name={main ? 'map-marker-radius' : 'map-marker-outline'} size={main ? 20 : 18} tone={main ? 'accent' : 'info'} />
+        <View style={[styles.icon, main ? styles.iconMain : styles.iconNested, visited && styles.iconVisited]}>
+          <Icon
+            name={visited ? 'check' : main ? 'map-marker-radius' : 'map-marker-outline'}
+            size={main ? 20 : 18}
+            tone={visited ? 'textOnAccent' : main ? 'accent' : 'info'}
+          />
         </View>
         <View style={styles.text}>
-          <AppText variant={main ? 'bodyStrong' : 'body'} numberOfLines={2}>
+          <AppText variant={main ? 'bodyStrong' : 'body'} tone={visited ? 'textSecondary' : 'textPrimary'} numberOfLines={2}>
             {node.name}
           </AppText>
           {meta ? (
@@ -89,6 +102,7 @@ export function PlanRow({
             </AppText>
           ) : null}
         </View>
+        {inNavigation ? <Icon name="navigation-variant-outline" size={16} tone="info" /> : null}
         {routeNumber ? (
           <View style={styles.stop} accessibilityElementsHidden>
             <AppText variant="captionStrong" tone="textOnAccent">
@@ -97,18 +111,27 @@ export function PlanRow({
           </View>
         ) : null}
       </Pressable>
-      {reorder ? (
-        <ReorderControls
-          label={node.name}
-          canMoveUp={canMoveUp}
-          canMoveDown={canMoveDown}
-          onMove={onMove}
-          testID={`plan-move-${node.name}`}
-        />
-      ) : (
-        <IconButton icon="dots-vertical" accessibilityLabel={`${node.name} actions`} onPress={onMore} testID={`plan-more-${node.name}`} />
-      )}
+      <IconButton icon="dots-vertical" variant="plain" size="sm" accessibilityLabel={`${node.name} actions`} onPress={onMore} testID={`plan-more-${node.name}`} />
+      {handle}
     </View>
+  );
+}
+
+/** "Add place" line at the end of an expanded place's children. */
+export function AddPlaceRow({ parentName, depth, onPress }: { parentName: string; depth: number; onPress: () => void }) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Add a place in ${parentName}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.add, { marginLeft: indentFor(depth) }, pressed && styles.pressed]}
+      testID={`plan-add-in-${parentName}`}
+    >
+      <Icon name="plus" size={18} tone="accent" />
+      <AppText variant="caption" tone="accent" numberOfLines={1} style={styles.text}>
+        Add place in {parentName}
+      </AppText>
+    </Pressable>
   );
 }
 
@@ -117,7 +140,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 56,
-    paddingRight: spacing.xs,
     borderRadius: radii.md,
     borderWidth: 1,
   },
@@ -128,6 +150,14 @@ const styles = StyleSheet.create({
   nested: {
     borderColor: colors.border,
     backgroundColor: colors.surface,
+  },
+  highlight: {
+    borderColor: colors.accent,
+    borderWidth: 2,
+    backgroundColor: colors.accentSoft,
+  },
+  dimmed: {
+    opacity: 0.85,
   },
   toggle: {
     width: 36,
@@ -159,6 +189,9 @@ const styles = StyleSheet.create({
   iconNested: {
     backgroundColor: colors.infoSoft,
   },
+  iconVisited: {
+    backgroundColor: colors.accent,
+  },
   text: {
     flex: 1,
     minWidth: 0,
@@ -172,5 +205,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.accent,
+  },
+  add: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.accentBorder,
   },
 });

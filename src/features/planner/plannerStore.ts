@@ -5,6 +5,8 @@ import { toErrorMessage } from '@/lib/errors';
 
 import type { LoadStatus } from '../trips/tripsStore';
 import { useTripsStore } from '../trips/tripsStore';
+import type { ProfilePatch } from './companion';
+import type { TripCompanion } from './companionRepository';
 import type { Place, TripPlan } from './model';
 import type { AddNodeResult, NewNodeInput } from './plannerRepository';
 
@@ -12,9 +14,11 @@ export interface TripPlanState {
   status: LoadStatus;
   error: string | null;
   plan: TripPlan | null;
+  /** Visit status, Navigation list and preparation counts for the trip's places. */
+  companion: TripCompanion | null;
 }
 
-const EMPTY: TripPlanState = { status: 'idle', error: null, plan: null };
+const EMPTY: TripPlanState = { status: 'idle', error: null, plan: null, companion: null };
 
 interface PlannerStoreState {
   byTrip: Record<string, TripPlanState>;
@@ -30,6 +34,12 @@ interface PlannerStoreState {
   removeRouteStop: (tripId: string, nodeId: string) => Promise<void>;
   moveRouteStop: (tripId: string, nodeId: string, toIndex: number) => Promise<void>;
   savedPlaces: () => Promise<Place[]>;
+  /** Explicit user action only (button or a confirmed arrival prompt). */
+  setVisited: (tripId: string, nodeId: string, visited: boolean) => Promise<void>;
+  updateProfile: (tripId: string, nodeId: string, patch: ProfilePatch) => Promise<void>;
+  addToNavigation: (tripId: string, nodeId: string) => Promise<'added' | 'duplicate'>;
+  removeFromNavigation: (tripId: string, itemId: string) => Promise<void>;
+  moveNavigation: (tripId: string, itemId: string, target: { parentId: string | null; index?: number }) => Promise<void>;
   markOpened: (tripId: string) => Promise<void>;
   loadLastOpened: () => Promise<void>;
 }
@@ -39,8 +49,9 @@ export const usePlannerStore = create<PlannerStoreState>()((set, get) => {
     set((state) => ({ byTrip: { ...state.byTrip, [tripId]: { ...(state.byTrip[tripId] ?? EMPTY), ...patch } } }));
 
   async function refresh(tripId: string) {
-    const { planner } = await getRepositories();
-    put(tripId, { status: 'ready', error: null, plan: await planner.load(tripId) });
+    const { planner, companion } = await getRepositories();
+    const [plan, extras] = await Promise.all([planner.load(tripId), companion.trip(tripId)]);
+    put(tripId, { status: 'ready', error: null, plan, companion: extras });
   }
 
   /**
@@ -84,6 +95,19 @@ export const usePlannerStore = create<PlannerStoreState>()((set, get) => {
     removeRouteStop: (tripId, nodeId) => write(tripId, ({ planner }) => planner.removeRouteStop(tripId, nodeId), false),
     moveRouteStop: (tripId, nodeId, toIndex) =>
       write(tripId, ({ planner }) => planner.moveRouteStop(tripId, nodeId, toIndex), false),
+
+    setVisited: (tripId, nodeId, visited) =>
+      write(tripId, async ({ companion }) => {
+        await companion.setVisited(nodeId, visited);
+      }, false),
+    updateProfile: (tripId, nodeId, patch) =>
+      write(tripId, async ({ companion }) => {
+        await companion.updateProfile(nodeId, patch);
+      }, false),
+    addToNavigation: (tripId, nodeId) =>
+      write(tripId, async ({ companion }) => (await companion.addToNavigation(tripId, nodeId)).status, false),
+    removeFromNavigation: (tripId, itemId) => write(tripId, ({ companion }) => companion.removeFromNavigation(itemId), false),
+    moveNavigation: (tripId, itemId, target) => write(tripId, ({ companion }) => companion.moveNavigation(itemId, target), false),
 
     async savedPlaces() {
       const { planner } = await getRepositories();

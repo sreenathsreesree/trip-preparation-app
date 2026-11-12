@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, Ref } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
   ScrollView,
+  type ScrollViewInstance,
   StyleSheet,
   View,
   type StyleProp,
@@ -25,6 +26,11 @@ export interface ScreenProps {
   onRefresh?: () => void;
   refreshing?: boolean;
   testID?: string;
+  /** Access to the scroll view (e.g. auto-scrolling while dragging). */
+  scrollRef?: Ref<ScrollViewInstance>;
+  onScroll?: (offsetY: number) => void;
+  /** Turn scrolling off temporarily (e.g. while a row is being dragged). */
+  scrollEnabled?: boolean;
 }
 
 /** Standard screen frame: safe areas, background, content width and keyboard handling. */
@@ -36,6 +42,9 @@ export function Screen({
   contentStyle,
   onRefresh,
   refreshing = false,
+  scrollRef,
+  onScroll,
+  scrollEnabled = true,
   testID,
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
@@ -43,6 +52,10 @@ export function Screen({
 
   const body = scroll ? (
     <ScrollView
+      ref={scrollRef}
+      scrollEnabled={scrollEnabled}
+      onScroll={onScroll ? (event) => onScroll(event.nativeEvent.contentOffset.y) : undefined}
+      scrollEventThrottle={onScroll ? 16 : undefined}
       style={styles.flex}
       contentContainerStyle={[styles.content, { paddingBottom: spacing.huge + bottomPadding }, contentStyle]}
       keyboardShouldPersistTaps="handled"

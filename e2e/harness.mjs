@@ -153,3 +153,10 @@ export async function plannerAdd(page, name, { parent, toggleRoute = false } = {
   await byId(page, 'planner-screen').waitFor();
   await byId(page, `plan-row-${name}`).waitFor();
 }
+
+/** Moves a planner place up or down among its siblings through its action menu (accessible path). */
+export async function plannerMove(page, name, direction) {
+  await byId(page, `plan-more-${name}`).click();
+  await byId(page, `sheet-action-${direction}`).click();
+  await byId(page, 'plan-node-actions').waitFor({ state: 'hidden' });
+}

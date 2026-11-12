@@ -24,8 +24,8 @@ import { placeLink } from '../places/mapsLinks';
 import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
 import { useNodeActions } from './components/NodeActions';
-import { PlanRow } from './components/PlanRow';
-import { ancestorIds, buildTree, countDescendants, PLANNER_LIMITS, validateNodeName, type PlanNode, type PlanTreeNode } from './model';
+import { PlanTree } from './components/PlanTree';
+import { ancestorIds, buildTree, PLANNER_LIMITS, validateNodeName, type PlanNode, type PlanTreeNode } from './model';
 import { usePlannerStore, useTripPlan } from './plannerStore';
 
 function findItem(tree: readonly PlanTreeNode[], id: string): PlanTreeNode | null {
@@ -207,24 +207,22 @@ function Details({ trip, node }: { trip: TripSummary; node: PlanNode }) {
           />
         </View>
         {item && item.children.length > 0 ? (
-          item.children.map((child) => (
-            <PlanRow
-              key={child.node.id}
-              item={{ ...child, depth: 1 }}
-              descendants={countDescendants(child)}
-              expanded={false}
-              routeNumber={routeNumber.get(child.node.id) ?? null}
-              reorder={false}
-              canMoveUp={false}
-              canMoveDown={false}
-              onToggle={() => undefined}
-              onOpen={() =>
-                router.push({ pathname: '/trips/[tripId]/plan/place/[nodeId]', params: { tripId: trip.id, nodeId: child.node.id } })
-              }
-              onMore={() => actions.open(child.node.id)}
-              onMove={() => undefined}
-            />
-          ))
+          <PlanTree
+            tripId={trip.id}
+            plan={plan}
+            rootId={node.id}
+            routeNumber={routeNumber}
+            visited={new Set()}
+            inNavigation={new Set()}
+            onMove={(id, target) =>
+              void usePlannerStore
+                .getState()
+                .moveNode(trip.id, id, target)
+                .catch((err: unknown) => setMessage({ tone: 'danger', text: toErrorMessage(err, 'Could not move it.') }))
+            }
+            onMore={(id) => actions.open(id)}
+            testID="plan-place-inside"
+          />
         ) : (
           <AppText variant="caption" tone="textMuted">
             Nothing inside yet. Add attractions, viewpoints, stays or anything else you want to see here.

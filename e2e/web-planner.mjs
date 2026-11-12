@@ -10,7 +10,7 @@
 // explained route impact, rename from the place screen, use the Home and
 // trip-menu entry points, then restart the browser to check persistence.
 
-import { BASE, byId, check, iso, launch, plannerAdd, run, setStep, shot, text, waitText, within } from './harness.mjs';
+import { BASE, byId, check, iso, launch, plannerAdd, plannerMove, run, setStep, shot, text, waitText, within } from './harness.mjs';
 
 const now = new Date();
 const day = (d) => new Date(now.getFullYear(), now.getMonth() + 1, d);
@@ -130,9 +130,7 @@ await run('Planner test', async () => {
 
   setStep('reorder main destinations');
   await openPlanner(page, tripUrl);
-  await byId(page, 'planner-reorder').click();
-  await byId(page, 'plan-move-Athirappilly-up').click();
-  await byId(page, 'planner-reorder').click();
+  await plannerMove(page, 'Athirappilly', 'up');
   await page.waitForTimeout(300);
   check((await destinationsOnDashboard(page, tripUrl)).includes('Athirappilly → Munnar'), 'reordering updates the trip everywhere');
   check(

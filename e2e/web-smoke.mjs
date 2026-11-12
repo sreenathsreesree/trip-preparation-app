@@ -16,7 +16,7 @@ import {
   EXTERNAL_BASE,
   iso,
   launch,
-  plannerAdd,
+  plannerAdd, plannerMove,
   run,
   setStep,
   shot,
@@ -81,9 +81,7 @@ await run('Web smoke test', async () => {
   await byId(page, 'trip-created-start-planning').getByText('Start planning', { exact: true }).click();
   await byId(page, 'planner-empty').waitFor();
   for (const stop of ['Manali', 'Kaza', 'Chandratal']) await plannerAdd(page, stop);
-  await byId(page, 'planner-reorder').click();
-  await byId(page, 'plan-move-Chandratal-up').click(); // Manali, Chandratal, Kaza
-  await byId(page, 'planner-reorder').click();
+  await plannerMove(page, 'Chandratal', 'up'); // Manali, Chandratal, Kaza
   await page.waitForTimeout(300);
   await page.goto(tripUrl);
   await byId(page, 'trip-dashboard').waitFor();

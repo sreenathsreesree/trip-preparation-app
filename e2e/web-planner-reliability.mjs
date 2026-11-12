@@ -11,7 +11,7 @@
 // 2. Scale: a 100-place plan (10 main destinations x 9 places): expand /
 //    collapse, scrolling, action sheets, reordering and the small-screen layout.
 
-import { BASE, byId, check, iso, launch, plannerAdd, run, setStep, shot, text, waitText, within } from './harness.mjs';
+import { BASE, byId, check, iso, launch, plannerAdd, run, setStep, shot, text, waitText, within, plannerMove } from './harness.mjs';
 
 const now = new Date();
 const day = (d) => new Date(now.getFullYear(), now.getMonth() + 1, d);
@@ -105,9 +105,7 @@ await run('Planner reliability test', async () => {
   await waitText(page, 'planner-screen', (v) => v.includes('3 main destinations'));
   check(true, 'promoted and nested offline');
 
-  await byId(page, 'planner-reorder').click();
-  await byId(page, 'plan-move-Kaza-up').click();
-  await byId(page, 'planner-reorder').click();
+  await plannerMove(page, 'Kaza', 'up');
   await byId(page, 'planner-route').click();
   await byId(page, 'plan-route').waitFor();
   await byId(page, 'route-add-Key Monastery').click();
@@ -199,10 +197,9 @@ await run('Planner reliability test', async () => {
   await byId(page, 'sheet-action-promote').click();
   await waitText(page, 'planner-screen', (v) => v.includes('11 main destinations'));
 
-  await byId(page, 'planner-reorder').click();
   const reorderMs = await timed(
     page,
-    () => byId(page, 'plan-move-Region 10-up').click(),
+    () => plannerMove(page, 'Region 10', 'up'),
     async () =>
       (await text(page, 'planner-screen')).indexOf('Region 10') < (await text(page, 'planner-screen')).indexOf('Region 9'),
   );
@@ -210,11 +207,13 @@ await run('Planner reliability test', async () => {
 
   setStep('rapid taps');
   // Three quick taps, each starting before the previous write finished.
-  const down = byId(page, 'plan-move-Region 3-down');
-  await Promise.all([down.click(), down.click({ delay: 5 }), down.click({ delay: 10 })]);
+  // Each move is started without waiting for the previous write to finish.
+  for (let i = 0; i < 3; i += 1) {
+    await byId(page, 'plan-more-Region 3').click();
+    await byId(page, 'sheet-action-down').click();
+  }
   await page.waitForTimeout(800);
   check((await byId(page, 'planner-screen').getByText('Not changed').count()) === 0, 'rapid reorder taps raise no errors');
-  await byId(page, 'planner-reorder').click();
   const plannerOrder = await page
     .locator('[data-testid^="plan-row-Region "]')
     .evaluateAll((els) => els.map((e) => e.dataset.testid.replace('plan-row-', '')));
