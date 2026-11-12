@@ -210,7 +210,7 @@ describe('tripRepository: duplicate, lifecycle and delete', () => {
     const gone = await trips.create(input, buildStarterChecklist(input));
     const goneTasks = (await checklists.load(tripOwner(gone.id))).tasks.length;
 
-    expect(await trips.deletionImpact(gone.id)).toEqual({
+    expect(await trips.deletionImpact(gone.id)).toMatchObject({
       destinations: 2,
       travellers: 3,
       sections: 6,
@@ -218,7 +218,7 @@ describe('tripRepository: duplicate, lifecycle and delete', () => {
     });
     expect(await trips.remove(gone.id)).toBe(true);
     expect(await trips.remove(gone.id)).toBe(false);
-    expect(await trips.deletionImpact(gone.id)).toEqual({ destinations: 0, travellers: 0, sections: 0, tasks: 0 });
+    expect(await trips.deletionImpact(gone.id)).toEqual({ destinations: 0, travellers: 0, sections: 0, tasks: 0, journalEntries: 0, photos: 0, expenses: 0, settlements: 0, sharedRole: null });
     expect((await checklists.load(tripOwner(gone.id))).tasks).toEqual([]);
     expect((await checklists.load(tripOwner(keep.id))).tasks.length).toBeGreaterThan(0);
     db.close();

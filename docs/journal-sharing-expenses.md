@@ -245,4 +245,4 @@ persistence, Android bundle export, docs and a final report.
 | K | Done — journal, timeline, Drive backup/restore (Drive live once configured) |
 | L | Done — cloud migration written and tested, **pending approval, not deployed**; app side complete |
 | M | Done — cloud migration written and tested, **pending approval, not deployed**; app side complete |
-| N | Planned |
+| N | Done — see [travel-readiness.md](travel-readiness.md) |

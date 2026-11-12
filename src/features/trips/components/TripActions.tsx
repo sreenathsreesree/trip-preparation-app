@@ -11,7 +11,7 @@ import { tripOwner } from '../../preparation/model';
 import { formatRoute, getTripLifecycle, type TripSummary } from '../model';
 import { useTripsStore } from '../tripsStore';
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 
 export interface TripActionsOptions {
   /** Called after the trip has been deleted (e.g. to leave its dashboard). */
@@ -43,11 +43,28 @@ export function useTripActions(trip: TripSummary | undefined, options: TripActio
 
   async function deleteTrip(target: TripSummary) {
     const impact = await store().deletionImpact(target.id);
+    if (impact.sharedRole) {
+      // Deleting only this device's copy would leave the shared trip (and its members) behind.
+      setError(
+        impact.sharedRole === 'owner'
+          ? 'This trip is shared. Open Share trip and choose Stop sharing first, then delete it.'
+          : 'This trip is shared with you. Open Share trip and choose Leave trip first, then delete it.',
+      );
+      return;
+    }
+    const personal = [
+      impact.journalEntries ? plural(impact.journalEntries, 'journal entry', 'journal entries') : null,
+      impact.photos ? plural(impact.photos, 'photo') : null,
+      impact.expenses + impact.settlements ? plural(impact.expenses + impact.settlements, 'expense or payment', 'expenses and payments') : null,
+    ].filter((v): v is string => v !== null);
     const confirmed = await confirmAction({
       title: `Delete "${target.name}"?`,
       message:
         `This permanently removes the trip from this device, including ${plural(impact.destinations, 'destination')}, ` +
         `${plural(impact.travellers, 'traveller')} and ${plural(impact.tasks, 'checklist task')}. ` +
+        (personal.length > 0
+          ? `It also deletes ${personal.join(', ')}${impact.photos ? ' (copies already in your Google Drive stay there)' : ''}. `
+          : '') +
         'This cannot be undone. Archive the trip instead if you might need it again.',
       confirmLabel: 'Delete permanently',
       destructive: true,

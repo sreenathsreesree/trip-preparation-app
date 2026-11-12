@@ -95,6 +95,15 @@ export interface DeletionImpact {
   travellers: number;
   sections: number;
   tasks: number;
+  /** Journey Journal entries (and their photos) on this device. */
+  journalEntries: number;
+  /** Photos kept by Trip Prep for this trip: journal photos and destination memory photos. */
+  photos: number;
+  /** Expenses and payments in the Trip calculator. */
+  expenses: number;
+  settlements: number;
+  /** Set while the trip is linked to a shared trip (deleting would orphan the shared copy). */
+  sharedRole: string | null;
 }
 
 export interface TripRepository {
@@ -402,20 +411,33 @@ export function createTripRepository(
     },
 
     async deletionImpact(id) {
-      const row = await db.getFirstAsync<DeletionImpact>(
+      const row = await db.getFirstAsync<Record<string, number | string | null>>(
         `SELECT
            (SELECT COUNT(*) FROM trip_destinations WHERE trip_id = ?) AS destinations,
            (SELECT COUNT(*) FROM trip_travellers WHERE trip_id = ?) AS travellers,
            (SELECT COUNT(*) FROM checklist_sections WHERE trip_id = ?) AS sections,
            (SELECT COUNT(*) FROM checklist_tasks k JOIN checklist_sections s ON s.id = k.section_id
-             WHERE s.trip_id = ?) AS tasks`,
-        [id, id, id, id],
+             WHERE s.trip_id = ?) AS tasks,
+           (SELECT COUNT(*) FROM journal_entries WHERE trip_id = ?) AS journalEntries,
+           (SELECT COUNT(*) FROM journal_photos p JOIN journal_entries e ON e.id = p.entry_id WHERE e.trip_id = ?)
+             + (SELECT COALESCE(SUM(json_array_length(photos)), 0) FROM plan_node_memories WHERE trip_id = ? AND json_valid(photos))
+             AS photos,
+           (SELECT COUNT(*) FROM expenses WHERE trip_id = ?) AS expenses,
+           (SELECT COUNT(*) FROM expense_settlements WHERE trip_id = ?) AS settlements,
+           (SELECT role FROM shared_spaces WHERE trip_id = ? AND role <> 'removed') AS sharedRole`,
+        [id, id, id, id, id, id, id, id, id, id],
       );
+      const n = (v: number | string | null | undefined) => Number(v) || 0;
       return {
-        destinations: Number(row?.destinations) || 0,
-        travellers: Number(row?.travellers) || 0,
-        sections: Number(row?.sections) || 0,
-        tasks: Number(row?.tasks) || 0,
+        destinations: n(row?.destinations),
+        travellers: n(row?.travellers),
+        sections: n(row?.sections),
+        tasks: n(row?.tasks),
+        journalEntries: n(row?.journalEntries),
+        photos: n(row?.photos),
+        expenses: n(row?.expenses),
+        settlements: n(row?.settlements),
+        sharedRole: typeof row?.sharedRole === 'string' ? row.sharedRole : null,
       };
     },
 
