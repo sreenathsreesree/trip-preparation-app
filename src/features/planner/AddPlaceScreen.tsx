@@ -23,6 +23,7 @@ import { placesProvider } from '../places/config';
 import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
 import { ancestorIds, PLANNER_LIMITS, validateNodeName, type Place, type PlanNode } from './model';
+import { Recommendations } from './components/Recommendations';
 import { usePlannerStore, useTripPlan } from './plannerStore';
 
 function Form({ trip, parent }: { trip: TripSummary; parent: PlanNode | null }) {
@@ -275,6 +276,15 @@ function Form({ trip, parent }: { trip: TripSummary; parent: PlanNode | null }) 
               </Pressable>
             );
           })}
+        </View>
+      ) : null}
+
+      {plan ? (
+        <View style={styles.group}>
+          <AppText variant="label" tone="textSecondary">
+            {parentId ? 'Recommended nearby' : 'Recommended places'}
+          </AppText>
+          <Recommendations tripId={trip.id} plan={plan} nodeId={parentId} />
         </View>
       ) : null}
     </Screen>

@@ -270,3 +270,37 @@ describe('route order with completed stops', () => {
     ctx.db.close();
   });
 });
+
+describe('linking a place to a location later', () => {
+  it('links a hand-entered place to a Google Place or user coordinates, keeping everything else', async () => {
+    const ctx = await setup();
+    const before = await planSnapshot(ctx);
+    const linked = await ctx.planner.setNodePlace(ctx.echo.id, {
+      provider: 'google',
+      providerPlaceId: 'ChIJecho',
+      name: 'Echo Point',
+      location: { latitude: 10.1149, longitude: 77.1885 },
+      formattedAddress: 'Kundala Dam Road, Munnar',
+    });
+    expect(linked).toMatchObject({ name: 'Echo Point', place: { providerPlaceId: 'ChIJecho', location: { latitude: 10.1149 } } });
+    expect(await planSnapshot(ctx)).toEqual(before);
+    // The same Google Place cannot be linked to a second place in the trip.
+    await expect(
+      ctx.planner.setNodePlace(ctx.tea.id, { provider: 'google', providerPlaceId: 'ChIJecho', name: 'x' }),
+    ).rejects.toThrow('already in this plan');
+    // Coordinates entered by the user (no provider) must be valid.
+    await expect(
+      ctx.planner.setNodePlace(ctx.tea.id, { provider: 'manual', providerPlaceId: null, name: 'Tea Museum', location: { latitude: 200, longitude: 0 } }),
+    ).rejects.toThrow('valid coordinates');
+    const manual = await ctx.planner.setNodePlace(ctx.tea.id, {
+      provider: 'manual',
+      providerPlaceId: null,
+      name: 'Tea Museum',
+      location: { latitude: 10.0951, longitude: 77.0604 },
+      metadata: { locationSource: 'user' },
+    });
+    expect(manual.place).toMatchObject({ provider: 'manual', location: { latitude: 10.0951 }, metadata: { locationSource: 'user' } });
+    expect((await ctx.planner.setNodePlace(ctx.tea.id, null)).place).toBeNull();
+    ctx.db.close();
+  });
+});

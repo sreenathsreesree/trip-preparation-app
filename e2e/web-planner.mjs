@@ -83,6 +83,8 @@ await run('Planner test', async () => {
   setStep('same-name warning and collapse');
   await openPlanner(page, tripUrl);
   await byId(page, 'planner-add').click();
+  await byId(page, 'rec-unconfigured').waitFor();
+  check((await page.locator('[data-testid^="rec-add-"]').count()) === 0, 'recommendations say “not set up” and show no sample places');
   await byId(page, 'plan-add-name').fill('echo point');
   await byId(page, 'plan-add-save').click();
   await byId(page, 'plan-add-same-name').waitFor();

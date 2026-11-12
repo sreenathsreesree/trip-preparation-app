@@ -67,6 +67,8 @@ export interface PlacesProvider {
   details(providerPlaceId: string, options: { sessionToken?: string }, signal?: AbortSignal): Promise<PlaceDetails>;
   nearby(request: NearbyRequest, signal?: AbortSignal): Promise<PlaceDetails[]>;
   textSearch(request: TextSearchRequest, signal?: AbortSignal): Promise<PlaceDetails[]>;
+  /** Image URL for a provider photo (loaded live, never stored), or null when photos are unavailable. */
+  photoUrl(photo: PlacePhotoRef, maxWidthPx: number): string | null;
 }
 
 export type PlacesErrorKind =
@@ -112,4 +114,5 @@ export const unconfiguredProvider: PlacesProvider = {
   details: () => Promise.reject(new PlacesError('not_configured')),
   nearby: () => Promise.reject(new PlacesError('not_configured')),
   textSearch: () => Promise.reject(new PlacesError('not_configured')),
+  photoUrl: () => null,
 };

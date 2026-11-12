@@ -297,6 +297,12 @@ export interface PlannerRepository {
   /** Adds a place to the trip. A place already in the trip is never added twice. */
   addNode(tripId: string, input: NewNodeInput): Promise<AddNodeResult>;
   updateNode(id: string, patch: { name?: string; notes?: string }): Promise<PlanNode>;
+  /**
+   * Links a place in the plan to a verified location — a provider place (e.g.
+   * a Google Place picked by the user) or coordinates the user entered — or
+   * unlinks it (null). The user's label, notes, hierarchy and route are kept.
+   */
+  setNodePlace(id: string, input: PlaceInput | null): Promise<PlanNode>;
   /** Moves a node (with everything inside it) under `parentId` (null = main destination) at `index`. */
   moveNode(id: string, target: { parentId: string | null; index?: number }): Promise<void>;
   /** Makes a nested place a main destination, right after the main destination it was in. */
@@ -518,6 +524,25 @@ export function createPlannerRepository(
         // Renaming a main destination renames the trip's destination too.
         if (!row.parent_id && name !== row.name) await syncTripDestinations(db, deps.createId, row.trip_id, timestamp);
       });
+      return getNode(id);
+    },
+
+    async setNodePlace(id, input) {
+      const row = await mustNode(id);
+      if (input === null) {
+        await db.runAsync('UPDATE trip_plan_nodes SET place_id = NULL, updated_at = ? WHERE id = ?', [stamp(), id]);
+        return getNode(id);
+      }
+      if (input.provider === 'manual' && !isValidLocation(input.location)) {
+        throw new PlannerError('Enter valid coordinates (latitude −90 to 90, longitude −180 to 180).');
+      }
+      const place = await repo.upsertPlace(input);
+      const other = await db.getFirstAsync<{ name: string }>(
+        'SELECT name FROM trip_plan_nodes WHERE trip_id = ? AND place_id = ? AND id <> ?',
+        [row.trip_id, place.id, id],
+      );
+      if (other) throw new PlannerError(`That place is already in this plan as “${other.name}”.`);
+      await db.runAsync('UPDATE trip_plan_nodes SET place_id = ?, updated_at = ? WHERE id = ?', [place.id, stamp(), id]);
       return getNode(id);
     },
 

@@ -7,7 +7,7 @@ import type { LoadStatus } from '../trips/tripsStore';
 import { useTripsStore } from '../trips/tripsStore';
 import type { ProfilePatch } from './companion';
 import type { TripCompanion } from './companionRepository';
-import type { Place, TripPlan } from './model';
+import type { Place, PlaceInput, TripPlan } from './model';
 import type { AddNodeResult, NewNodeInput } from './plannerRepository';
 
 export interface TripPlanState {
@@ -27,6 +27,7 @@ interface PlannerStoreState {
   load: (tripId: string) => Promise<void>;
   addNode: (tripId: string, input: NewNodeInput) => Promise<AddNodeResult>;
   updateNode: (tripId: string, id: string, patch: { name?: string; notes?: string }) => Promise<void>;
+  setNodePlace: (tripId: string, id: string, input: PlaceInput | null) => Promise<void>;
   moveNode: (tripId: string, id: string, target: { parentId: string | null; index?: number }) => Promise<void>;
   promote: (tripId: string, id: string) => Promise<void>;
   removeNode: (tripId: string, id: string, mode: 'keepChildren' | 'withChildren') => Promise<void>;
@@ -87,6 +88,10 @@ export const usePlannerStore = create<PlannerStoreState>()((set, get) => {
       write(tripId, async ({ planner }) => {
         await planner.updateNode(id, patch);
       }),
+    setNodePlace: (tripId, id, input) =>
+      write(tripId, async ({ planner }) => {
+        await planner.setNodePlace(id, input);
+      }, false),
     moveNode: (tripId, id, target) => write(tripId, ({ planner }) => planner.moveNode(id, target)),
     promote: (tripId, id) => write(tripId, ({ planner }) => planner.promote(id)),
     removeNode: (tripId, id, mode) => write(tripId, ({ planner }) => planner.removeNode(id, mode)),
