@@ -131,6 +131,8 @@ export interface DisplayDeps {
   client: Pick<DriveClient, 'downloadBytes'> | null;
   exists: (uri: string) => boolean;
   savePhoto: (bytes: Uint8Array, mimeType: string) => Promise<string>;
+  /** Downloads of "drive:<id>" photos restored from the cloud backup. */
+  driveCache?: { get(fileId: string): Promise<string | null>; set(fileId: string, uri: string): Promise<void> };
 }
 
 /**
@@ -139,6 +141,21 @@ export interface DisplayDeps {
  * reason, so the screen can say "in your Google Drive — reconnect to view".
  */
 export async function resolvePhoto(uri: string, deps: DisplayDeps): Promise<{ uri: string | null; from: 'device' | 'drive' | null; reason?: 'offline' | 'not_uploaded' }> {
+  // A photo restored from the cloud backup: the original is in the user's Drive.
+  if (uri.startsWith('drive:') && deps.driveCache) {
+    const fileId = uri.slice('drive:'.length);
+    const cached = await deps.driveCache.get(fileId);
+    if (cached && deps.exists(cached)) return { uri: cached, from: 'drive' };
+    if (!deps.client) return { uri: null, from: null, reason: 'offline' };
+    try {
+      const { bytes, mimeType } = await deps.client.downloadBytes(fileId);
+      const saved = await deps.savePhoto(bytes, mimeType);
+      await deps.driveCache.set(fileId, saved);
+      return { uri: saved, from: 'drive' };
+    } catch {
+      return { uri: null, from: null, reason: 'offline' };
+    }
+  }
   if (deps.exists(uri)) return { uri, from: 'device' };
   const upload = await deps.uploads.findUploaded(uri);
   if (!upload?.driveFileId) return { uri: null, from: null, reason: 'not_uploaded' };

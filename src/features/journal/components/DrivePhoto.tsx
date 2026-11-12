@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { AppText, Icon } from '@/components/ui';
+import { getDatabase } from '@/db/client';
 import { getRepositories } from '@/db/repositories';
 import { useAuthStore } from '@/features/auth/authStore';
 import { imageExists, saveImageBytes } from '@/lib/imageStore';
@@ -35,12 +36,22 @@ export function DrivePhoto({ uri, style, label, testID }: { uri: string; style: 
     let live = true;
     void (async () => {
       const { photoUploads } = await getRepositories();
+      const db = await getDatabase();
       const row = accountId ? (await photoUploads.byUris(accountId, [uri])).get(uri) : undefined;
       const resolved = await resolvePhoto(uri, {
         uploads: photoUploads,
         exists: imageExists,
         savePhoto: saveImageBytes,
         client: accountId ? createDriveClient(() => driveToken(accountId)) : null,
+        driveCache: {
+          get: async (fileId) => (await db.getFirstAsync<{ local_uri: string }>('SELECT local_uri FROM drive_cache WHERE drive_file_id = ?', [fileId]))?.local_uri ?? null,
+          set: async (fileId, local) => {
+            await db.runAsync(
+              'INSERT INTO drive_cache (drive_file_id, local_uri, cached_at) VALUES (?, ?, ?) ON CONFLICT (drive_file_id) DO UPDATE SET local_uri = excluded.local_uri, cached_at = excluded.cached_at',
+              [fileId, local, new Date().toISOString()],
+            );
+          },
+        },
       });
       if (live) setState({ key, shown: resolved.uri, status: row?.status ?? null, missing: resolved.uri === null });
     })();
@@ -51,7 +62,7 @@ export function DrivePhoto({ uri, style, label, testID }: { uri: string; style: 
 
   const current = state?.key === key ? state : null;
   // Until resolved, show the device copy directly (the common case).
-  const shown = current ? current.shown : uri;
+  const shown = current ? current.shown : uri.startsWith('drive:') ? null : uri;
   const badge = current?.status ? BADGES[current.status] : null;
 
   return (

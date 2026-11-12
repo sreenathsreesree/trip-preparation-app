@@ -27,6 +27,7 @@ describe('migrate', () => {
         'drive_photo_uploads',
         'shared_trips',
         'trip_expenses',
+        'cloud_sync',
       ],
     });
     expect(await getSchemaVersion(db)).toBe(migrations.length);
@@ -39,6 +40,7 @@ describe('migrate', () => {
       'checklist_sections',
       'checklist_tasks',
       'checklist_templates',
+      'drive_cache',
       'drive_files',
       'drive_photo_uploads',
       'expense_budgets',
@@ -67,6 +69,9 @@ describe('migrate', () => {
       'shared_members',
       'shared_outbox',
       'shared_spaces',
+      'sync_conflicts',
+      'sync_meta',
+      'sync_rows',
       'trip_destinations',
       'trip_luggage',
       'trip_navigation_items',

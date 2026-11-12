@@ -52,7 +52,7 @@ describe('upgrading v6 → latest', () => {
     const before = await snapshot(db, oldTables);
 
     const result = await migrate(db, migrations);
-    expect(result.applied).toEqual(['journey_journal', 'drive_photo_uploads', 'shared_trips', 'trip_expenses']);
+    expect(result.applied).toEqual(['journey_journal', 'drive_photo_uploads', 'shared_trips', 'trip_expenses', 'cloud_sync']);
     expect(await getSchemaVersion(db)).toBe(migrations.length);
     expect(await snapshot(db, oldTables)).toEqual(before);
     // Only new tables were added.

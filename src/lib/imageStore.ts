@@ -131,6 +131,7 @@ export async function saveImageBytes(bytes: Uint8Array, mimeType: string): Promi
 
 /** Whether a stored photo is still on this device (data URIs are always present). */
 export function imageExists(uri: string): boolean {
+  if (uri.startsWith('drive:')) return false;
   if (!uri.startsWith('file:')) return true;
   try {
     return new File(uri).exists;

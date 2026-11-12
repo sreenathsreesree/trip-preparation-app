@@ -197,6 +197,27 @@ describe('automatic photo upload to the user’s Google Drive', () => {
     expect(await ctx.photoUploads.unqueued(OTHER)).toHaveLength(3);
   });
 
+  it('shows photos restored from the cloud backup ("drive:" references) from the user’s Drive, once', async () => {
+    const ctx = await setup();
+    await ctx.select('memory', ctx.munnar.id, 'file:///m1.jpg');
+    await runUploads(ME, ctx.deps);
+    const driveId = (await ctx.photoUploads.byUris(ME, ['file:///m1.jpg'])).get('file:///m1.jpg')?.driveFileId as string;
+    const cache = new Map<string, string>();
+    const driveCache = { get: async (id: string) => cache.get(id) ?? null, set: async (id: string, uri: string) => void cache.set(id, uri) };
+    const savePhoto = jest.fn(async () => {
+      ctx.onDevice.add('file:///cache/restored.jpg');
+      return 'file:///cache/restored.jpg';
+    });
+    const deps = { uploads: ctx.photoUploads, exists: (u: string) => ctx.onDevice.has(u), savePhoto, driveCache };
+    expect(await resolvePhoto(`drive:${driveId}`, { ...deps, client: null })).toEqual({ uri: null, from: null, reason: 'offline' });
+    expect(await resolvePhoto(`drive:${driveId}`, { ...deps, client: ctx.drive.client })).toEqual({ uri: 'file:///cache/restored.jpg', from: 'drive' });
+    expect(await resolvePhoto(`drive:${driveId}`, { ...deps, client: null })).toEqual({ uri: 'file:///cache/restored.jpg', from: 'drive' });
+    expect(savePhoto).toHaveBeenCalledTimes(1);
+    // A restored reference is never queued for upload again.
+    await ctx.companion.saveMemory(ctx.munnar.id, { photos: [`drive:${driveId}`] });
+    expect((await ctx.photoUploads.unqueued(ME)).some((u) => u.localUri.startsWith('drive:'))).toBe(false);
+  });
+
   it('remembers the automatic-upload setting (on by default)', async () => {
     const ctx = await setup();
     expect(await ctx.photoUploads.autoUpload()).toBe(true);

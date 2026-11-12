@@ -8,6 +8,7 @@ import { ScreenHeader } from '@/components/layout/ScreenHeader';
 import { AppText, Card } from '@/components/ui';
 import { getRepositories } from '@/db/repositories';
 import { AccountCard } from '@/features/auth/components/AccountCard';
+import { BackupCard } from '@/features/sync/BackupCard';
 import { toErrorMessage } from '@/lib/errors';
 import { colors, spacing } from '@/theme';
 
@@ -70,6 +71,7 @@ export function ProfileScreen() {
       <ScreenHeader eyebrow="Explorer" title="Profile" />
 
       <AccountCard />
+      <BackupCard />
 
       <View style={styles.group}>
         <AppText variant="label" tone="textMuted">

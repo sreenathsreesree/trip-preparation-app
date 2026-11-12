@@ -22,6 +22,7 @@ import { getDatabase } from '@/db/client';
 import { useAuthStore } from '@/features/auth/authStore';
 import { PhotoUploadWatcher } from '@/features/journal/components/PhotoUploadWatcher';
 import { SharedTripsWatcher } from '@/features/sharing/SharedTripsWatcher';
+import { SyncWatcher } from '@/features/sync/SyncWatcher';
 import { ArrivalWatcher } from '@/features/planner/components/ArrivalWatcher';
 import { colors } from '@/theme';
 import { navigationTheme } from '@/theme/navigation';
@@ -130,6 +131,7 @@ export default function RootLayout() {
           <ArrivalWatcher />
           <PhotoUploadWatcher />
           <SharedTripsWatcher />
+          <SyncWatcher />
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

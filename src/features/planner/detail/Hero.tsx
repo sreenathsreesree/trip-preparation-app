@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { useState } from 'react';
 import { Share, StyleSheet, View } from 'react-native';
 
@@ -7,6 +6,8 @@ import { toErrorMessage } from '@/lib/errors';
 import { deleteStoredImage, pickAndStoreImage } from '@/lib/imageStore';
 import { colors, radii, spacing } from '@/theme';
 
+import { DrivePhoto } from '../../journal/components/DrivePhoto';
+import { usePhotoUploadStore } from '../../journal/drive/photoUploadStore';
 import { visitLength } from '../companion';
 import { destinationShareText } from '../share';
 import { useDetailAction, type DetailContext } from './shared';
@@ -25,7 +26,11 @@ export function Hero({ ctx, trail }: { ctx: DetailContext; trail: string[] }) {
       const uri = await pickAndStoreImage('library');
       if (!uri) return;
       const previous = profile.coverImageUri;
-      if (await act((c) => c.updateProfile(node.id, { coverImageUri: uri }), 'Could not save the photo.')) deleteStoredImage(previous);
+      if (await act((c) => c.updateProfile(node.id, { coverImageUri: uri }), 'Could not save the photo.')) {
+        deleteStoredImage(previous);
+        // Like memory photos, the cover goes to the user's own Drive (and so into the backup).
+        await usePhotoUploadStore.getState().photoSelected({ tripId, source: 'memory', sourceId: node.id, uri });
+      }
     } catch (err) {
       setShareError(toErrorMessage(err, 'Could not add the photo.'));
     }
@@ -49,7 +54,7 @@ export function Hero({ ctx, trail }: { ctx: DetailContext; trail: string[] }) {
     <View style={styles.root} testID="detail-hero">
       <View style={styles.cover}>
         {profile.coverImageUri ? (
-          <Image source={{ uri: profile.coverImageUri }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={`Cover photo of ${node.name}`} testID="detail-cover" />
+          <DrivePhoto uri={profile.coverImageUri} style={StyleSheet.absoluteFill} label={`Cover photo of ${node.name}`} testID="detail-cover" />
         ) : (
           <View style={styles.placeholder}>
             <Icon name="image-filter-hdr" size={40} color={colors.textMuted} />

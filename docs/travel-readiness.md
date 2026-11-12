@@ -116,6 +116,33 @@ two-way sync and conflict UI): 3–5 more days. **Recommendation for November 20
 **one-way backup and restore** (upload from the travelling phone; restore onto a second device) and
 leave continuous two-way editing (G4) until after the trip.
 
+### G3 as built (backup and restore, automatic, not real-time)
+
+- **Cloud (pending, not deployed):** `supabase/pending/20261115090000_personal_backup.sql` — 16 new
+  tables registered with the G1 protocol and prepared by G1's own `sync_prepare_table` (forced RLS,
+  owner-only policies, no deletes, stamping trigger). G1 unchanged (tested). 8 Postgres tests: registry
+  parity with the client, RLS shape, owner isolation, user-scoped foreign keys (another account cannot
+  point at your records), forged owners ignored, device photo paths rejected, idempotent retries,
+  conflicts instead of overwrites, tombstones.
+- **Device:** local v11 (`sync_meta`, `sync_rows`, `sync_conflicts`, `drive_cache`);
+  `src/features/sync/adapters.ts` (table mapping, photos → Drive references), `syncEngine.ts`
+  (download then upload, conflicts kept, interrupted uploads resume, server ids adopted for a fresh
+  phone's starter categories and places), `syncApi.ts`, `syncStore.ts`, `SyncWatcher` (after sign-in,
+  launch, foreground, every 5 minutes), Profile → *Cloud backup* card.
+- **Account binding:** this phone's data is linked to one Google account. A fresh install links
+  silently and downloads; a phone with data asks *Back up this phone's trips?* first (nothing uploads
+  until then); a different account is refused. Data stays on the phone after sign-out.
+- **Works today with G1 alone:** trips, travellers, destinations/hierarchy, route, checklists,
+  packing, inventory, shopping, places and settings. The journal, memories, destination details,
+  Navigation and the calculator join once the G3 migration is deployed (the app detects it).
+- **Not supported:** real-time sync; automatic merging of the same record edited on two phones (the
+  user picks *keep this phone's* or *use the cloud's*); shared-trip links (a restored shared trip is a
+  private copy until re-joined); per-account database files on one phone (one account per phone).
+- **Tests:** `src/features/sync/__tests__/syncEngine.test.ts` — full restore with identical ids and
+  relationships and no duplicate starter categories, incremental changes, deletions, conflicts and both
+  resolutions, interrupted upload, guest adoption with existing cloud data, account isolation, G1-only
+  operation; Drive-reference photo display.
+
 ## 3. Pending migration readiness (Shared Trips and Expenses)
 
 | Check | Result |

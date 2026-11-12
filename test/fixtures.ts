@@ -42,7 +42,7 @@ export function itemInput(overrides: Partial<ItemInput> = {}): ItemInput {
 }
 
 /** Migrated database plus repositories with deterministic ids and a fixed clock. */
-export async function setupRepositories(db: TestDatabase = openTestDatabase(), clock = '2026-11-10T08:00:00.000Z') {
+export async function setupRepositories(db: TestDatabase = openTestDatabase(), clock = '2026-11-10T08:00:00.000Z', idPrefix = 'id') {
   // Same transaction queue as the app; a nested transaction would hang and fail the test.
   const shared = serializeTransactions(db);
   await migrate(shared, migrations);
@@ -50,9 +50,12 @@ export async function setupRepositories(db: TestDatabase = openTestDatabase(), c
   // Each call advances the clock by a second so ordering by timestamp is stable.
   const now = () => new Date((time += 1000));
   const today = () => clock.slice(0, 10);
-  const deps = { createId: sequentialIds(), now, today };
+  const deps = { createId: sequentialIds(idPrefix), now, today };
   return {
     db,
+    /** The serialized connection the repositories use (as in the app). */
+    database: shared,
+    deps,
     trips: createTripRepository(shared, deps),
     checklists: createChecklistRepository(shared, deps),
     templates: createTemplateRepository(shared, deps),

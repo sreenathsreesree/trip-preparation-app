@@ -204,7 +204,7 @@ export function createPhotoUploadRepository(db: Database, deps: { createId: () =
         'SELECT p.id, p.uri, e.trip_id FROM journal_photos p JOIN journal_entries e ON e.id = p.entry_id ORDER BY p.created_at',
         [],
       );
-      for (const p of journal) if (!queued.has(p.uri)) result.push({ tripId: p.trip_id, source: 'journal', sourceId: p.id, localUri: p.uri });
+      for (const p of journal) if (!queued.has(p.uri) && !p.uri.startsWith('drive:')) result.push({ tripId: p.trip_id, source: 'journal', sourceId: p.id, localUri: p.uri });
       const memories = await db.getAllAsync<{ node_id: string; trip_id: string; photos: string }>('SELECT node_id, trip_id, photos FROM plan_node_memories', []);
       for (const m of memories) {
         let photos: unknown = [];
@@ -214,7 +214,7 @@ export function createPhotoUploadRepository(db: Database, deps: { createId: () =
           photos = [];
         }
         for (const uri of Array.isArray(photos) ? photos : []) {
-          if (typeof uri === 'string' && !queued.has(uri)) result.push({ tripId: m.trip_id, source: 'memory', sourceId: m.node_id, localUri: uri });
+          if (typeof uri === 'string' && !queued.has(uri) && !uri.startsWith('drive:')) result.push({ tripId: m.trip_id, source: 'memory', sourceId: m.node_id, localUri: uri });
         }
       }
       return result;
