@@ -173,4 +173,48 @@ export const LOCAL_ONLY_TABLES: Readonly<Record<string, string>> = {
   expense_budgets: 'Trip budgets (local v10); shared-trip copy via shared_expense_budgets.',
   expense_settings: 'Default currency per trip (local v10).',
   expense_outbox: 'Shared-trip expense records waiting to be sent (local v10).',
+  // G3 sync bookkeeping (local v11).
+  sync_meta: 'Linked account, pull cursor and last sync time (device state, local v11).',
+  sync_rows: 'Server revision and fingerprint of each synced record (device state, local v11).',
+  sync_conflicts: 'Cloud copies of records changed on two devices (local v11).',
+  drive_cache: 'Photos downloaded from the user’s Drive to this device (local v11).',
 };
+
+/**
+ * G3 personal backup tables (supabase/pending/20261115090000_personal_backup.sql — not deployed).
+ * Same protocol and conventions as SYNC_TABLES. Cloud column names; the device adapters
+ * (src/features/sync/adapters.ts) map them to local tables where they differ.
+ */
+export const PENDING_SYNC_TABLES: readonly SyncTable[] = [
+  { name: 'expense_participants', pk: 'id', rank: 2, columns: ['id', 'trip_id', 'name', 'member_user_id', 'is_me', 'position', 'archived_at', 'created_at', 'updated_at'] },
+  { name: 'expense_categories', pk: 'id', rank: 2, columns: ['id', 'trip_id', 'name', 'created_at', 'updated_at'] },
+  { name: 'expense_settings', pk: 'trip_id', rank: 2, columns: ['trip_id', 'currency', 'updated_at'] },
+  { name: 'expense_budgets', pk: 'id', rank: 2, columns: ['id', 'trip_id', 'currency', 'total_minor', 'daily_limit_minor', 'lines', 'updated_at'] },
+  { name: 'inventory_category_details', pk: 'category_id', rank: 2, columns: ['category_id', 'description'] },
+  { name: 'trip_navigation_items', pk: 'id', rank: 3, columns: ['id', 'trip_id', 'node_id', 'parent_id', 'position', 'created_at', 'updated_at'] },
+  {
+    name: 'plan_node_profiles',
+    pk: 'node_id',
+    rank: 3,
+    columns: ['node_id', 'trip_id', 'visit_status', 'visited_at', 'saved', 'cover_image_uri', 'tags', 'about', 'best_season', 'entry_fee', 'travel_info', 'visit_minutes', 'best_time', 'created_at', 'updated_at'],
+  },
+  { name: 'plan_node_tasks', pk: 'id', rank: 3, columns: ['id', 'trip_id', 'node_id', 'category', 'title', 'notes', 'is_done', 'position', 'completed_at', 'created_at', 'updated_at'] },
+  { name: 'plan_node_notes', pk: 'id', rank: 3, columns: ['id', 'trip_id', 'node_id', 'kind', 'body', 'position', 'created_at', 'updated_at'] },
+  {
+    name: 'plan_node_alerts',
+    pk: 'id',
+    rank: 3,
+    columns: ['id', 'trip_id', 'node_id', 'kind', 'title', 'body', 'source', 'source_url', 'confirmed', 'status', 'observed_at', 'created_at', 'updated_at'],
+  },
+  { name: 'plan_node_memories', pk: 'node_id', rank: 3, columns: ['node_id', 'trip_id', 'visited_on', 'rating', 'notes', 'moments', 'photos', 'created_at', 'updated_at'] },
+  { name: 'journal_entries', pk: 'id', rank: 3, columns: ['id', 'trip_id', 'node_id', 'entry_date', 'title', 'body', 'mood', 'visibility', 'created_at', 'updated_at'] },
+  {
+    name: 'expenses',
+    pk: 'id',
+    rank: 3,
+    columns: ['id', 'trip_id', 'scope', 'title', 'amount_minor', 'currency', 'category', 'category_name', 'spent_on', 'paid_by', 'split_method', 'splits', 'notes', 'created_by', 'created_at', 'updated_at'],
+  },
+  { name: 'expense_settlements', pk: 'id', rank: 3, columns: ['id', 'trip_id', 'from_id', 'to_id', 'amount_minor', 'currency', 'settled_on', 'note', 'created_by', 'created_at', 'updated_at'] },
+  { name: 'journal_photos', pk: 'id', rank: 4, columns: ['id', 'entry_id', 'drive_file_id', 'caption', 'position', 'created_at'] },
+  { name: 'packing_entry_units', pk: 'entry_id', rank: 5, columns: ['entry_id', 'unit'] },
+];

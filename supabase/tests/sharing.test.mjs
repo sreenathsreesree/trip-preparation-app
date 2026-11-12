@@ -94,10 +94,17 @@ describe('shared trips: separation from G1', () => {
         await db.query(`select
           (select json_agg(tablename order by tablename) from pg_tables where schemaname = 'public' and tablename not like 'shared%') as tables,
           (select json_agg(policyname order by policyname) from pg_policies where schemaname = 'public' and tablename not like 'shared%') as policies,
-          (select json_agg(column_name || ':' || data_type order by table_name, column_name) from information_schema.columns
+          (select json_agg(table_name || '.' || column_name || ':' || data_type order by table_name, column_name) from information_schema.columns
              where table_schema = 'public' and table_name not like 'shared%') as columns`)
       ).rows[0];
-    assert.deepEqual(await catalog(await freshDatabase()), await catalog(await freshDatabase({ pending: false })));
+    // Compare only what G1 created: other pending migrations may add their own tables.
+    const g1 = await catalog(await freshDatabase({ pending: false }));
+    const withPending = await catalog(await freshDatabase());
+    const g1Tables = new Set(g1.tables);
+    assert.deepEqual(withPending.tables.filter((t) => g1Tables.has(t)), g1.tables);
+    const g1Policies = new Set(g1.policies);
+    assert.deepEqual(withPending.policies.filter((p) => g1Policies.has(p)), g1.policies);
+    assert.deepEqual(withPending.columns.filter((c) => g1Tables.has(c.split('.')[0])), g1.columns);
   });
 
   it('is not in the deploy folder', () => {
