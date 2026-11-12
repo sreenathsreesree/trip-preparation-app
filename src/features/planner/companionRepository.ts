@@ -23,6 +23,7 @@ import {
   type ProfilePatch,
   type TaskCategory,
 } from './companion';
+import { cleanArrivalSettings, type ArrivalSettings } from './arrival';
 import { ancestorIds, canMove, childrenOf, PLANNER_LIMITS } from './model';
 import { PlannerError } from './plannerRepository';
 
@@ -266,7 +267,12 @@ export interface CompanionRepository {
   removeFromNavigation(itemId: string): Promise<void>;
   /** Reorders / nests / promotes within the Navigation list only. */
   moveNavigation(itemId: string, target: { parentId: string | null; index?: number }): Promise<void>;
+  /** Arrival prompt settings (on this device; off by default). */
+  arrivalSettings(): Promise<ArrivalSettings>;
+  saveArrivalSettings(settings: ArrivalSettings): Promise<ArrivalSettings>;
 }
+
+const ARRIVAL_KEY = 'arrival_prompts';
 
 export function createCompanionRepository(
   db: Database,
@@ -621,6 +627,25 @@ export function createCompanionRepository(
         await writeNavOrder(siblings, row.parent_id, timestamp);
         await db.runAsync('DELETE FROM trip_navigation_items WHERE id = ?', [itemId]);
       });
+    },
+
+    async arrivalSettings() {
+      const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM user_preferences WHERE key = ?', [ARRIVAL_KEY]);
+      try {
+        return cleanArrivalSettings(row ? JSON.parse(row.value) : null);
+      } catch {
+        return cleanArrivalSettings(null);
+      }
+    },
+
+    async saveArrivalSettings(settings) {
+      const clean = cleanArrivalSettings(settings);
+      await db.runAsync(
+        `INSERT INTO user_preferences (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+        [ARRIVAL_KEY, JSON.stringify(clean), stamp()],
+      );
+      return clean;
     },
 
     async moveNavigation(itemId, target) {

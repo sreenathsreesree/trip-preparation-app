@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Button, EmptyState, IconButton, Notice } from '@/components/ui';
+import { AppText, Button, EmptyState, Icon, IconButton, Notice } from '@/components/ui';
 import { toErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing } from '@/theme';
 
+import { routeIndexForUpcoming } from '../companion';
 import { siblingMap } from '../dragDrop';
 import { ancestorIds, buildTree, routeNodes, visibleRows, type PlanNode, type TripPlan } from '../model';
 import { usePlannerStore } from '../plannerStore';
@@ -39,32 +40,47 @@ export function RouteTab({
   onDragActiveChange?: (active: boolean) => void;
 }) {
   const [error, setError] = useState<string | null>(null);
+  const [undo, setUndo] = useState<{ id: string; name: string } | null>(null);
+  const [showCompleted, setShowCompleted] = useState(false);
   const store = usePlannerStore.getState;
   const stops = useMemo(() => routeNodes(plan), [plan]);
+  const numbered = useMemo(() => stops.map((node, index) => ({ node, number: index + 1 })), [stops]);
+  // Upcoming stops are dragged into order; visited ones wait in "Completed stops" and keep their places.
   const rows = useMemo<StopRow[]>(
     () =>
-      stops.map((node, index) => ({
-        id: node.id,
-        parentId: null,
-        depth: 0,
-        expanded: false,
-        hasChildren: false,
-        draggable: true,
-        node,
-        number: index + 1,
-      })),
-    [stops],
+      numbered
+        .filter(({ node }) => !visited.has(node.id))
+        .map(({ node, number }) => ({
+          id: node.id,
+          parentId: null,
+          depth: 0,
+          expanded: false,
+          hasChildren: false,
+          draggable: true,
+          node,
+          number,
+        })),
+    [numbered, visited],
   );
+  const completed = numbered.filter(({ node }) => visited.has(node.id));
+  const order = stops.map((n) => n.id);
+  const moveTo = (id: string, upcomingIndex: number) =>
+    run(() => store().moveRouteStop(tripId, id, routeIndexForUpcoming(order, visited, id, upcomingIndex)));
+  const setVisited = (node: PlanNode, value: boolean) =>
+    run(async () => {
+      await store().setVisited(tripId, node.id, value);
+      setUndo(value ? { id: node.id, name: node.name } : null);
+    });
   const siblings = useMemo(() => siblingMap(rows), [rows]);
   const onRoute = new Set(stops.map((n) => n.id));
   const candidates = visibleRows(buildTree(plan.nodes), new Set(plan.nodes.map((n) => n.id))).filter(
     (row) => !onRoute.has(row.node.id),
   );
 
-  const run = (fn: () => Promise<unknown>) => {
+  function run(fn: () => Promise<unknown>) {
     setError(null);
     fn().catch((err: unknown) => setError(toErrorMessage(err, 'Could not change the route.')));
-  };
+  }
   const subtreeOf = useCallback((id: string) => [id], []);
   const canPlaceIn = useCallback((_: string, parentId: string | null) => parentId === null, []);
 
@@ -75,6 +91,22 @@ export function RouteTab({
         promoting places never changes it.
       </AppText>
       {error ? <Notice tone="danger" title="Not changed" message={error} /> : null}
+      {undo ? (
+        <Notice
+          tone="success"
+          title={`${undo.name} marked as visited`}
+          action={{ label: 'Undo', icon: 'undo', onPress: () => run(async () => {
+            await store().setVisited(tripId, undo.id, false);
+            setUndo(null);
+          }) }}
+          testID="route-undo-notice"
+        />
+      ) : null}
+      {stops.length > 0 ? (
+        <AppText variant="bodyStrong" testID="route-progress">
+          {completed.length} of {stops.length} {stops.length === 1 ? 'stop' : 'stops'} visited
+        </AppText>
+      ) : null}
 
       {stops.length === 0 ? (
         <EmptyState
@@ -90,11 +122,11 @@ export function RouteTab({
           siblings={siblings}
           subtreeOf={subtreeOf}
           canPlaceIn={canPlaceIn}
-          onDrop={(id, target) => run(() => store().moveRouteStop(tripId, id, target.index))}
+          onDrop={(id, target) => moveTo(id, target.index)}
           onAccessibleMove={(id, action) => {
-            const index = stops.findIndex((n) => n.id === id);
-            if (action === 'up' && index > 0) run(() => store().moveRouteStop(tripId, id, index - 1));
-            if (action === 'down' && index < stops.length - 1) run(() => store().moveRouteStop(tripId, id, index + 1));
+            const index = rows.findIndex((r) => r.id === id);
+            if (action === 'up' && index > 0) moveTo(id, index - 1);
+            if (action === 'down' && index < rows.length - 1) moveTo(id, index + 1);
           }}
           indent={0}
           scroll={scroll}
@@ -120,6 +152,15 @@ export function RouteTab({
                   ) : null}
                 </View>
                 <IconButton
+                  icon="check-circle-outline"
+                  variant="plain"
+                  size="sm"
+                  tone="accent"
+                  accessibilityLabel={`Mark ${row.node.name} as visited`}
+                  onPress={() => setVisited(row.node, true)}
+                  testID={`route-visit-${row.node.name}`}
+                />
+                <IconButton
                   icon="close"
                   variant="plain"
                   size="sm"
@@ -133,6 +174,50 @@ export function RouteTab({
           }}
         />
       )}
+
+      {completed.length > 0 ? (
+        <View style={styles.list} testID="route-completed">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showCompleted }}
+            onPress={() => setShowCompleted((v) => !v)}
+            style={styles.completedHeader}
+            testID="route-completed-toggle"
+          >
+            <Icon name="check-circle" tone="accent" size={18} />
+            <AppText variant="label" tone="textSecondary" style={styles.flex}>
+              Completed stops ({completed.length})
+            </AppText>
+            <Icon name={showCompleted ? 'chevron-up' : 'chevron-down'} tone="textMuted" />
+          </Pressable>
+          {showCompleted
+            ? completed.map(({ node, number }) => (
+                <View key={node.id} style={[styles.stop, styles.stopDone]} testID={`route-done-${node.name}`}>
+                  <View style={[styles.number, styles.numberDone]}>
+                    <Icon name="check-bold" size={14} tone="textOnAccent" />
+                  </View>
+                  <View style={styles.flex}>
+                    <AppText variant="body" tone="textSecondary" numberOfLines={1}>
+                      {node.name}
+                    </AppText>
+                    <AppText variant="caption" tone="textMuted">
+                      Stop {number} · Visited
+                    </AppText>
+                  </View>
+                  <Button
+                    label="Upcoming"
+                    icon="undo"
+                    size="sm"
+                    variant="ghost"
+                    accessibilityHint={`Mark ${node.name} as upcoming again`}
+                    onPress={() => setVisited(node, false)}
+                    testID={`route-undo-${node.name}`}
+                  />
+                </View>
+              ))
+            : null}
+        </View>
+      ) : null}
 
       {candidates.length > 0 ? (
         <View style={styles.list}>
@@ -192,6 +277,12 @@ const styles = StyleSheet.create({
   },
   numberDone: {
     backgroundColor: colors.neutral,
+  },
+  completedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: 44,
   },
   candidate: {
     flexDirection: 'row',

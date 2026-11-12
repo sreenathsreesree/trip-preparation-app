@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Linking, Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Button, Card, EmptyState, Icon, IconButton, Notice, ProgressBar } from '@/components/ui';
+import { AppText, Button, Card, EmptyState, Icon, IconButton, Notice, ProgressBar, ToggleRow } from '@/components/ui';
 import { toErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing } from '@/theme';
 
 import { journeyLegs, MAPS_URL_MAX_WAYPOINTS, navigateLink } from '../../places/mapsLinks';
+import { useArrivalStore } from '../arrivalStore';
 import type { NavItem } from '../companion';
 import type { TripCompanion } from '../companionRepository';
 import { siblingMap } from '../dragDrop';
@@ -45,6 +46,9 @@ export function NavigationTab({
   const [error, setError] = useState<string | null>(null);
   const [showLegs, setShowLegs] = useState(false);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const [undo, setUndo] = useState<{ id: string; name: string } | null>(null);
+  const arrival = useArrivalStore((s) => s.settings);
+  const arrivalError = useArrivalStore((s) => s.error);
   const store = usePlannerStore.getState;
   const items = useMemo(() => companion?.navigation ?? [], [companion]);
   const nodes = useMemo(() => new Map(plan.nodes.map((n) => [n.id, n])), [plan.nodes]);
@@ -123,6 +127,16 @@ export function NavigationTab({
     }
   };
 
+  const toggleVisited = (node: PlanNode, value: boolean) =>
+    run(async () => {
+      await store().setVisited(tripId, node.id, value);
+      setUndo(value ? { id: node.id, name: node.name } : null);
+    }, 'Could not update the place.');
+  const withoutLocation = ordered.filter((item) => {
+    const node = nodes.get(item.nodeId);
+    return node && !visited.has(node.id) && !node.place?.location;
+  }).length;
+
   const navigateJourney = () => {
     if (legs.length === 1 && legs[0]) run(() => open(legs[0]!.url), 'Could not open Google Maps.');
     else setShowLegs((v) => !v);
@@ -135,6 +149,22 @@ export function NavigationTab({
         everywhere else. Google Maps does the turn-by-turn navigation.
       </AppText>
       {error ? <Notice tone="danger" title="Not changed" message={error} /> : null}
+      {undo ? (
+        <Notice
+          tone="success"
+          title={`${undo.name} marked as visited`}
+          action={{
+            label: 'Undo',
+            icon: 'undo',
+            onPress: () =>
+              run(async () => {
+                await store().setVisited(tripId, undo.id, false);
+                setUndo(null);
+              }, 'Could not update the place.'),
+          }}
+          testID="nav-undo-notice"
+        />
+      ) : null}
 
       {total === 0 ? (
         <EmptyState
@@ -249,6 +279,15 @@ export function NavigationTab({
                     </AppText>
                   </View>
                   <IconButton
+                    icon={isVisited ? 'undo' : 'check-circle-outline'}
+                    variant="plain"
+                    size="sm"
+                    tone={isVisited ? 'textMuted' : 'accent'}
+                    accessibilityLabel={isVisited ? `Mark ${row.node.name} as upcoming` : `Mark ${row.node.name} as visited`}
+                    onPress={() => toggleVisited(row.node, !isVisited)}
+                    testID={isVisited ? `nav-unvisit-${row.node.name}` : `nav-visit-${row.node.name}`}
+                  />
+                  <IconButton
                     icon="navigation-variant"
                     variant="plain"
                     size="sm"
@@ -272,6 +311,26 @@ export function NavigationTab({
           />
         </>
       )}
+
+      {total > 0 ? (
+        <Card style={styles.journey} testID="arrival-settings">
+          <ToggleRow
+            icon="map-marker-radius-outline"
+            label="Arrival prompts"
+            description={`Asks “Mark as visited?” after you have stayed about ${arrival.radiusMeters} m from an upcoming place for ${arrival.dwellMinutes} minutes. Never marks anything by itself.`}
+            value={arrival.enabled}
+            onChange={(value) => run(() => useArrivalStore.getState().setEnabled(value), 'Could not change arrival prompts.')}
+            testID="arrival-toggle"
+          />
+          {arrivalError ? <Notice tone="warning" title="Arrival prompts are off" message={arrivalError} testID="arrival-denied" /> : null}
+          <AppText variant="caption" tone="textMuted">
+            Best effort: location is used only while Trip Prep is open (no background tracking), so a prompt can be late or
+            missed. Places need a known location
+            {withoutLocation > 0 ? ` — ${withoutLocation} upcoming ${withoutLocation === 1 ? 'place has' : 'places have'} none yet` : ''}.
+            You can always mark places visited yourself.
+          </AppText>
+        </Card>
+      ) : null}
 
       {candidates.length > 0 ? (
         <View style={styles.list}>

@@ -44,7 +44,8 @@ export function useNodeActions(tripId: string, plan: TripPlan | null, options: {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const store = usePlannerStore.getState;
-  const navigation = useTripPlan(tripId).companion?.navigation ?? [];
+  const companion = useTripPlan(tripId).companion;
+  const navigation = companion?.navigation ?? [];
 
   const run = (fn: () => Promise<unknown>, fallback: string) => {
     setError(null);
@@ -135,6 +136,25 @@ export function useNodeActions(tripId: string, plan: TripPlan | null, options: {
             icon: 'map-marker-path',
             description: 'As the last stop',
             onPress: () => run(() => store().addRouteStop(tripId, node.id), 'Could not change the route.'),
+          },
+      companion?.profiles.some((p) => p.nodeId === node.id && p.visitStatus === 'visited')
+        ? {
+            key: 'unvisit',
+            label: 'Mark as upcoming',
+            icon: 'undo',
+            description: 'Undo the visit',
+            onPress: () => run(() => store().setVisited(tripId, node.id, false), 'Could not update the place.'),
+          }
+        : {
+            key: 'visit',
+            label: 'Mark as visited',
+            icon: 'check-circle-outline',
+            description: 'Stays in your plan, route and Navigation',
+            onPress: () =>
+              run(async () => {
+                await store().setVisited(tripId, node.id, true);
+                setNotice(`${node.name} marked as visited.`);
+              }, 'Could not update the place.'),
           },
       navigation.some((item) => item.nodeId === node.id)
         ? {

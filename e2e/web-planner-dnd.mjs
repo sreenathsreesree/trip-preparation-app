@@ -238,6 +238,39 @@ await run('Planner drag-and-drop test', async () => {
   await byId(page, 'nav-list').waitFor();
   const navSaved = await navOrder(page);
 
+  setStep('visited: mark, undo, completed section, shared with Navigation');
+  await page.goto(`${trip}/plan`);
+  await byId(page, 'planner-tree').waitFor();
+  const treeBeforeVisit = await treeOrder(page, 'planner-tree');
+  await plannerTab(page, 'route');
+  const firstStop = (await routeOrder(page))[0];
+  await byId(page, `route-visit-${firstStop}`).click();
+  await byId(page, 'route-undo-notice').waitFor();
+  await waitText(page, 'route-progress', (v) => v.startsWith('1 of 3'));
+  check((await byId(page, `route-stop-${firstStop}`).count()) === 0, 'a visited stop leaves the active list');
+  await byId(page, 'route-completed-toggle').click();
+  await byId(page, `route-done-${firstStop}`).waitFor();
+  check(true, 'it appears under Completed stops (collapsible)');
+  await byId(page, `route-undo-${firstStop}`).click();
+  await byId(page, `route-stop-${firstStop}`).waitFor();
+  await waitText(page, 'route-progress', (v) => v.startsWith('0 of 3'));
+  check(true, 'undo makes it upcoming again');
+  await byId(page, `route-visit-${firstStop}`).click();
+  await waitText(page, 'route-progress', (v) => v.startsWith('1 of 3'));
+  await plannerTab(page, 'navigation');
+  await byId(page, `nav-unvisit-${firstStop}`).waitFor();
+  check((await text(page, 'nav-progress')).startsWith('1 of 5'), 'Navigation shows the same place as visited');
+  await plannerTab(page, 'destinations');
+  check(JSON.stringify(await treeOrder(page, 'planner-tree')) === JSON.stringify(treeBeforeVisit), 'visiting changes no order');
+  check((await text(page, `plan-row-${firstStop}`)).includes('Visited'), 'the plan shows it as visited, still in place');
+  await shot(page, 'dnd-06-visited');
+
+  setStep('arrival prompts: permission denied keeps manual completion');
+  await plannerTab(page, 'navigation');
+  await byId(page, 'arrival-toggle').click();
+  await byId(page, 'arrival-denied').waitFor();
+  check(true, 'without location permission the feature stays off and explains why');
+
   setStep('hierarchy persists after a restart');
   const saved = await (async () => {
     await page.goto(`${trip}/plan`);
@@ -250,7 +283,12 @@ await run('Planner drag-and-drop test', async () => {
   await byId(page, 'planner-tree').waitFor({ timeout: 60_000 });
   await page.waitForTimeout(300);
   check(JSON.stringify(await treeOrder(page, 'planner-tree')) === JSON.stringify(saved), 'same hierarchy after restart');
-  check(JSON.stringify(await routeOrder(page, trip)) === JSON.stringify(finalRoute), 'same route order after restart');
+  check((await text(page, `plan-row-${firstStop}`)).includes('Visited'), 'visited status persists after restart');
+  // The visited stop now waits under "Completed stops"; the rest keep their order.
+  check(
+    JSON.stringify(await routeOrder(page, trip)) === JSON.stringify(finalRoute.filter((name) => name !== firstStop)),
+    'same route order after restart',
+  );
   await page.goto(`${trip}/plan?tab=navigation`);
   await byId(page, 'nav-list').waitFor();
   await page.waitForTimeout(300);

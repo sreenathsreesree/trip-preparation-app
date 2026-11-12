@@ -61,7 +61,19 @@
         }
       ],
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Trip Prep uses your location only while the app is open, and only if you turn on arrival prompts, to ask whether you have reached a place on your trip.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false,
+          "motionUsagePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

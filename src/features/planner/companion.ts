@@ -308,3 +308,23 @@ export function navigationParentFor(
   }
   return null;
 }
+
+/**
+ * Converts a drop position in the list of upcoming route stops (visited stops
+ * are shown separately) into an index in the full route, so visited stops keep
+ * their places.
+ *
+ * `targetIndex` counts upcoming stops without the dragged one.
+ */
+export function routeIndexForUpcoming(
+  routeOrder: readonly string[],
+  visited: ReadonlySet<string>,
+  draggedId: string,
+  targetIndex: number,
+): number {
+  const rest = routeOrder.filter((id) => id !== draggedId);
+  const upcoming = rest.filter((id) => !visited.has(id));
+  if (upcoming.length === 0) return rest.length;
+  if (targetIndex < upcoming.length) return rest.indexOf(upcoming[targetIndex] as string);
+  return rest.indexOf(upcoming[upcoming.length - 1] as string) + 1;
+}

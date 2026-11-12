@@ -20,6 +20,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorState } from '@/components/ui';
 import { getDatabase } from '@/db/client';
 import { useAuthStore } from '@/features/auth/authStore';
+import { ArrivalWatcher } from '@/features/planner/components/ArrivalWatcher';
 import { colors } from '@/theme';
 import { navigationTheme } from '@/theme/navigation';
 
@@ -124,6 +125,7 @@ export default function RootLayout() {
               <Stack.Screen name="account/index" />
             </Stack.Protected>
           </Stack>
+          <ArrivalWatcher />
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

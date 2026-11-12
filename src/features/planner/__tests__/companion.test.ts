@@ -1,6 +1,6 @@
 import { setupRepositories, tripInput } from '../../../../test/fixtures';
 import { buildTree, PLANNER_LIMITS, routeNodes, type TreeNode, type TreeItem } from '../model';
-import { cleanTags, navigationParentFor, taskProgress, visitLength, type NavItem } from '../companion';
+import { cleanTags, navigationParentFor, routeIndexForUpcoming, taskProgress, visitLength, type NavItem } from '../companion';
 
 async function setup() {
   const repos = await setupRepositories();
@@ -246,5 +246,27 @@ describe('pure helpers', () => {
     expect(navigationParentFor(['parent'], nav)).toBeNull();
     const tree: TreeItem[] = [];
     expect(buildTree(tree)).toEqual([]);
+  });
+});
+
+describe('route order with completed stops', () => {
+  it('maps drops among upcoming stops to the full route, keeping visited stops in place', () => {
+    const route = ['a', 'b', 'c', 'd', 'e'];
+    const visited = new Set(['b', 'd']);
+    // Upcoming: a, c, e. Drag e to the top: before a.
+    expect(routeIndexForUpcoming(route, visited, 'e', 0)).toBe(0);
+    // Drag a after c (index 1 among [c, e] → before e).
+    expect(routeIndexForUpcoming(route, visited, 'a', 1)).toBe(3);
+    // Drag a to the end (after e).
+    expect(routeIndexForUpcoming(route, visited, 'a', 2)).toBe(4);
+    expect(routeIndexForUpcoming(['a', 'b'], new Set(['b']), 'a', 0)).toBe(1);
+  });
+
+  it('saves arrival prompt settings on the device (off by default)', async () => {
+    const ctx = await setup();
+    expect(await ctx.companion.arrivalSettings()).toEqual({ enabled: false, radiusMeters: 150, dwellMinutes: 4 });
+    expect(await ctx.companion.saveArrivalSettings({ enabled: true, radiusMeters: 200, dwellMinutes: 5 })).toMatchObject({ enabled: true });
+    expect(await ctx.companion.arrivalSettings()).toEqual({ enabled: true, radiusMeters: 200, dwellMinutes: 5 });
+    ctx.db.close();
   });
 });
