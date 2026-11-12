@@ -100,14 +100,17 @@ async function upsert(db: Database, table: string, pk: string, row: CloudRow, ex
 }
 
 /** 1:1 table: same name and columns on both sides. */
-function plain(table: SyncTable, options: { insertDefaults?: CloudRow; photo?: string; where?: string } = {}): Adapter {
+function plain(table: SyncTable, options: { insertDefaults?: CloudRow; photo?: string; driveOnly?: boolean; where?: string } = {}): Adapter {
   return {
     table,
     async read(db, ctx) {
       const rows = await db.getAllAsync<CloudRow>(`SELECT ${table.columns.join(', ')} FROM ${table.name}${options.where ? ` WHERE ${options.where}` : ''}`, []);
       const out = new Map<string, CloudRow>();
       for (const r of rows) {
-        if (options.photo) r[options.photo] = toCloudPhoto(r[options.photo] as string | null, ctx);
+        if (options.photo) {
+          const ref = toCloudPhoto(r[options.photo] as string | null, ctx);
+          r[options.photo] = options.driveOnly && ref && !ref.startsWith(DRIVE) ? null : ref;
+        }
         out.set(String(r[table.pk]), r);
       }
       return out;
@@ -140,7 +143,7 @@ function custom(): Record<string, Adapter> {
     inventory_categories: plain(t('inventory_categories'), { photo: G1_PHOTO_COLUMNS.inventory_categories }),
     inventory_items: plain(t('inventory_items'), { photo: G1_PHOTO_COLUMNS.inventory_items }),
     user_preferences: plain(t('user_preferences'), { where: `key NOT IN (${[...DEVICE_PREFERENCES].map((k) => `'${k}'`).join(', ')})` }),
-    plan_node_profiles: plain(t('plan_node_profiles'), { photo: 'cover_image_uri' }),
+    plan_node_profiles: plain(t('plan_node_profiles'), { photo: 'cover_image_uri', driveOnly: true }),
 
     inventory_category_details: {
       table: t('inventory_category_details'),
@@ -285,7 +288,7 @@ function custom(): Record<string, Adapter> {
             } catch {
               photos = [];
             }
-            const refs = (Array.isArray(photos) ? photos : []).map((p) => toCloudPhoto(String(p), ctx)).filter((p): p is string => !!p);
+            const refs = (Array.isArray(photos) ? photos : []).map((p) => toCloudPhoto(String(p), ctx)).filter((p): p is string => !!p && p.startsWith(DRIVE));
             return [String(r.node_id), { ...r, photos: JSON.stringify(refs) }];
           }),
         );

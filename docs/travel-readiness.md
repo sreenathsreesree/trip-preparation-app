@@ -118,7 +118,7 @@ leave continuous two-way editing (G4) until after the trip.
 
 ### G3 as built (backup and restore, automatic, not real-time)
 
-- **Cloud (pending, not deployed):** `supabase/pending/20261115090000_personal_backup.sql` — 16 new
+- **Cloud (pending, not deployed):** `supabase/pending/20261112090000_personal_backup.sql` — 16 new
   tables registered with the G1 protocol and prepared by G1's own `sync_prepare_table` (forced RLS,
   owner-only policies, no deletes, stamping trigger). G1 unchanged (tested). 8 Postgres tests: registry
   parity with the client, RLS shape, owner isolation, user-scoped foreign keys (another account cannot

@@ -200,6 +200,24 @@ describe('G3 backup and restore', () => {
     expect((await bobPhone.trips.list()).length).toBe(0);
   });
 
+  it('re-uploads everything if the backup tables are removed and come back (rollback and redeploy)', async () => {
+    const server = fakeSyncServer();
+    const { a, trip } = await travellersPhone();
+    await linkAccount(a.database, ASHA);
+    await sync(a, server);
+    const g3Rows = (await a.db.getFirstAsync<{ n: number }>("SELECT COUNT(*) AS n FROM sync_rows WHERE table_name = 'journal_entries'", []))?.n;
+    expect(g3Rows).toBe(1);
+    // Rolled back: the server no longer offers the G3 tables.
+    await runSync(a.database, fakeSyncServer({ g3: false }).apiFor(ASHA), { accountId: ASHA, createId: a.deps.createId });
+    expect((await a.db.getFirstAsync<{ n: number }>("SELECT COUNT(*) AS n FROM sync_rows WHERE table_name = 'journal_entries'", []))?.n).toBe(0);
+    expect((await a.journal.list(trip.id)).length).toBe(1); // device data untouched
+    // Redeployed to an empty table: the journal is sent again.
+    const fresh = fakeSyncServer();
+    const again = await sync(a, fresh);
+    expect(fresh.count(ASHA, 'journal_entries')).toBe(1);
+    expect(again.pending).toBe(0);
+  });
+
   it('with only G1 deployed, backs up the G1 data and says what is not covered yet', async () => {
     const server = fakeSyncServer({ g3: false });
     const { a, trip } = await travellersPhone();

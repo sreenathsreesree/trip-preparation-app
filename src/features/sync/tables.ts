@@ -181,7 +181,7 @@ export const LOCAL_ONLY_TABLES: Readonly<Record<string, string>> = {
 };
 
 /**
- * G3 personal backup tables (supabase/pending/20261115090000_personal_backup.sql — not deployed).
+ * G3 personal backup tables (supabase/pending/20261112090000_personal_backup.sql — not deployed).
  * Same protocol and conventions as SYNC_TABLES. Cloud column names; the device adapters
  * (src/features/sync/adapters.ts) map them to local tables where they differ.
  */

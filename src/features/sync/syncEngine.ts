@@ -338,6 +338,12 @@ export async function runSync(db: Database, api: SyncApi, deps: { accountId: str
   if (linked !== deps.accountId) throw new SyncAccountError('other_account', 'This phone’s trips belong to a different Google account. Sign in with that account to sync.');
 
   const serverTables = new Set(await api.tables());
+  // A table the server no longer has (e.g. a rolled-back migration): forget what was sent to it,
+  // so everything is uploaded again if it comes back. Device data itself is never touched.
+  const known = await db.getAllAsync<{ table_name: string }>('SELECT DISTINCT table_name FROM sync_rows', []);
+  for (const { table_name } of known) {
+    if (!serverTables.has(table_name)) await db.runAsync('DELETE FROM sync_rows WHERE table_name = ?', [table_name]);
+  }
   const adapters = adaptersFor(serverTables);
   const downloaded = await download(db, api, adapters, { now, createId: deps.createId });
   const up = await upload(db, api, adapters, { now });

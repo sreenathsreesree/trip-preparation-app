@@ -12,9 +12,12 @@ import { join } from 'node:path';
 const root = join(import.meta.dirname, '..');
 const dir = join(root, 'supabase', 'migrations');
 const out = join(root, 'supabase', 'deploy', 'g1_bundle.sql');
+export const G1_FILES = ['20261111090000_trip_prep_schema.sql', '20261111090100_trip_prep_sync_functions.sql'];
 
 export function buildBundle() {
-  const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+  // Only the G1 migrations: this bundle is the one-time setup for an empty project. Later
+  // migrations are deployed with the GitHub workflow (supabase db push), never by bundle.
+  const files = readdirSync(dir).filter((f) => f.endsWith('.sql') && G1_FILES.includes(f)).sort();
   const parts = files.map((file) => {
     const [version, ...rest] = file.replace(/\.sql$/, '').split('_');
     return { file, version, name: rest.join('_'), sql: readFileSync(join(dir, file), 'utf8').trimEnd() };

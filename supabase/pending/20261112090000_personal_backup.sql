@@ -67,7 +67,7 @@ create table public.plan_node_profiles (
   visit_status text not null default 'upcoming' check (visit_status in ('upcoming', 'visited')),
   visited_at text,
   saved integer not null default 0 check (saved in (0, 1)),
-  cover_image_uri text check (cover_image_uri is null or cover_image_uri like 'drive:%'),
+  cover_image_uri text check (cover_image_uri is null or cover_image_uri ~ '^drive:[A-Za-z0-9_-]{10,200}$'),
   tags text not null default '[]',
   about text not null default '',
   best_season text not null default '',
@@ -160,7 +160,8 @@ create table public.plan_node_memories (
   rating integer check (rating is null or rating between 1 and 5),
   notes text not null default '',
   moments text not null default '',
-  photos text not null default '[]' check (photos not like '%file:%' and photos not like '%data:%'),
+  -- Only a JSON array of Drive references, e.g. ["drive:1AbC…","drive:2DeF…"] (allow-list, not a block-list).
+  photos text not null default '[]' check (photos ~ '^\[("drive:[A-Za-z0-9_-]{10,200}"(,"drive:[A-Za-z0-9_-]{10,200}")*)?\]$'),
   created_at text not null,
   updated_at text not null,
   revision bigint not null default 0,

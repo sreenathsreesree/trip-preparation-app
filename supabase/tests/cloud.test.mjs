@@ -10,7 +10,11 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
 
-import { SYNC_TABLES } from '../../src/features/sync/tables.ts';
+import { PENDING_SYNC_TABLES, SYNC_TABLES as G1_TABLES } from '../../src/features/sync/tables.ts';
+
+const MIGRATION_FILES = readdirSync(join(import.meta.dirname, '..', 'migrations'));
+// After the G3 migration is moved into supabase/migrations (deployment), its tables are expected too.
+const SYNC_TABLES = MIGRATION_FILES.some((f) => f.endsWith('_personal_backup.sql')) ? [...G1_TABLES, ...PENDING_SYNC_TABLES] : G1_TABLES;
 
 const MIGRATIONS = join(import.meta.dirname, '..', 'migrations');
 const ALICE = '11111111-1111-4111-8111-111111111111';
@@ -352,7 +356,11 @@ describe('deploy bundle (supabase/deploy/g1_bundle.sql)', () => {
   });
 
   it('builds exactly the same schema as the migrations and records the history', async () => {
-    const viaMigrations = await freshDatabase();
+    // The bundle is the G1-only setup bundle; compare it with exactly the G1 migrations.
+    const { G1_FILES } = await import('../../scripts/build-supabase-bundle.mjs');
+    const viaMigrations = new PGlite();
+    await viaMigrations.exec(SUPABASE_STUB);
+    for (const file of G1_FILES) await viaMigrations.exec(readFileSync(join(MIGRATIONS, file), 'utf8'));
     const viaBundle = new PGlite();
     await viaBundle.exec(SUPABASE_STUB);
     await viaBundle.exec(readFileSync(bundlePath, 'utf8'));

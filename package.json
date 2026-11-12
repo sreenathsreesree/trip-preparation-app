@@ -58,7 +58,7 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:cloud": "node --test --no-warnings supabase/tests/cloud.test.mjs supabase/tests/sharing.test.mjs supabase/tests/expenses.test.mjs supabase/tests/backup.test.mjs",
+    "test:cloud": "node --test --no-warnings supabase/tests/cloud.test.mjs supabase/tests/sharing.test.mjs supabase/tests/expenses.test.mjs supabase/tests/backup.test.mjs supabase/tests/deploy-review.test.mjs",
     "supabase:bundle": "node scripts/build-supabase-bundle.mjs",
     "supabase:verify": "node --no-warnings scripts/verify-supabase.mjs",
     "doctor": "npx expo-doctor",
