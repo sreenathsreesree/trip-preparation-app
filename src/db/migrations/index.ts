@@ -4,6 +4,7 @@ import { tripManagementAndChecklists } from './0002_trip_management_and_checklis
 import { inventoryAndPacking } from './0003_inventory_and_packing';
 import { destinationPlanner } from './0004_destination_planner';
 import { packingUnitsAndCategoryDescriptions } from './0005_packing_units_and_category_descriptions';
+import { destinationCompanion } from './0006_destination_companion';
 
 /**
  * Ordered list of schema migrations.
@@ -18,4 +19,5 @@ export const migrations: readonly Migration[] = [
   inventoryAndPacking,
   destinationPlanner,
   packingUnitsAndCategoryDescriptions,
+  destinationCompanion,
 ];

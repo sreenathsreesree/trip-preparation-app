@@ -22,6 +22,7 @@ describe('migrate', () => {
         'inventory_and_packing',
         'destination_planner',
         'packing_units_and_category_descriptions',
+        'destination_companion',
       ],
     });
     expect(await getSchemaVersion(db)).toBe(migrations.length);
@@ -40,9 +41,15 @@ describe('migrate', () => {
       'packing_entries',
       'packing_recommendations',
       'places',
+      'plan_node_alerts',
+      'plan_node_memories',
+      'plan_node_notes',
+      'plan_node_profiles',
+      'plan_node_tasks',
       'purchase_items',
       'trip_destinations',
       'trip_luggage',
+      'trip_navigation_items',
       'trip_packing',
       'trip_plan_nodes',
       'trip_route_stops',

@@ -77,7 +77,7 @@ describe('migration 5: packing units and category descriptions', () => {
     );
     const before = await snapshot(db);
 
-    const result = await migrate(db, migrations);
+    const result = await migrate(db, migrations.slice(0, 5));
     expect(result.applied).toEqual(['packing_units_and_category_descriptions']);
     expect(await getSchemaVersion(db)).toBe(5);
 
@@ -105,7 +105,7 @@ describe('migration 5: packing units and category descriptions', () => {
   it('upgrades an empty v4 database and supports the new columns', async () => {
     const db = openTestDatabase();
     await migrate(db, migrations.slice(0, 4));
-    await migrate(db, migrations);
+    await migrate(db, migrations.slice(0, 5));
     expect(await getSchemaVersion(db)).toBe(5);
     const deps = { createId: sequentialIds('n'), now: () => new Date(T) };
     const trip = await createTripRepository(db, deps).create(tripInput(), { sections: [] });

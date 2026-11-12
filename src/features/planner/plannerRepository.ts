@@ -2,6 +2,7 @@ import type { Database } from '@/db/types';
 import type { IdFactory } from '@/lib/id';
 
 import { providerCacheCutoff } from '../places/cachePolicy';
+import { copyCompanion } from './companionRepository';
 import {
   canMove,
   childrenOf,
@@ -265,6 +266,7 @@ export async function copyPlan(
       [createId(), toTripId, nodeId, stop.position, timestamp],
     );
   }
+  await copyCompanion(db, createId, idMap, fromTripId, toTripId, timestamp);
   await syncTripDestinations(db, createId, toTripId, timestamp);
 }
 

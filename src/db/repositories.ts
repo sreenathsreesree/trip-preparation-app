@@ -4,6 +4,7 @@ import { createPreferencesRepository } from '@/features/packing/preferencesRepos
 import { createPurchaseRepository } from '@/features/packing/purchaseRepository';
 import { createRecommendationRepository } from '@/features/packing/recommendationRepository';
 import { createPlannerRepository } from '@/features/planner/plannerRepository';
+import { createCompanionRepository } from '@/features/planner/companionRepository';
 import { createChecklistRepository } from '@/features/preparation/checklistRepository';
 import { createTemplateRepository } from '@/features/preparation/templateRepository';
 import { createTripRepository } from '@/features/trips/tripRepository';
@@ -28,6 +29,7 @@ export async function getRepositories() {
     purchases: createPurchaseRepository(db, { createId }),
     preferences: createPreferencesRepository(db),
     planner: createPlannerRepository(db, { createId }),
+    companion: createCompanionRepository(db, { createId }),
     schemaVersion: () => getSchemaVersion(db),
     countTasks: async () => {
       const row = await db.getFirstAsync<{ count: number }>(

@@ -4,7 +4,7 @@ import { orphanCounts, planViolations } from '../../../../test/planInvariants';
 import type { Database } from '../../../db/types';
 import { migrate } from '../../../db/migrate';
 import { migrations } from '../../../db/migrations';
-import { buildTree, PLANNER_LIMITS, routeNodes, type PlaceInput, type TripPlan } from '../model';
+import { buildTree, PLANNER_LIMITS, routeNodes, type PlaceInput, type PlanTreeNode, type TripPlan } from '../model';
 import { PlannerError } from '../plannerRepository';
 
 /** Small deterministic PRNG so failures are reproducible. */
@@ -27,7 +27,7 @@ const place = (id: string, name: string): PlaceInput => ({
 });
 
 const shape = (plan: TripPlan) => {
-  const render = (items: ReturnType<typeof buildTree>): unknown[] =>
+  const render = (items: PlanTreeNode[]): unknown[] =>
     items.map((i) => (i.children.length ? { [i.node.name]: render(i.children) } : i.node.name));
   return render(buildTree(plan.nodes));
 };

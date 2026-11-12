@@ -145,4 +145,12 @@ export const SYNC_TABLES: readonly SyncTable[] = [
 /** Local tables that never sync, with the reason. */
 export const LOCAL_ONLY_TABLES: Readonly<Record<string, string>> = {
   trip_destinations: 'Derived from the planner’s main destinations (rebuilt on each device after sync).',
+  // Destination planner upgrade (local schema v6). Synced only after a matching cloud
+  // migration is separately approved (needed before G4).
+  trip_navigation_items: 'Navigation list (local v6); cloud table pending approval.',
+  plan_node_profiles: 'Visit status, saved flag, cover, tags and facts (local v6); cloud table pending approval.',
+  plan_node_tasks: 'Destination preparation checklist (local v6); cloud table pending approval.',
+  plan_node_notes: 'Notes & my plan (local v6); cloud table pending approval.',
+  plan_node_alerts: 'Saved destination notices (local v6); cloud table pending approval.',
+  plan_node_memories: 'Personal visit memories (local v6); cloud table pending approval.',
 };

@@ -1,5 +1,5 @@
 import { setupRepositories, tripInput } from '../../../../test/fixtures';
-import { buildTree, removalImpact, routeNodes, type PlaceInput, type TripPlan } from '../model';
+import { buildTree, removalImpact, routeNodes, type PlaceInput, type PlanTreeNode, type TripPlan } from '../model';
 
 const googlePlace = (id: string, name: string, lat = 10.08, lng = 77.06): PlaceInput => ({
   provider: 'google',
@@ -13,7 +13,7 @@ const googlePlace = (id: string, name: string, lat = 10.08, lng = 77.06): PlaceI
 });
 
 const shape = (plan: TripPlan) => {
-  const render = (items: ReturnType<typeof buildTree>): unknown[] =>
+  const render = (items: PlanTreeNode[]): unknown[] =>
     items.map((i) => (i.children.length ? { [i.node.name]: render(i.children) } : i.node.name));
   return render(buildTree(plan.nodes));
 };

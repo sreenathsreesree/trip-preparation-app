@@ -95,29 +95,39 @@ export const isPlaceProvider = (v: unknown): v is PlaceProviderId => v === 'goog
 /* Tree helpers (pure)                                                 */
 /* ------------------------------------------------------------------ */
 
-export interface PlanTreeNode {
-  node: PlanNode;
-  depth: number;
-  children: PlanTreeNode[];
+/** Anything stored as a tree with sibling order (plan nodes, navigation items). */
+export interface TreeItem {
+  id: string;
+  parentId: string | null;
+  position: number;
+  createdAt: string;
 }
 
-const bySiblingOrder = (a: PlanNode, b: PlanNode) =>
+export interface TreeNode<T extends TreeItem> {
+  node: T;
+  depth: number;
+  children: TreeNode<T>[];
+}
+
+export type PlanTreeNode = TreeNode<PlanNode>;
+
+const bySiblingOrder = (a: TreeItem, b: TreeItem) =>
   a.position - b.position || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
 
-export function childrenOf(nodes: readonly PlanNode[], parentId: string | null): PlanNode[] {
+export function childrenOf<T extends TreeItem>(nodes: readonly T[], parentId: string | null): T[] {
   return nodes.filter((n) => n.parentId === parentId).sort(bySiblingOrder);
 }
 
 /** Nested tree of a trip's nodes. Nodes whose parent is missing are treated as roots. */
-export function buildTree(nodes: readonly PlanNode[]): PlanTreeNode[] {
+export function buildTree<T extends TreeItem>(nodes: readonly T[]): TreeNode<T>[] {
   const ids = new Set(nodes.map((n) => n.id));
-  const byParent = new Map<string | null, PlanNode[]>();
+  const byParent = new Map<string | null, T[]>();
   for (const node of nodes) {
     const key = node.parentId && ids.has(node.parentId) ? node.parentId : null;
     byParent.set(key, [...(byParent.get(key) ?? []), node]);
   }
   const visited = new Set<string>();
-  const build = (parentId: string | null, depth: number): PlanTreeNode[] =>
+  const build = (parentId: string | null, depth: number): TreeNode<T>[] =>
     (byParent.get(parentId) ?? [])
       .sort(bySiblingOrder)
       .filter((node) => !visited.has(node.id))
@@ -129,7 +139,7 @@ export function buildTree(nodes: readonly PlanNode[]): PlanTreeNode[] {
 }
 
 /** Ids from the node up to its root (nearest first), excluding the node itself. */
-export function ancestorIds(nodes: readonly PlanNode[], id: string): string[] {
+export function ancestorIds(nodes: readonly TreeItem[], id: string): string[] {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const result: string[] = [];
   let current = byId.get(id)?.parentId ?? null;
@@ -141,7 +151,7 @@ export function ancestorIds(nodes: readonly PlanNode[], id: string): string[] {
 }
 
 /** The node and everything nested below it. */
-export function subtreeIds(nodes: readonly PlanNode[], id: string): string[] {
+export function subtreeIds(nodes: readonly TreeItem[], id: string): string[] {
   const result = [id];
   for (let i = 0; i < result.length; i += 1) {
     for (const node of nodes) {
@@ -152,10 +162,10 @@ export function subtreeIds(nodes: readonly PlanNode[], id: string): string[] {
 }
 
 /** 0 for a main destination, 1 for a place inside it, and so on. */
-export const depthOf = (nodes: readonly PlanNode[], id: string) => ancestorIds(nodes, id).length;
+export const depthOf = (nodes: readonly TreeItem[], id: string) => ancestorIds(nodes, id).length;
 
 /** Levels in the subtree below a node (0 when it has no children). */
-export function subtreeHeight(nodes: readonly PlanNode[], id: string): number {
+export function subtreeHeight(nodes: readonly TreeItem[], id: string): number {
   const children = nodes.filter((n) => n.parentId === id);
   return children.length === 0 ? 0 : 1 + Math.max(...children.map((c) => subtreeHeight(nodes, c.id)));
 }
@@ -163,7 +173,7 @@ export function subtreeHeight(nodes: readonly PlanNode[], id: string): number {
 export type MoveCheck = { ok: true } | { ok: false; reason: string };
 
 /** Whether `id` (with its subtree) may be placed under `parentId` (null = main destination). */
-export function canMove(nodes: readonly PlanNode[], id: string, parentId: string | null): MoveCheck {
+export function canMove(nodes: readonly TreeItem[], id: string, parentId: string | null): MoveCheck {
   if (parentId === null) return { ok: true };
   if (parentId === id) return { ok: false, reason: 'A place cannot be inside itself.' };
   if (subtreeIds(nodes, id).includes(parentId)) {
@@ -177,9 +187,9 @@ export function canMove(nodes: readonly PlanNode[], id: string, parentId: string
 }
 
 /** Rows to render for a tree where only `expanded` nodes show their children. */
-export function visibleRows(tree: readonly PlanTreeNode[], expanded: ReadonlySet<string>): PlanTreeNode[] {
-  const rows: PlanTreeNode[] = [];
-  const walk = (items: readonly PlanTreeNode[]) => {
+export function visibleRows<T extends TreeItem>(tree: readonly TreeNode<T>[], expanded: ReadonlySet<string>): TreeNode<T>[] {
+  const rows: TreeNode<T>[] = [];
+  const walk = (items: readonly TreeNode<T>[]) => {
     for (const item of items) {
       rows.push(item);
       if (expanded.has(item.node.id)) walk(item.children);
@@ -198,9 +208,9 @@ export interface RowInfo {
 }
 
 /** Per-node sibling position and descendant count, computed in one pass over the tree. */
-export function rowInfo(tree: readonly PlanTreeNode[]): Map<string, RowInfo> {
+export function rowInfo<T extends TreeItem>(tree: readonly TreeNode<T>[]): Map<string, RowInfo> {
   const info = new Map<string, RowInfo>();
-  const walk = (items: readonly PlanTreeNode[]): number => {
+  const walk = (items: readonly TreeNode<T>[]): number => {
     let total = 0;
     items.forEach((item, index) => {
       const descendants = walk(item.children);
@@ -214,7 +224,7 @@ export function rowInfo(tree: readonly PlanTreeNode[]): Map<string, RowInfo> {
 }
 
 /** Number of nodes in a subtree, excluding its root. */
-export const countDescendants = (item: PlanTreeNode): number =>
+export const countDescendants = <T extends TreeItem>(item: TreeNode<T>): number =>
   item.children.reduce((sum, child) => sum + 1 + countDescendants(child), 0);
 
 /** Route stops in order, joined to their nodes (stops whose node is gone are skipped). */
