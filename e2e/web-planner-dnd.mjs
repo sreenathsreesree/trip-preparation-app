@@ -218,14 +218,19 @@ await run('Planner drag-and-drop test', async () => {
   check(opened.length === 1 && opened[0].includes('/maps/dir/?api=1') && new URL(opened[0]).searchParams.get('destination') === 'Munnar', `one place opens Google Maps directions (${opened[0]})`);
   await byId(page, 'nav-journey-go').click();
   await byId(page, 'nav-legs').waitFor();
-  check((await byId(page, 'nav-legs').locator('[data-testid^="nav-leg-"]').count()) === 2, 'six stops become two legs (3 waypoints per link)');
+  check((await byId(page, 'nav-legs').locator('[data-testid^="nav-leg-"][role="link"]').count()) === 2, 'six places become two browser legs (5 places per link)');
+  check((await byId(page, 'nav-leg-1-title').innerText()).includes('Leg 1 of 2 · places 1–5'), 'leg 1 labelled with the places it covers');
+  check((await byId(page, 'nav-leg-2-stops').innerText()) === 'Athirappilly → Kochi', 'leg 2 lists its places');
   await byId(page, 'nav-leg-1').click();
   await byId(page, 'nav-leg-2').click();
   opened = await page.evaluate(() => window.__opened);
   const leg1 = new URL(opened[1]).searchParams;
   const leg2 = new URL(opened[2]).searchParams;
-  check(leg1.get('waypoints')?.split('|').length === 3 && leg1.get('destination') === 'Tea Museum' && !leg1.has('origin'), 'leg 1: from your location through 3 stops');
-  check(leg2.get('origin') === 'Tea Museum' && leg2.get('waypoints') === 'Athirappilly' && leg2.get('destination') === 'Kochi', 'leg 2 starts where leg 1 ended; no stop dropped');
+  check(
+    leg1.get('origin') === 'Munnar' && leg1.get('waypoints') === 'Echo Point|Mattupetty Dam|Tea Museum' && leg1.get('destination') === 'Athirappilly',
+    'leg 1: from the first saved place through 3 stops',
+  );
+  check(leg2.get('origin') === 'Athirappilly' && !leg2.has('waypoints') && leg2.get('destination') === 'Kochi', 'leg 2 starts where leg 1 ended; no stop dropped');
   await shot(page, 'dnd-05-legs');
 
   setStep('navigation: remove keeps the plan and route');

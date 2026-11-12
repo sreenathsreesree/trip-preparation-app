@@ -317,8 +317,9 @@ creating a trip, and Home's *Continue planning*)
   visited stops move to a collapsible *Completed* section with undo and progress. Hierarchy changes
   never alter it.
 - **Navigation tab** — an independent list (own order and nesting) of places to navigate to:
-  per-place Google Maps directions and whole-journey directions split into legs within the Maps URL
-  waypoint limit, never dropping a stop; visited places are skipped.
+  per-place Google Maps directions and whole-journey directions (up to 10 places in one Google Maps
+  app route on Android, labelled linked legs beyond that or in a browser), never dropping a stop;
+  visited places are skipped.
 - **Visited status** shared by Route, Navigation and the destination page; optional on-device
   arrival prompts ("You've reached X. Mark as visited?") using foreground location only, off by
   default, permission asked only when switched on.

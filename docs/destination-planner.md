@@ -123,10 +123,18 @@ Drops over the dragged place's own subtree, or deeper than 12 levels, are refuse
 an accessible alternative: screen-reader actions on the drag handle (move up, move down, move out)
 and the *Move* screen.
 
-**Navigation** (`features/places/mapsLinks.ts`): per-place `…/maps/dir/?api=1&destination=…`;
-the journey is split into legs of at most 3 waypoints and 2,048 characters (conservative: Google's
-documented URL limit is 2,048 characters and mobile apps honour fewer waypoints), each leg starting
-where the previous one ended, so no stop is dropped. Visited places are left out.
+**Navigation** (`features/places/mapsLinks.ts`, `openMaps.ts`, `journey.ts`): per-place
+`…/maps/dir/?api=1&destination=…` from the current location. The whole journey is the Navigation
+list in saved order (nested places after their parent), visited places left out; its first place
+is the starting point (`origin`), its last the `destination`, the rest `waypoints` (with one place
+left, directions start from the current location). Google documents up to 3 waypoints on mobile
+browsers and 9 elsewhere, and 2,048 characters per URL; the Maps app plans at most 10 locations.
+On Android the link is sent to the Google Maps app explicitly (`com.google.android.apps.maps`,
+never a browser): up to 10 places (origin + 8 waypoints + destination) per link. Without the app
+(and on web/iOS) links are browser-sized: 5 places (origin + 3 waypoints + destination). Longer
+journeys become labelled legs ("Leg 2 of 3 · places 5–9"), each starting at the previous leg's
+destination, so no place is dropped. Values are percent-encoded (`%20`, `%2C`, `%7C` separators);
+a `|` inside a name becomes `/` so it cannot split a stop. No API key, no billing.
 
 **Visited and arrival prompts** (`arrival.ts`, `arrivalStore.ts`, `ArrivalWatcher.tsx`): marking
 visited is always an explicit action. Optional prompts use foreground location only while the app

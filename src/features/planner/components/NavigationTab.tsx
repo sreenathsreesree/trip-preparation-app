@@ -1,25 +1,30 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText, Button, Card, EmptyState, Icon, IconButton, Notice, ProgressBar, ToggleRow } from '@/components/ui';
 import { toErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing } from '@/theme';
 
-import { journeyLegs, MAPS_URL_MAX_WAYPOINTS, navigateLink } from '../../places/mapsLinks';
+import { journeyLegs, MAPS_LIMITS, navigateLink, type JourneyLeg, type MapsTarget } from '../../places/mapsLinks';
+import { canTargetMapsApp, openInMapsApp, openMapsUrl } from '../../places/openMaps';
 import { useArrivalStore } from '../arrivalStore';
 import type { NavItem } from '../companion';
 import type { TripCompanion } from '../companionRepository';
 import { siblingMap } from '../dragDrop';
-import { buildTree, canMove, childrenOf, subtreeIds, visibleRows, type PlanNode, type TreeNode, type TripPlan } from '../model';
+import { journeyStops, navigationOrder } from '../journey';
+import { buildTree, canMove, subtreeIds, visibleRows, type PlanNode, type TreeNode, type TripPlan } from '../model';
 import { usePlannerStore } from '../plannerStore';
 import { DraggableList, type DraggableItem, type MoveAction, type ScrollBinding } from './DraggableList';
 import { indentFor, PLAN_INDENT } from './PlanRow';
 
+/** Every place a leg covers, start to destination. */
+function legLabel(leg: JourneyLeg<PlanNode>): string {
+  return [leg.from ? leg.from.name : 'Your location', ...leg.stops.map((s) => s.name)].join(' → ');
+}
+
 type NavRow = DraggableItem & { item: TreeNode<NavItem>; node: PlanNode };
 
-async function open(url: string) {
-  await Linking.openURL(url);
-}
+const open = openMapsUrl;
 
 /**
  * Navigation: the places the user wants Google Maps directions to. Its own
@@ -54,24 +59,14 @@ export function NavigationTab({
   const nodes = useMemo(() => new Map(plan.nodes.map((n) => [n.id, n])), [plan.nodes]);
   const tree = useMemo(() => buildTree(items), [items]);
 
-  // Journey order: depth-first through the Navigation list.
-  const ordered = useMemo(() => {
-    const result: NavItem[] = [];
-    const walk = (parentId: string | null) => {
-      for (const child of childrenOf(items, parentId)) {
-        result.push(child);
-        walk(child.id);
-      }
-    };
-    walk(null);
-    return result;
-  }, [items]);
+  // Journey order: depth-first through the Navigation list; visited places are left out.
+  const ordered = useMemo(() => navigationOrder(items), [items]);
   const siblings = useMemo(() => siblingMap(ordered), [ordered]);
-  const journey = ordered.flatMap((item) => {
-    const node = nodes.get(item.nodeId);
-    return node && !visited.has(node.id) ? [node] : [];
-  });
-  const legs = journeyLegs(journey);
+  const journey = journeyStops(ordered, nodes, visited);
+  // The Google Maps app takes 10 named locations per link; browsers only 5 (see mapsLinks.ts).
+  const [target, setTarget] = useState<MapsTarget>(canTargetMapsApp ? 'app' : 'browser');
+  const [fellBack, setFellBack] = useState(false);
+  const legs = journeyLegs(journey, target);
   const total = ordered.length;
   const done = ordered.filter((item) => visited.has(item.nodeId)).length;
 
@@ -137,8 +132,21 @@ export function NavigationTab({
     return node && !visited.has(node.id) && !node.place?.location;
   }).length;
 
+  const openLeg = (leg: JourneyLeg<PlanNode>) =>
+    run(async () => {
+      if (target === 'browser') return open(leg.url);
+      if (await openInMapsApp(leg.url)) return;
+      // No Google Maps app: a browser keeps only 3 waypoints, so re-plan the
+      // journey into browser-sized legs and let the user open them in order.
+      setTarget('browser');
+      setFellBack(true);
+      const browserLegs = journeyLegs(journey, 'browser');
+      if (browserLegs.length === 1 && browserLegs[0]) await open(browserLegs[0].url);
+      else setShowLegs(true);
+    }, 'Could not open Google Maps.');
+
   const navigateJourney = () => {
-    if (legs.length === 1 && legs[0]) run(() => open(legs[0]!.url), 'Could not open Google Maps.');
+    if (legs.length === 1 && legs[0]) openLeg(legs[0]);
     else setShowLegs((v) => !v);
   };
 
@@ -195,17 +203,25 @@ export function NavigationTab({
             />
             {showLegs && legs.length > 1 ? (
               <View style={styles.legs} testID="nav-legs">
-                <AppText variant="caption" tone="textSecondary">
-                  Google Maps links take at most {MAPS_URL_MAX_WAYPOINTS} stops in between, so your {journey.length} stops are
-                  split into {legs.length} legs. Open them in order; each leg starts where the last one ended. No stop is left
-                  out.
+                {fellBack ? (
+                  <Notice
+                    tone="info"
+                    title="Google Maps app not found"
+                    message="Your journey opens in the browser instead, which takes fewer stops per route."
+                    testID="nav-legs-fallback"
+                  />
+                ) : null}
+                <AppText variant="caption" tone="textSecondary" testID="nav-legs-explainer">
+                  {target === 'app' ? 'The Google Maps app' : 'Google Maps in a browser'} takes {MAPS_LIMITS[target].maxWaypoints + 2}{' '}
+                  places per route, so your {journey.length} places are split into {legs.length} legs. Open them in order; each
+                  leg starts where the last one ended. No place is left out.
                 </AppText>
                 {legs.map((leg) => (
                   <Pressable
                     key={leg.number}
                     accessibilityRole="link"
-                    accessibilityLabel={`Open leg ${leg.number} in Google Maps`}
-                    onPress={() => run(() => open(leg.url), 'Could not open Google Maps.')}
+                    accessibilityLabel={`Open leg ${leg.number} of ${legs.length} in Google Maps: ${legLabel(leg)}`}
+                    onPress={() => openLeg(leg)}
                     style={({ pressed }) => [styles.leg, pressed && styles.pressed]}
                     testID={`nav-leg-${leg.number}`}
                   >
@@ -214,9 +230,14 @@ export function NavigationTab({
                         {leg.number}
                       </AppText>
                     </View>
-                    <AppText variant="caption" style={styles.flex} numberOfLines={2}>
-                      {[leg.from ? leg.from.name : 'Your location', ...leg.stops.map((s) => s.name)].join(' → ')}
-                    </AppText>
+                    <View style={styles.flex}>
+                      <AppText variant="captionStrong" testID={`nav-leg-${leg.number}-title`}>
+                        Leg {leg.number} of {legs.length} · places {leg.firstPosition}–{leg.lastPosition}
+                      </AppText>
+                      <AppText variant="caption" testID={`nav-leg-${leg.number}-stops`}>
+                        {legLabel(leg)}
+                      </AppText>
+                    </View>
                     <Icon name="open-in-new" size={18} tone="accent" />
                   </Pressable>
                 ))}
