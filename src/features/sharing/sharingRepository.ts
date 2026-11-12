@@ -147,6 +147,7 @@ export function createSharingRepository(db: Database, deps: { now?: () => Date }
         await db.runAsync('DELETE FROM shared_entries WHERE cloud_trip_id = ?', [space.cloudTripId]);
         await db.runAsync('DELETE FROM shared_members WHERE cloud_trip_id = ?', [space.cloudTripId]);
         await db.runAsync('DELETE FROM shared_outbox WHERE trip_id = ?', [tripId]);
+        await db.runAsync('DELETE FROM expense_outbox WHERE trip_id = ?', [tripId]);
         await db.runAsync("UPDATE journal_entries SET visibility = 'private' WHERE trip_id = ? AND visibility = 'shared'", [tripId]);
         await db.runAsync('DELETE FROM shared_spaces WHERE trip_id = ?', [tripId]);
       });

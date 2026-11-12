@@ -81,7 +81,7 @@ export const useSharingStore = create<SharingState>()((set, get) => {
       space: mine,
       members: mine ? await sharing.members(mine.cloudTripId) : [],
       others: mine ? await sharing.sharedEntries(mine.cloudTripId) : [],
-      waiting: mine ? await sharing.outboxCount(tripId) : 0,
+      waiting: mine ? (await sharing.outboxCount(tripId)) + (await (await getRepositories()).expenses.outboxCount(tripId)) : 0,
     });
   }
 
@@ -108,8 +108,8 @@ export const useSharingStore = create<SharingState>()((set, get) => {
       if (!api || !account || get().byTrip[tripId]?.syncing) return;
       put(tripId, { syncing: true });
       try {
-        const { sharing } = await getRepositories();
-        const result = await syncSharedTrip(tripId, { api, repo: sharing, accountId: account.id });
+        const { sharing, expenses } = await getRepositories();
+        const result = await syncSharedTrip(tripId, { api, repo: sharing, accountId: account.id, expenses });
         put(tripId, { error: result.error });
       } finally {
         put(tripId, { syncing: false });

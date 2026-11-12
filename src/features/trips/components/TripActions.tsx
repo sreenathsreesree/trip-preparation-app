@@ -70,6 +70,13 @@ export function useTripActions(trip: TripSummary | undefined, options: TripActio
         onPress: () => router.push({ pathname: '/trips/[tripId]/plan', params: { tripId: trip.id } }),
       },
       {
+        key: 'calculator',
+        label: 'Trip calculator',
+        icon: 'calculator-variant-outline',
+        description: 'Expenses, splits, budget and travel costs',
+        onPress: () => router.push({ pathname: '/calculator/[tripId]', params: { tripId: trip.id } }),
+      },
+      {
         key: 'share',
         label: 'Share trip',
         icon: 'account-multiple-plus-outline',

@@ -15,6 +15,7 @@ import {
   SectionHeader,
 } from '@/components/ui';
 import { formatDateLong } from '@/lib/dates';
+import { CalculatorEntryCard } from '@/features/expenses/components/CalculatorEntryCard';
 import { ContinuePlanningCard } from '@/features/planner/components/ContinuePlanningCard';
 import { SECTION_META, STANDARD_SECTION_KINDS } from '@/features/preparation/model';
 import { NextTripHero } from '@/features/trips/components/NextTripHero';
@@ -153,6 +154,8 @@ export function HomeScreen() {
           </View>
 
           <ContinuePlanningCard />
+
+          <CalculatorEntryCard />
 
           {laterTrips.length > 0 ? (
             <View style={styles.group}>

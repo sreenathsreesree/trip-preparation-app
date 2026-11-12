@@ -1,3 +1,5 @@
+import type { ExpenseRepository } from '../expenses/expenseRepository';
+import { applyExpenseRow, ensureMyParticipant, isExpenseTable, pushExpenses } from '../expenses/expenseSync';
 import { isSharingError, type SharingApi } from './sharingApi';
 import type { SharingRepository } from './sharingRepository';
 
@@ -21,16 +23,18 @@ export interface SharedSyncResult {
   pushed: number;
   withdrawn: number;
   pulled: number;
+  /** Group expense records sent (participants, expenses, settlements, budgets). */
+  expensesSent: number;
   removed: boolean;
   error: string | null;
 }
 
 export async function syncSharedTrip(
   tripId: string,
-  deps: { api: SharingApi; repo: SharingRepository; accountId: string; now?: () => Date },
+  deps: { api: SharingApi; repo: SharingRepository; accountId: string; now?: () => Date; expenses?: ExpenseRepository },
 ): Promise<SharedSyncResult> {
   const now = deps.now ?? (() => new Date());
-  const result: SharedSyncResult = { pushed: 0, withdrawn: 0, pulled: 0, removed: false, error: null };
+  const result: SharedSyncResult = { pushed: 0, withdrawn: 0, pulled: 0, expensesSent: 0, removed: false, error: null };
   const space = await deps.repo.space(tripId);
   if (!space || space.accountId !== deps.accountId || space.role === 'removed') return result;
   const cloud = space.cloudTripId;
@@ -88,11 +92,22 @@ export async function syncSharedTrip(
       }
     }
 
-    // 3. Pull other members' shared entries.
+    // 2b. Group expenses, settlements, participants and budget (owners and editors).
+    if (deps.expenses && (me.role === 'owner' || me.role === 'editor')) {
+      const sent = await pushExpenses(tripId, cloud, { api: deps.api, repo: deps.expenses, accountId: deps.accountId, now });
+      result.expensesSent = sent.sent + sent.withdrawn;
+    }
+
+    // 3. Pull other members' shared entries and group expense records.
     let cursor = space.cursor;
     for (;;) {
       const page = await deps.api.pull(cloud, cursor);
       for (const row of page.rows) {
+        if (isExpenseTable(row.table)) {
+          if (deps.expenses) await applyExpenseRow(tripId, row, { repo: deps.expenses, accountId: deps.accountId });
+          result.pulled += 1;
+          continue;
+        }
         if (row.table !== 'shared_journal_entries') continue;
         const data = row.data as Record<string, string | null>;
         if (data.author_id === deps.accountId) continue; // own entries live in the local journal
@@ -118,6 +133,9 @@ export async function syncSharedTrip(
       if (!page.hasMore) break;
     }
     await deps.repo.setSynced(tripId, cursor, now().toISOString());
+    if (deps.expenses) {
+      await ensureMyParticipant(tripId, me.displayName, { repo: deps.expenses, accountId: deps.accountId, canWrite: me.role === 'owner' || me.role === 'editor' });
+    }
   } catch (error) {
     if (isSharingError(error) && error.kind === 'permission' && /not a member/i.test(error.message)) {
       await deps.repo.setRole(tripId, 'removed');

@@ -180,6 +180,58 @@ Live sharing is untested end to end until the migration is deployed.
   payments, budget per trip with totals by category and by day, and a plain calculator for quick sums.
 - Participants: trip travellers locally; members in a shared trip (with unlinked travellers allowed).
 
+### Phase M — as built
+
+**Entry points:** Home → *Trip calculator* (trip list, active trip first and highlighted: happening
+now, else the next upcoming, else the most recent), trip menu → *Trip calculator*. Each trip has its
+own workspace at `/calculator/[tripId]` with tabs *Expenses*, *Balances*, *Budget*, *Tools*.
+
+**Money rules** (`src/features/expenses/money.ts`): integer minor units per ISO currency (0, 2 or 3
+decimals), strict parsing (no guessing), equal / exact / percentage (basis points) / shares splits with
+largest-remainder rounding that always adds up exactly, balances per currency that sum to zero,
+settlements, and *simplest way to settle* (at most n−1 payments per currency). Nothing is ever
+converted; there are no exchange rates.
+
+**Personal vs group:** a personal expense is private, never split, never in anyone's balance, and
+never queued or sent (the outbox refuses it; turning a shared group expense into a personal one only
+withdraws the shared copy). *My spending* = my shares of group expenses + my personal expenses.
+
+**Budget** (`planning.ts`): per currency — total, daily limit, category lines; planned vs actual,
+remaining, per-day totals; warnings from 80 % (*near*) and above 100 % (*over*) for the total, each
+category and today's spending (also shown on the Expenses tab). Two views: shared budget (group
+spending) and my spending.
+
+**Calculators:** fuel (km/L or L/100 km, price per litre; route distance offered as a straight-line
+figure from planner coordinates, labelled as such; result can become a prefilled expense), split a
+bill (exact, with who pays one minor unit more), road-trip cost (fuel + tolls + parking + other, per
+person and per km).
+
+**Local schema v10** (additive): `expense_participants`, `expense_categories`, `expenses`,
+`expense_splits`, `expense_settlements`, `expense_budgets`, `expense_settings`, `expense_outbox`.
+Participants are seeded from the trip's travellers (first = me) in one serialized transaction.
+
+**Shared trips** (`expenseSync.ts`, wired into the Phase L sync): owners/editors send participants,
+group expenses (with their exact splits), settlements and budgets; everyone pulls them; a pulled copy
+never overwrites an unsent local change; joining members get a participant linked to their account;
+viewers see group records read-only (enforced locally and by the database) but can keep personal
+expenses.
+
+**Cloud (pending, not deployed):** `supabase/pending/20261114090000_shared_expenses.sql` — tables
+`shared_expense_participants`, `shared_expenses` (splits as JSON validated in the database: exact
+sum, unique same-trip participants, non-negative integers), `shared_expense_settlements`,
+`shared_expense_budgets`; members read, owners and editors write, nobody deletes; creator stamped;
+stale writes refused; included in `shared_pull`. No personal scope exists in the cloud.
+
+**Tests:** `money.test.ts` (7), `expenseRepository.test.ts` (10), `expenseSync.test.ts` (5, three
+devices: owner, editor, viewer), `supabase/tests/expenses.test.mjs` (21 Postgres tests: members read,
+viewers/strangers/anonymous/removed members cannot read or write as appropriate, no deletes, creator
+forced, invalid splits / payers / currencies / amounts rejected, currencies kept as entered), browser
+suite `npm run e2e:calculator`.
+
+**Limits:** any editor may edit any group expense (as in Splitwise); the most recent save wins between
+two editors (stale writes are refused, not merged). Exchange rates are not supported, so totals in
+different currencies are never combined. The "today" warnings use the device's date.
+
 ## 6. Phase N — integration and regression
 
 Full `npm run check`, cloud (PGlite) tests for every new policy and RPC — including attempts by
@@ -192,5 +244,5 @@ persistence, Android bundle export, docs and a final report.
 | --- | --- |
 | K | Done — journal, timeline, Drive backup/restore (Drive live once configured) |
 | L | Done — cloud migration written and tested, **pending approval, not deployed**; app side complete |
-| M | Planned |
+| M | Done — cloud migration written and tested, **pending approval, not deployed**; app side complete |
 | N | Planned |

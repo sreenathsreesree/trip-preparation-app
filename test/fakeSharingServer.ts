@@ -14,6 +14,8 @@ export function fakeSharingServer() {
   const invites = new Map<string, { id: string; tripId: string; role: 'editor' | 'viewer'; uses: number; revoked: boolean }>();
   const entries = new Map<string, Record<string, unknown> & { trip_id: string; id: string; author_id: string; revision: number; deleted_at: string | null }>();
   let offline = false;
+  /** Group records: `${table}/${trip}/${id}`. */
+  const records = new Map<string, Record<string, unknown> & { table: string; trip_id: string; id: string; revision: number; deleted_at: string | null; created_by: string }>();
 
   const deny = (message: string) => new SharingError('permission', message);
   const roleOf = (tripId: string, user: string) => trips.get(tripId)?.members.get(user)?.role ?? null;
@@ -116,15 +118,34 @@ export function fakeSharingServer() {
         if (!old || old.author_id !== user || old.deleted_at) return;
         entries.set(`${tripId}/${entryId}`, { ...old, deleted_at: at, updated_at: at, revision: ++revision });
       },
+      async upsertRecord(table, row) {
+        await online();
+        const role = roleOf(row.trip_id, user);
+        if (role !== 'owner' && role !== 'editor') throw deny('new row violates row-level security policy');
+        const key = `${table}/${row.trip_id}/${row.id}`;
+        const old = records.get(key);
+        records.set(key, { ...row, table, created_by: old?.created_by ?? user, revision: ++revision, deleted_at: (row.deleted_at as string | null) ?? null });
+      },
+      async withdrawRecord(table, tripId, id, at) {
+        await online();
+        const role = roleOf(tripId, user);
+        if (role !== 'owner' && role !== 'editor') return;
+        const key = `${table}/${tripId}/${id}`;
+        const old = records.get(key);
+        if (!old || old.deleted_at) return;
+        records.set(key, { ...old, deleted_at: at, updated_at: at, revision: ++revision });
+      },
       async pull(tripId, cursor) {
         await online();
         member(tripId, user);
-        const rows = [...entries.values()]
-          .filter((e) => e.trip_id === tripId && e.revision > cursor.revision)
-          .sort((a, b) => a.revision - b.revision);
+        const all = [
+          ...[...entries.values()].map((e) => ({ ...e, table: 'shared_journal_entries' })),
+          ...[...records.values()],
+        ];
+        const rows = all.filter((e) => e.trip_id === tripId && e.revision > cursor.revision).sort((a, b) => a.revision - b.revision);
         const last = rows[rows.length - 1];
         return {
-          rows: rows.map((e) => ({ table: 'shared_journal_entries', pk: e.id, deleted: e.deleted_at !== null, data: { ...e } })),
+          rows: rows.map(({ table, ...e }) => ({ table, pk: String(e.id), deleted: e.deleted_at !== null, data: { ...e } })),
           hasMore: false,
           cursor: last ? { txid: '1', revision: last.revision } : cursor,
         };
@@ -135,6 +156,7 @@ export function fakeSharingServer() {
   return {
     apiFor,
     entries,
+    records,
     trips,
     setOffline: (value: boolean) => {
       offline = value;

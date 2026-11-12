@@ -25,7 +25,8 @@ function WhatIsShared() {
         {[
           ['check-circle-outline', 'The trip’s name and dates, and who is in it.'],
           ['check-circle-outline', 'Journal entries you switch to “Shared” — text, mood and place only.'],
-          ['lock-outline', 'Everything else stays private on your device: your plan, checklists, packing, memories, photos and private entries.'],
+          ['check-circle-outline', 'Group expenses, payments, people and the budget in the Trip calculator (viewers can only look).'],
+          ['lock-outline', 'Everything else stays private on your device: your plan, checklists, packing, memories, photos, private entries and personal expenses.'],
           ['google-drive', 'Photos stay in your own Google Drive and are never uploaded to Trip Prep.'],
         ].map(([icon, text]) => (
           <View key={text} style={styles.inline}>

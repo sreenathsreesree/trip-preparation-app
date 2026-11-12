@@ -8,7 +8,7 @@ import type { SharedRole, SharingApi } from './sharingApi';
  * journal entries go only when the user marks them shared.
  */
 
-type Repos = Pick<Repositories, 'trips' | 'sharing'>;
+type Repos = Pick<Repositories, 'trips' | 'sharing'> & { expenses?: Repositories['expenses'] };
 
 export interface Account {
   id: string;
@@ -27,6 +27,11 @@ export async function shareTrip(trip: { id: string; name: string; startDate: str
   const cloudTripId = await deps.api.createTrip({ name: trip.name, startDate: trip.startDate, endDate: trip.endDate, displayName: account.displayName });
   const space = await deps.repos.sharing.linkSpace({ tripId: trip.id, cloudTripId, accountId: account.id, role: 'owner', displayName: account.displayName });
   await deps.repos.sharing.enqueueAll(trip.id);
+  // Group expenses, settlements, participants and budgets go to the shared trip; personal ones never.
+  if (deps.repos.expenses) {
+    await deps.repos.expenses.ensureParticipants(trip.id);
+    await deps.repos.expenses.enqueueAll(trip.id);
+  }
   return space;
 }
 

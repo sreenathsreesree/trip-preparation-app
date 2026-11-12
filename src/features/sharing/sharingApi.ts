@@ -76,7 +76,14 @@ export interface SharingApi {
   /** Withdraws the caller's shared entry (tombstone). No-op if it was never shared. */
   withdrawEntry(tripId: string, entryId: string, at: string): Promise<void>;
   pull(tripId: string, cursor: { txid: string; revision: number }): Promise<PullPage>;
+  /** Inserts or updates a group record (participant, expense, settlement, budget) of a shared trip. */
+  upsertRecord(table: SharedRecordTable, row: Record<string, unknown> & { trip_id: string; id: string }): Promise<void>;
+  /** Withdraws a group record (tombstone). No-op if it was never sent. */
+  withdrawRecord(table: SharedRecordTable, tripId: string, id: string, at: string): Promise<void>;
 }
+
+export const SHARED_RECORD_TABLES = ['shared_expense_participants', 'shared_expenses', 'shared_expense_settlements', 'shared_expense_budgets'] as const;
+export type SharedRecordTable = (typeof SHARED_RECORD_TABLES)[number];
 
 interface PgError {
   code?: string;
@@ -171,6 +178,13 @@ export function createSupabaseSharingApi(client: SupabaseClient): SharingApi {
       await query(() =>
         client.from('shared_journal_entries').update({ deleted_at: at, updated_at: at }).eq('trip_id', tripId).eq('id', entryId).is('deleted_at', null),
       );
+    },
+    async upsertRecord(table, row) {
+      const { created_by: _ignored, ...data } = row;
+      await query(() => client.from(table).upsert(data, { onConflict: 'trip_id,id' }));
+    },
+    async withdrawRecord(table, tripId, id, at) {
+      await query(() => client.from(table).update({ deleted_at: at, updated_at: at }).eq('trip_id', tripId).eq('id', id).is('deleted_at', null));
     },
     async pull(tripId, cursor) {
       const r = await rpc<{ rows: PullPage['rows']; has_more: boolean; cursor: { txid: string; revision: number } }>('shared_pull', {

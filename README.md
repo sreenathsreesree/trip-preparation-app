@@ -43,6 +43,7 @@ npm start          # Expo dev server — press i (iOS), a (Android) or w (web)
 | `npm run e2e:auth` | Account routes in a build without Supabase configuration: guest-only, no sign-in control, protected account screen (same requirements) |
 | `npm run e2e:planner-reliability` | Planner offline (network cut) and with a 100-place plan, plus rapid taps (same requirements) |
 | `npm run e2e:planner-dnd` | Drag-and-drop tree, route and Navigation, journey legs, visited status, arrival permission denied, restart persistence (same requirements) |
+| `npm run e2e:calculator` | Trip calculator: trip selection, people, all split methods, personal vs group, currencies, debts and payments, budget and warnings, calculators, offline, restart (same requirements) |
 | `npm run e2e:sharing` | Shared-trip screens in a build without the cloud: explainer, honest unavailable states, private journal entries, join links (same requirements) |
 | `npm run e2e:journal` | Journey Journal: entries with mood, place and photos, timeline with destination memories, validation, offline, delete confirmation, restart persistence (same requirements) |
 | `npm run e2e:destination` | Destination page tabs, location, notices, tasks, notes, memories, quick actions, saved & compare, restart persistence (same requirements) |
@@ -352,6 +353,17 @@ creating a trip, and Home's *Continue planning*)
   your Google Drive. Enforced by the database (Row Level Security and checked functions).
 - Until the migration in `supabase/pending/` is approved and deployed, the app says sharing isn't
   available.
+
+**Trip calculator** (Home → *Trip calculator*, or the trip menu)
+
+- Each trip has its own workspace: group expenses split equally, by exact amounts, percentages or
+  shares; personal expenses that stay private and never affect balances; custom categories.
+- Balances and the simplest way to settle, payments history, all per currency in integer minor units
+  — no exchange rates are invented.
+- Budget with planned vs actual by category and day, daily limit and warnings; fuel, bill-split and
+  road-trip cost calculators. Works offline.
+- In a shared trip, group expenses, payments and the budget are shared with members (viewers can only
+  look) once the pending cloud migrations are approved.
 
 ## In progress — Google sign-in & cloud sync (Milestone G)
 

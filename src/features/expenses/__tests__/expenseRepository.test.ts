@@ -1,4 +1,5 @@
 import { setupRepositories, tripInput } from '../../../../test/fixtures';
+import { pickActiveTrip, routeDistanceKm, summarize } from '../ledger';
 import { balances, simplifyDebts } from '../money';
 
 async function setup() {
@@ -177,5 +178,39 @@ describe('trip expense workspace', () => {
 
     await ctx.expenses.applyRemote(ctx.trip.id, { kind: 'participant', id: 'p-dee', name: 'Dee', userId: 'acct-dee', archived: false, updatedAt: '2026-12-21T10:00:00Z' });
     expect((await ctx.expenses.workspace(ctx.trip.id)).participants.map((p) => p.name)).toContain('Dee');
+  });
+});
+
+describe('ledger summary', () => {
+  it('separates group and personal spending, counts only my share for “my spending”, per currency', async () => {
+    const ctx = await setup();
+    await ctx.expenses.saveExpense(ctx.trip.id, ctx.group(9000, ctx.ben, [ctx.asha, ctx.ben, ctx.cy]));
+    await ctx.expenses.saveExpense(ctx.trip.id, ctx.group(500, ctx.asha, [ctx.asha], { currency: 'USD' }));
+    await ctx.expenses.saveExpense(ctx.trip.id, { scope: 'personal', title: 'Tea', amountMinor: 2000, currency: 'INR', category: 'food', spentOn: '2026-12-20' });
+    const s = summarize(await ctx.expenses.workspace(ctx.trip.id));
+    expect(s.totals).toEqual([
+      { currency: 'INR', groupMinor: 9000, myMinor: 3000 + 2000, personalMinor: 2000 },
+      { currency: 'USD', groupMinor: 500, myMinor: 500, personalMinor: 0 },
+    ]);
+    expect(s.debts).toEqual([
+      { fromId: ctx.asha, toId: ctx.ben, amountMinor: 3000, currency: 'INR' },
+      { fromId: ctx.cy, toId: ctx.ben, amountMinor: 3000, currency: 'INR' },
+    ]);
+
+    const t = (id: string, startDate: string, endDate: string, archivedAt: string | null = null) => ({ id, startDate, endDate, archivedAt });
+    expect(pickActiveTrip([t('past', '2026-01-01', '2026-01-05'), t('now', '2026-06-01', '2026-06-10'), t('next', '2026-07-01', '2026-07-02')], '2026-06-05')?.id).toBe('now');
+    expect(pickActiveTrip([t('past', '2026-01-01', '2026-01-05'), t('next', '2026-07-01', '2026-07-02'), t('later', '2026-09-01', '2026-09-02')], '2026-06-05')?.id).toBe('next');
+    expect(pickActiveTrip([t('a', '2026-01-01', '2026-01-05'), t('b', '2026-02-01', '2026-02-05', 'x')], '2026-06-05')?.id).toBe('a');
+    expect(routeDistanceKm([{ latitude: 10.0889, longitude: 77.0595 }, null, { latitude: 10.15, longitude: 77.0595 }])).toEqual({ km: 0, legs: 0, missing: 2 });
+    expect(routeDistanceKm([{ latitude: 10.0889, longitude: 77.0595 }, { latitude: 10.15, longitude: 77.0595 }]).km).toBeCloseTo(6.8, 1);
+  });
+});
+
+describe('concurrent loading', () => {
+  it('seeds participants once even when two screens load at the same time', async () => {
+    const repos = await setupRepositories();
+    const trip = await repos.trips.create(tripInput({ name: 'Race', destinations: [], travellers: [{ name: 'Me', kind: 'adult' }] }), { sections: [] });
+    await Promise.all([repos.expenses.ensureParticipants(trip.id), repos.expenses.ensureParticipants(trip.id), repos.expenses.ensureParticipants(trip.id)]);
+    expect((await repos.expenses.workspace(trip.id)).participants.map((p) => p.name)).toEqual(['Me']);
   });
 });

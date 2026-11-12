@@ -265,12 +265,13 @@ export function createExpenseRepository(db: Database, deps: { createId: IdFactor
     },
 
     async ensureParticipants(tripId) {
-      const count = (await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM expense_participants WHERE trip_id = ?', [tripId]))?.n ?? 0;
-      if (count > 0) return;
-      const travellers = await db.getAllAsync<{ name: string }>('SELECT name FROM trip_travellers WHERE trip_id = ? ORDER BY position', [tripId]);
-      const names = travellers.length > 0 ? travellers.map((t) => t.name) : ['Me'];
-      const t = stamp();
+      // Check and seed in one (serialized) transaction so two screens loading at once never seed twice.
       await db.withTransactionAsync(async () => {
+        const count = (await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM expense_participants WHERE trip_id = ?', [tripId]))?.n ?? 0;
+        if (count > 0) return;
+        const travellers = await db.getAllAsync<{ name: string }>('SELECT name FROM trip_travellers WHERE trip_id = ? ORDER BY position', [tripId]);
+        const names = travellers.length > 0 ? travellers.map((t) => t.name) : ['Me'];
+        const t = stamp();
         for (const [i, name] of names.entries()) {
           await db.runAsync('INSERT INTO expense_participants (id, trip_id, name, is_me, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [
             deps.createId(),
