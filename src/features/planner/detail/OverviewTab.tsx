@@ -262,6 +262,36 @@ function Alerts({ ctx }: { ctx: DetailContext }) {
   );
 }
 
+/** What this page keeps on the device (works offline) and what needs a connection. */
+function OfflinePack({ ctx }: { ctx: DetailContext }) {
+  const d = ctx.details;
+  const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const stored = [
+    ctx.node.place?.location ? 'location' : null,
+    d ? count(d.tasks.length, 'task', 'tasks') : null,
+    d ? count(d.notes.length, 'note', 'notes') : null,
+    d ? count(d.alerts.filter((a) => a.status === 'saved').length, 'notice', 'notices') : null,
+    d?.memory ? 'memories' : null,
+    ctx.profile.coverImageUri ? 'cover photo' : null,
+  ].filter((v): v is string => v !== null);
+  return (
+    <Card testID="detail-offline">
+      <View style={styles.inline}>
+        <Icon name="cloud-off-outline" size={20} color={colors.accent} />
+        <AppText variant="title" style={styles.flex}>
+          Available offline
+        </AppText>
+      </View>
+      <AppText variant="body" style={styles.offlineText}>
+        Saved on this device: {stored.join(', ')}.
+      </AppText>
+      <AppText variant="caption" tone="textMuted">
+        Recommendations, place search and opening Maps need a connection.
+      </AppText>
+    </Card>
+  );
+}
+
 export function OverviewTab({ ctx }: { ctx: DetailContext }) {
   return (
     <View style={styles.root}>
@@ -270,6 +300,7 @@ export function OverviewTab({ ctx }: { ctx: DetailContext }) {
       <TagsEditor ctx={ctx} />
       <Notice tone="info" icon="weather-partly-cloudy" title="Weather isn’t connected" message="Check a forecast service the day before you go." testID="detail-weather-off" />
       <Alerts ctx={ctx} />
+      <OfflinePack ctx={ctx} />
     </View>
   );
 }
@@ -293,6 +324,10 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  offlineText: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
   },
   alert: {
     gap: spacing.sm,

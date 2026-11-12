@@ -92,6 +92,14 @@ function PlannerBody({ trip, initialTab }: { trip: TripSummary; initialTab: Plan
             <AppText variant="label" tone="textMuted" style={styles.grow}>
               Your plan
             </AppText>
+            <Button
+              label="Saved & compare"
+              icon="compare-horizontal"
+              variant="ghost"
+              size="sm"
+              onPress={() => router.push({ pathname: '/trips/[tripId]/plan/compare', params: { tripId: trip.id } })}
+              testID="planner-compare"
+            />
             {total > mains ? (
               <Button
                 label={allCollapsed ? 'Expand all' : 'Collapse all'}

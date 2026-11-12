@@ -42,6 +42,8 @@ npm start          # Expo dev server — press i (iOS), a (Android) or w (web)
 | `npm run e2e:planner` | Browser test of the destination planner, route stops and its entry points (same requirements) |
 | `npm run e2e:auth` | Account routes in a build without Supabase configuration: guest-only, no sign-in control, protected account screen (same requirements) |
 | `npm run e2e:planner-reliability` | Planner offline (network cut) and with a 100-place plan, plus rapid taps (same requirements) |
+| `npm run e2e:planner-dnd` | Drag-and-drop tree, route and Navigation, journey legs, visited status, arrival permission denied, restart persistence (same requirements) |
+| `npm run e2e:destination` | Destination page tabs, location, notices, tasks, notes, memories, quick actions, saved & compare, restart persistence (same requirements) |
 | `npm run doctor` | `expo-doctor` (needs network access to Expo's API) |
 | `npm run build:android:dev` | EAS cloud build of the Android development APK (needs an Expo account) |
 | `npm run build:android:preview` | EAS cloud build of a standalone Android APK |
@@ -304,13 +306,30 @@ creating a trip, and Home's *Continue planning*)
 - **One destination system** — the planner's main destinations are the trip's destinations on trip
   cards, route text and packing suggestions. Places nested inside them (as deep as needed) are for
   organising only.
-- Add, rename, add notes, nest and unnest, move into another place, reorder, make a nested place a
-  main destination, and remove (keeping or removing what is inside). Expandable list with clear
-  main/nested styling and route-stop badges.
-- **Separate route** — an explicitly ordered list of stops chosen from the plan. Hierarchy changes
-  never alter it; removals that affect it say exactly which stops leave the route first.
-- Works with places entered by name today; Google place search, details, nearby attractions and the
-  map view follow (see [docs/destination-planner.md](docs/destination-planner.md)).
+- **Destinations tab** — an expandable tree up to 12 levels deep with *Add place* at every level.
+  Drag the handle to reorder, drop onto a place to nest it, next to a main destination to promote
+  it, or anywhere else to move it between parents (cycles and over-deep moves are refused). Also
+  rename, notes, move screen and remove (keeping or removing what is inside).
+- **Route tab** — an explicitly ordered list of stops, reordered by drag-and-drop and renumbered;
+  visited stops move to a collapsible *Completed* section with undo and progress. Hierarchy changes
+  never alter it.
+- **Navigation tab** — an independent list (own order and nesting) of places to navigate to:
+  per-place Google Maps directions and whole-journey directions split into legs within the Maps URL
+  waypoint limit, never dropping a stop; visited places are skipped.
+- **Visited status** shared by Route, Navigation and the destination page; optional on-device
+  arrival prompts ("You've reached X. Mark as visited?") using foreground location only, off by
+  default, permission asked only when switched on.
+- **Destination page** — cover photo, favourite, share, quick actions, location (Google Maps link or
+  coordinates), and tabs: Overview (description, season, fee, getting there, tags, saved notices
+  with source and date), Explore (places inside, recommendations), Prepare (tasks and progress),
+  Plan (previous stop and straight-line distance, time needed, best time, on-device
+  sunrise/sunset, notes by kind) and Memories (rating, notes, photos).
+- **Saved & compare** — saved-for-later and tag filters, side-by-side comparison of up to three
+  places using only the user's own information.
+- **Google Places recommendations** (5/10/25/50 km, categories, add with an explicit placement,
+  duplicate detection by Place ID) appear only once a places proxy is configured; until then the
+  app says "not set up" and never shows sample data. See
+  [docs/destination-planner.md](docs/destination-planner.md) and `server/places-proxy/`.
 
 ## In progress — Google sign-in & cloud sync (Milestone G)
 
@@ -323,8 +342,10 @@ sign-in still has to be enabled in Supabase and needs a new development build �
 
 ## In progress — Milestone 5
 
-Parts A (data layer), C (planner) and F (offline, reliability and persistence hardening) are done. Next: Google Places via a secure proxy (B, needs
-Google Cloud configuration), destination details and nearby discovery (D) and the map view (E).
+The destination planner upgrade (drag-and-drop tree, route, Navigation, visited status, arrival
+prompts, destination page, saved & compare) is done. Live Google Places data needs the places
+proxy deployed, which needs Google Cloud billing (owner's decision). The in-app map view (E) is
+still to come.
 
 ## Not yet built
 

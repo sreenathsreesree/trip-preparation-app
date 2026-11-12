@@ -52,7 +52,8 @@ node), `updateNode`, `moveNode` (reorder / nest / unnest; refuses cycles and ove
 
 The app is offline-first with no backend today. **No Google key is shipped for Places.**
 
-1. **Places proxy (to build in B).** A small serverless endpoint holds the Places API key as a
+1. **Places proxy** (reference implementation in `server/places-proxy/`, **not deployed**; the app
+   client is `src/features/places/proxyProvider.ts`). A small serverless endpoint holds the Places API key as a
    secret and exposes only what the app needs: `autocomplete`, `details`, `nearby`, `textSearch`,
    `photo`. It enforces the field masks (so the app cannot request expensive fields), caps radius and
    result counts, rate-limits per install, and maps Google errors to `quota` / `denied` / etc.
@@ -94,24 +95,83 @@ details call, then discarded.
 
 ## Sub-milestones
 
-| | Scope | Depends on |
+| | Scope | Status |
 | --- | --- | --- |
-| **A** | Schema v4, plan/route model, repository, provider interface, cache policy, tests | — (done) |
-| B | Proxy (`server/places-proxy`), proxy-backed provider, debounced autocomplete controller (350 ms, ≥ 3 chars, stale-request cancellation, session tokens), manual entry fallback | Google Cloud project + Places API (New) key; proxy host account |
-| **C** | One destination system; planner screen (trip menu → Plan destinations, dashboard card, post-create "Start planning", Home "Continue planning"), expandable list, add / move / reorder / nest / promote / rename / remove with explained route impact, separate route screen, manual places, same-name warning, saved-place reuse | A (done) |
-| D | Destination detail screen, live details, nearby/text search with add-under / add-as-stop / make-main, duplicate state | B, C |
-| E | Map view (`react-native-maps`, Google Maps SDK key), markers, route polyline, list/map toggle, Google Maps directions URLs | C; Maps SDK key; new dev build |
-| F | Offline states, cache refresh, reliability, e2e at 360 px, Android bundle and build verification | all |
+| A | Schema v4, plan/route model, repository, provider interface, cache policy, tests | Done |
+| B | Places proxy + proxy-backed provider, manual entry fallback | App side done; proxy written, not deployed (needs billing and approval) |
+| C | One destination system; planner screen, add / move / nest / promote / rename / remove, route, saved-place reuse | Done |
+| D | Destination detail page, nearby recommendations with placement and duplicate detection | Done (live data waits for the proxy) |
+| E | In-app map view (`react-native-maps`, Maps SDK key, new dev build) | Not started |
+| F | Offline states, reliability, e2e at 360 px | Done |
+| Upgrade | Drag-and-drop tree/route/Navigation, visited status, arrival prompts, destination page, saved & compare | Done (see below) |
 
-## Screens (part C)
+## Destination planner upgrade
+
+Local schema **v6** (`src/db/migrations/0006_destination_companion.ts`, additive only):
+`trip_navigation_items`, `plan_node_profiles`, `plan_node_tasks`, `plan_node_notes`,
+`plan_node_alerts`, `plan_node_memories`. All are local-only for now (registered in
+`LOCAL_ONLY_TABLES`); matching cloud tables need separate approval.
+
+**Three independent orders.** The plan tree (`trip_plan_nodes.parent_id`/`position`), the route
+(`trip_route_stops.position`) and Navigation (`trip_navigation_items.parent_id`/`position`) never
+change each other. Removing a place from Navigation or the route leaves the plan alone.
+
+**Drag-and-drop** (`components/DraggableList.tsx`, pure `dragDrop.ts`): the pointer position within
+a row decides the drop — top 30 % before, middle inside, bottom 30 % after (halves for flat lists).
+An indicator line shows the target; the list auto-scrolls near the edges in the drag direction.
+Drops over the dragged place's own subtree, or deeper than 12 levels, are refused. Every drag has
+an accessible alternative: screen-reader actions on the drag handle (move up, move down, move out)
+and the *Move* screen.
+
+**Navigation** (`features/places/mapsLinks.ts`): per-place `…/maps/dir/?api=1&destination=…`;
+the journey is split into legs of at most 3 waypoints and 2,048 characters (conservative: Google's
+documented URL limit is 2,048 characters and mobile apps honour fewer waypoints), each leg starting
+where the previous one ended, so no stop is dropped. Visited places are left out.
+
+**Visited and arrival prompts** (`arrival.ts`, `arrivalStore.ts`, `ArrivalWatcher.tsx`): marking
+visited is always an explicit action. Optional prompts use foreground location only while the app
+is open (no background tracking): within ~150 m (plus GPS accuracy credit) for about 4 minutes, then
+"You've reached X. Mark as visited?" with *Yes, mark as visited* / *Not yet* (30-minute snooze).
+Off by default; permission is requested only when switched on. Best effort: phones may throttle
+GPS, and nothing happens while the app is closed.
+
+**Destination page** (`PlaceScreen.tsx`, `detail/*`): hero (the user's cover photo, favourite,
+share), quick actions (visited, route add/remove with confirmation, Navigation, promote, add inside),
+location card (Open in Maps; choose/change from a full Google Maps link or coordinates — short
+`maps.app.goo.gl` links are explained, not guessed; Places search only when configured), and tabs:
+
+| Tab | Contents |
+| --- | --- |
+| Overview | Name and quick notes, description, best season, entry fee, getting there, tags, saved notices with source, link, checked date and an out-of-date flag after 7 days; weather marked as not connected; what is stored offline |
+| Explore | Places inside (drag-and-drop subtree), live recommendations |
+| Prepare | Tasks by category, progress, generic suggestions added only when picked |
+| Plan | Route position, previous stop and straight-line distance (labelled as such), time needed, best time, sunrise/sunset computed on the device for the first trip day (phone's time zone, terrain ignored), notes by kind |
+| Memories | Visit date, 1–5 rating, notes, moments, photos — device only, never shared |
+
+**Saved & compare** (`/trips/[tripId]/plan/compare`, pure `compare.ts`): All / Saved / tag filters
+and a side-by-side table for up to three places; "—" marks anything not filled in.
+
+**Recommendations** (`components/Recommendations.tsx`, `places/discovery.ts`): 5/10/25/50 km,
+categories (attractions, viewpoints, waterfalls, nature, tea estates, restaurants), sort by
+relevance/distance/rating; one tap opens an explicit placement choice (inside the current place, as
+a route stop, as a main destination). Places already in the plan (same Place ID) are marked and
+cannot be added twice; a hand-entered place can be linked to a Place later (`setNodePlace`). Only
+identity and location are saved. Without `EXPO_PUBLIC_PLACES_PROXY_URL` the section says "not set
+up" and shows no sample data.
+
+**Not invented:** ratings, opening hours, weather, road distance and drive time, alerts and facts
+come only from a live provider (with its source) or from the user.
+
+## Screens
 
 | Route | Screen |
 | --- | --- |
-| `/trips/[tripId]/plan` | Planner: counts, *Add destination*, *Route*, expandable tree (main destinations vs nested places, route-stop badges), reorder mode, per-place action sheet |
-| `/trips/[tripId]/plan/add?parentId=` | Add a main destination or a place inside one: name, notes, *Add to route* toggle, saved-place reuse, "search not set up" notice |
-| `/trips/[tripId]/plan/place/[nodeId]` | Place: trail, main/nested and route badges, map details if any, Google Maps link, rename/notes, add to / remove from route, make main destination, places inside |
-| `/trips/[tripId]/plan/move/[nodeId]` | Move into another place or to the top level (own sub-places disabled) |
-| `/trips/[tripId]/plan/route` | Route stops in order (reorder / remove) and places to add |
+| `/trips/[tripId]/plan?tab=destinations\|route\|navigation` | Planner with Destinations, Route and Navigation tabs |
+| `/trips/[tripId]/plan/add?parentId=` | Add a place: name, notes, route toggle, saved-place reuse, recommendations |
+| `/trips/[tripId]/plan/place/[nodeId]?tab=` | Destination page (tabs above) |
+| `/trips/[tripId]/plan/compare` | Saved & compare |
+| `/trips/[tripId]/plan/move/[nodeId]` | Move into another place or to the top level |
+| `/trips/[tripId]/plan/route` | Opens the planner on the Route tab |
 
 ## Reliability (part F)
 

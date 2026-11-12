@@ -192,6 +192,28 @@ await run('Destination page test', async () => {
   await page.goto(`${trip}/plan?tab=navigation`);
   await byId(page, 'nav-row-Echo Point').waitFor();
   check(true, 'Navigation keeps the place after it leaves the route');
+
+  setStep('saved for later, tag filters and comparison');
+  await page.goto(`${trip}/plan`);
+  await byId(page, 'planner-compare').click();
+  await byId(page, 'plan-compare').waitFor();
+  await byId(page, 'compare-filter-saved').click();
+  await byId(page, 'compare-pick-Munnar').waitFor();
+  check((await byId(page, 'compare-pick-Echo Point').count()) === 0, 'Saved shows only places saved for later');
+  await byId(page, 'compare-filter-tag-Rainy day').click();
+  check((await byId(page, 'compare-pick-Munnar').count()) === 1 && (await byId(page, 'compare-pick-Echo Point').count()) === 0, 'filters by tag');
+  await byId(page, 'compare-filter-all').click();
+  await byId(page, 'compare-pick-Munnar').click();
+  await byId(page, 'compare-pick-Echo Point').click();
+  await byId(page, 'compare-table').waitFor();
+  check((await text(page, 'compare-row-distance')).includes('6.8 km (straight line)'), 'compares straight-line distance');
+  check((await text(page, 'compare-row-time')).includes('5 h · Half day') && (await text(page, 'compare-row-time')).includes('—'), 'compares the user’s own facts and marks gaps');
+  check((await text(page, 'compare-row-status')).includes('Visited'), 'shows visited status');
+  await shot(page, 'dest-06-compare');
+  await byId(page, 'compare-open-Munnar').click();
+  await byId(page, 'plan-place').waitFor();
+  await byId(page, 'detail-offline').waitFor();
+  check(/location, 2 tasks, 1 note, 1 notice, memories/.test(await text(page, 'detail-offline')), 'says what is stored on the device');
   check(errors.length === 0, `no uncaught page errors (${errors.join(' | ') || 'none'})`);
   await context.close();
 
