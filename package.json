@@ -71,6 +71,7 @@
     "e2e:auth": "node e2e/web-auth.mjs",
     "e2e:packing": "node e2e/web-packing.mjs",
     "e2e:planner-dnd": "node e2e/web-planner-dnd.mjs",
+    "e2e:destination": "node e2e/web-destination.mjs",
     "build:android:dev": "npx eas-cli@latest build --platform android --profile development",
     "build:android:preview": "npx eas-cli@latest build --platform android --profile preview"
   },

@@ -1,250 +1,101 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { Screen } from '@/components/layout/Screen';
 import { ScreenHeader } from '@/components/layout/ScreenHeader';
-import {
-  AppText,
-  Button,
-  Card,
-  EmptyState,
-  IconButton,
-  LoadingState,
-  Notice,
-  Tag,
-  TextField,
-} from '@/components/ui';
-import { toErrorMessage } from '@/lib/errors';
-import { successFeedback } from '@/lib/haptics';
-import { colors, spacing } from '@/theme';
+import { EmptyState, ErrorState, IconButton, LoadingState, Notice, OptionTile } from '@/components/ui';
+import { spacing } from '@/theme';
 
-import { daysUntilRefresh } from '../places/cachePolicy';
-import { placeLink } from '../places/mapsLinks';
 import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
+import { emptyProfile } from './companion';
 import { useNodeActions } from './components/NodeActions';
-import { PlanTree } from './components/PlanTree';
-import { ancestorIds, buildTree, PLANNER_LIMITS, validateNodeName, type PlanNode, type PlanTreeNode } from './model';
+import { ExploreTab } from './detail/ExploreTab';
+import { Hero } from './detail/Hero';
+import { LocationCard } from './detail/LocationCard';
+import { MemoriesTab } from './detail/MemoriesTab';
+import { OverviewTab } from './detail/OverviewTab';
+import { PlanTab } from './detail/PlanTab';
+import { PrepareTab } from './detail/PrepareTab';
+import { QuickActions } from './detail/QuickActions';
+import { DETAIL_TABS, type DetailContext, type DetailTab } from './detail/shared';
+import { useDetailStore, useNodeDetails } from './detailStore';
+import { ancestorIds, type PlanNode } from './model';
 import { usePlannerStore, useTripPlan } from './plannerStore';
 
-function findItem(tree: readonly PlanTreeNode[], id: string): PlanTreeNode | null {
-  for (const item of tree) {
-    if (item.node.id === id) return item;
-    const found = findItem(item.children, id);
-    if (found) return found;
-  }
-  return null;
-}
-
-function Details({ trip, node }: { trip: TripSummary; node: PlanNode }) {
-  const plan = useTripPlan(trip.id).plan;
-  const [name, setName] = useState(node.name);
-  const [notes, setNotes] = useState(node.notes);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ tone: 'danger' | 'success'; text: string } | null>(null);
-  const actions = useNodeActions(trip.id, plan, {
+function DestinationPage({ trip, node, initialTab }: { trip: TripSummary; node: PlanNode; initialTab: DetailTab }) {
+  const state = useTripPlan(trip.id);
+  const { details, error } = useNodeDetails(node.id);
+  const [tab, setTab] = useState<DetailTab>(initialTab);
+  const actions = useNodeActions(trip.id, state.plan, {
     onRemoved: (id) => {
       if (id === node.id) router.back();
     },
   });
-  if (!plan) return null;
+  useEffect(() => {
+    void useDetailStore.getState().load(node.id);
+  }, [node.id]);
 
-  const tree = buildTree(plan.nodes);
-  const item = findItem(tree, node.id);
+  const plan = state.plan;
+  if (!plan) return null;
   const trail = ancestorIds(plan.nodes, node.id)
     .reverse()
     .map((id) => plan.nodes.find((n) => n.id === id)?.name)
-    .filter(Boolean)
-    .join(' › ');
-  const routeIndex = plan.route.findIndex((s) => s.nodeId === node.id);
-  const routeNumber = new Map(plan.route.map((stop, index) => [stop.nodeId, index + 1]));
-  const dirty = name.trim() !== node.name || notes.trim() !== node.notes;
-  const nameError = validateNodeName(name);
-  const link = placeLink(node);
-  const refreshIn = daysUntilRefresh(node.place?.fetchedAt ?? null, new Date());
-
-  async function save() {
-    if (nameError) return;
-    setSaving(true);
-    setMessage(null);
-    try {
-      await usePlannerStore.getState().updateNode(trip.id, node.id, { name, notes });
-      successFeedback();
-      setMessage({ tone: 'success', text: 'Saved.' });
-    } catch (err) {
-      setMessage({ tone: 'danger', text: toErrorMessage(err, 'Could not save.') });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const toggleRoute = () => {
-    setMessage(null);
-    const store = usePlannerStore.getState();
-    (routeIndex >= 0 ? store.removeRouteStop(trip.id, node.id) : store.addRouteStop(trip.id, node.id)).catch(
-      (err: unknown) => setMessage({ tone: 'danger', text: toErrorMessage(err, 'Could not change the route.') }),
-    );
-  };
+    .filter((name): name is string => !!name);
+  const profile = details?.profile ?? state.companion?.profiles.find((p) => p.nodeId === node.id) ?? emptyProfile(node.id, trip.id);
+  const ctx: DetailContext = { tripId: trip.id, node, plan, profile, details };
 
   return (
     <Screen testID="plan-place" bottomInset>
       <ScreenHeader
         showBack
-        eyebrow={trail || trip.name}
+        eyebrow={trail.join(' › ') || trip.name}
         title={node.name}
         trailing={<IconButton icon="dots-horizontal" accessibilityLabel="Place actions" onPress={() => actions.open(node.id)} testID="plan-place-actions" />}
       />
-
-      <View style={styles.tags}>
-        {node.parentId ? (
-          <Tag label="Place inside a destination" icon="subdirectory-arrow-right" color={colors.info} />
-        ) : (
-          <Tag label="Main destination" icon="map-marker-radius" color={colors.accent} />
-        )}
-        {routeIndex >= 0 ? (
-          <Tag label={`Route stop ${routeIndex + 1}`} icon="map-marker-path" color={colors.accent} />
-        ) : (
-          <Tag label="Not on the route" icon="map-marker-path" />
-        )}
-      </View>
-
-      <Card>
-        {node.place?.location ? (
-          <View style={styles.info}>
-            {node.place.formattedAddress ? <AppText variant="body">{node.place.formattedAddress}</AppText> : null}
-            <AppText variant="caption" tone="textMuted">
-              {node.place.location.latitude.toFixed(5)}, {node.place.location.longitude.toFixed(5)}
-            </AppText>
-            {refreshIn !== null ? (
-              <AppText variant="caption" tone="textMuted">
-                Details from Google Maps · stored on this device for {refreshIn} more {refreshIn === 1 ? 'day' : 'days'}
-              </AppText>
-            ) : null}
-          </View>
-        ) : node.place ? (
-          <AppText variant="caption" tone="warning">
-            Saved place whose map details have expired. They refresh when place search is available.
-          </AppText>
-        ) : (
-          <AppText variant="caption" tone="textMuted">
-            Added by name — not linked to a map location yet.
-          </AppText>
-        )}
-        <Button
-          label={link.exact ? 'Open in Google Maps' : 'Search in Google Maps'}
-          icon="google-maps"
-          variant="ghost"
-          size="sm"
-          onPress={() => void Linking.openURL(link.url)}
-          style={styles.left}
-          testID="plan-place-maps"
-        />
-      </Card>
-
-      <TextField
-        label="Name"
-        value={name}
-        onChangeText={setName}
-        error={nameError ?? undefined}
-        maxLength={PLANNER_LIMITS.nameMax}
-        helper={node.parentId ? undefined : 'Shown as one of this trip’s destinations'}
-        testID="plan-place-name"
-      />
-      <TextField
-        label="Notes"
-        placeholder="Timings, tickets, ideas…"
-        value={notes}
-        onChangeText={setNotes}
-        maxLength={PLANNER_LIMITS.notesMax}
-        multiline
-        testID="plan-place-notes"
-      />
-      {dirty ? (
-        <Button label="Save changes" icon="content-save-outline" onPress={() => void save()} loading={saving} disabled={!!nameError} testID="plan-place-save" />
-      ) : null}
-      {message ? <Notice tone={message.tone} title={message.text} /> : null}
+      <Hero ctx={ctx} trail={trail} />
+      <QuickActions ctx={ctx} />
+      <LocationCard ctx={ctx} />
       {actions.error ? <Notice tone="danger" title="Not changed" message={actions.error} /> : null}
+      {actions.notice ? <Notice tone="success" title={actions.notice} /> : null}
 
-      <View style={styles.row}>
-        <Button
-          label={routeIndex >= 0 ? 'Remove from route' : 'Add to route'}
-          icon={routeIndex >= 0 ? 'map-marker-remove-outline' : 'map-marker-path'}
-          variant="secondary"
-          size="sm"
-          onPress={toggleRoute}
-          testID="plan-place-route"
-        />
-        {node.parentId ? (
-          <Button
-            label="Make main destination"
-            icon="arrow-top-left"
-            variant="secondary"
-            size="sm"
-            onPress={() =>
-              usePlannerStore
-                .getState()
-                .promote(trip.id, node.id)
-                .catch((err: unknown) => setMessage({ tone: 'danger', text: toErrorMessage(err, 'Could not change it.') }))
-            }
-            testID="plan-place-promote"
-          />
-        ) : null}
-      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs} accessibilityRole="tablist">
+        {DETAIL_TABS.map((t) => (
+          <OptionTile key={t.value} layout="chip" label={t.label} icon={t.icon} selected={tab === t.value} onPress={() => setTab(t.value)} testID={`detail-tab-${t.value}`} />
+        ))}
+      </ScrollView>
 
-      <View style={styles.group}>
-        <View style={styles.row}>
-          <AppText variant="label" tone="textMuted" style={styles.flex}>
-            Places inside ({item?.children.length ?? 0})
-          </AppText>
-          <Button
-            label="Add place inside"
-            icon="map-marker-plus-outline"
-            variant="ghost"
-            size="sm"
-            onPress={() => router.push({ pathname: '/trips/[tripId]/plan/add', params: { tripId: trip.id, parentId: node.id } })}
-            testID="plan-place-add-inside"
-          />
+      {error ? (
+        <ErrorState title="Couldn’t load this place" message={error} onRetry={() => void useDetailStore.getState().load(node.id)} />
+      ) : !details ? (
+        <LoadingState label="Loading…" />
+      ) : (
+        <View key={tab} testID={`detail-panel-${tab}`}>
+          {tab === 'overview' ? <OverviewTab ctx={ctx} /> : null}
+          {tab === 'explore' ? <ExploreTab ctx={ctx} onMore={(id) => actions.open(id)} /> : null}
+          {tab === 'prepare' ? <PrepareTab ctx={ctx} /> : null}
+          {tab === 'plan' ? <PlanTab ctx={ctx} startDate={trip.startDate ?? null} /> : null}
+          {tab === 'memories' ? <MemoriesTab ctx={ctx} /> : null}
         </View>
-        {item && item.children.length > 0 ? (
-          <PlanTree
-            tripId={trip.id}
-            plan={plan}
-            rootId={node.id}
-            routeNumber={routeNumber}
-            visited={new Set()}
-            inNavigation={new Set()}
-            onMove={(id, target) =>
-              void usePlannerStore
-                .getState()
-                .moveNode(trip.id, id, target)
-                .catch((err: unknown) => setMessage({ tone: 'danger', text: toErrorMessage(err, 'Could not move it.') }))
-            }
-            onMore={(id) => actions.open(id)}
-            testID="plan-place-inside"
-          />
-        ) : (
-          <AppText variant="caption" tone="textMuted">
-            Nothing inside yet. Add attractions, viewpoints, stays or anything else you want to see here.
-          </AppText>
-        )}
-      </View>
+      )}
       {actions.sheet}
     </Screen>
   );
 }
 
-export function PlaceScreen({ tripId, nodeId }: { tripId: string | undefined; nodeId: string | undefined }) {
+export function PlaceScreen({ tripId, nodeId, tab }: { tripId: string | undefined; nodeId: string | undefined; tab?: DetailTab }) {
   const { trip } = useTrip(tripId);
   const state = useTripPlan(tripId);
   const node = state.plan?.nodes.find((n) => n.id === nodeId);
   useFocusEffect(
     useCallback(() => {
       if (tripId) void usePlannerStore.getState().load(tripId);
-    }, [tripId]),
+      if (nodeId) void useDetailStore.getState().load(nodeId);
+    }, [tripId, nodeId]),
   );
 
-  if (trip && node) return <Details key={`${node.id}:${node.updatedAt}`} trip={trip} node={node} />;
+  if (trip && node) return <DestinationPage key={node.id} trip={trip} node={node} initialTab={tab ?? 'overview'} />;
   return (
     <Screen bottomInset>
       <ScreenHeader showBack title="Place" />
@@ -258,28 +109,8 @@ export function PlaceScreen({ tripId, nodeId }: { tripId: string | undefined; no
 }
 
 const styles = StyleSheet.create({
-  tags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  tabs: {
     gap: spacing.sm,
-  },
-  info: {
-    gap: spacing.xs,
-  },
-  left: {
-    alignSelf: 'flex-start',
-    marginTop: spacing.sm,
-  },
-  row: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  group: {
-    gap: spacing.sm,
-  },
-  flex: {
-    flex: 1,
+    paddingVertical: spacing.xs,
   },
 });

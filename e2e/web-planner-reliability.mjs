@@ -133,6 +133,8 @@ await run('Planner reliability test', async () => {
   await goBack(page);
   await byId(page, 'plan-open-Manali').click();
   await byId(page, 'plan-place').waitFor();
+  await byId(page, 'detail-tab-explore').click();
+  await byId(page, 'detail-explore').waitFor();
   check(/places inside \(2\)/i.test(await text(page, 'plan-place')), 'saved place details open offline');
   await shot(page, 'f-01-offline-place');
   check(errors.length === 0, `no uncaught page errors offline (${errors.join(' | ') || 'none'})`);
