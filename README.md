@@ -43,6 +43,7 @@ npm start          # Expo dev server — press i (iOS), a (Android) or w (web)
 | `npm run e2e:auth` | Account routes in a build without Supabase configuration: guest-only, no sign-in control, protected account screen (same requirements) |
 | `npm run e2e:planner-reliability` | Planner offline (network cut) and with a 100-place plan, plus rapid taps (same requirements) |
 | `npm run e2e:planner-dnd` | Drag-and-drop tree, route and Navigation, journey legs, visited status, arrival permission denied, restart persistence (same requirements) |
+| `npm run e2e:journal` | Journey Journal: entries with mood, place and photos, timeline with destination memories, validation, offline, delete confirmation, restart persistence (same requirements) |
 | `npm run e2e:destination` | Destination page tabs, location, notices, tasks, notes, memories, quick actions, saved & compare, restart persistence (same requirements) |
 | `npm run doctor` | `expo-doctor` (needs network access to Expo's API) |
 | `npm run build:android:dev` | EAS cloud build of the Android development APK (needs an Expo account) |
@@ -330,6 +331,15 @@ creating a trip, and Home's *Continue planning*)
   duplicate detection by Place ID) appear only once a places proxy is configured; until then the
   app says "not set up" and never shows sample data. See
   [docs/destination-planner.md](docs/destination-planner.md) and `server/places-proxy/`.
+
+**Journey Journal** (trip dashboard → *Journey journal*)
+
+- Day-by-day entries with title, text, mood, an optional destination and photos; a timeline grouped
+  by trip day that also shows destination memories. Private, on the device, works offline.
+- Optional backup to the user's **own Google Drive** (`drive.file` scope: Trip Prep sees only the files
+  it creates) and additive restore on another device. Needs the Drive API and scope configured in
+  Google Cloud plus `EXPO_PUBLIC_GOOGLE_DRIVE_ENABLED=true`; until then the journal says Drive isn't
+  set up. See [docs/journal-sharing-expenses.md](docs/journal-sharing-expenses.md).
 
 ## In progress — Google sign-in & cloud sync (Milestone G)
 

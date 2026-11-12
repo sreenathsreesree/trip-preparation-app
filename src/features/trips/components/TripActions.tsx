@@ -70,6 +70,13 @@ export function useTripActions(trip: TripSummary | undefined, options: TripActio
         onPress: () => router.push({ pathname: '/trips/[tripId]/plan', params: { tripId: trip.id } }),
       },
       {
+        key: 'journal',
+        label: 'Journey journal',
+        icon: 'book-open-page-variant-outline',
+        description: 'Day-by-day entries and photos',
+        onPress: () => router.push({ pathname: '/trips/[tripId]/journal', params: { tripId: trip.id } }),
+      },
+      {
         key: 'edit',
         label: 'Edit trip details',
         icon: 'pencil-outline',

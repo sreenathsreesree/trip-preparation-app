@@ -23,6 +23,7 @@ describe('migrate', () => {
         'destination_planner',
         'packing_units_and_category_descriptions',
         'destination_companion',
+        'journey_journal',
       ],
     });
     expect(await getSchemaVersion(db)).toBe(migrations.length);
@@ -35,9 +36,12 @@ describe('migrate', () => {
       'checklist_sections',
       'checklist_tasks',
       'checklist_templates',
+      'drive_files',
       'inventory_categories',
       'inventory_items',
       'inventory_reservations',
+      'journal_entries',
+      'journal_photos',
       'packing_entries',
       'packing_recommendations',
       'places',

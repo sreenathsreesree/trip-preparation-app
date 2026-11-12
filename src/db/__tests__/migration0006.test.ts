@@ -54,7 +54,7 @@ describe('migration 6: destination companion', () => {
     );
     const before = await snapshot(db);
 
-    const result = await migrate(db, migrations);
+    const result = await migrate(db, migrations.slice(0, 6));
     expect(result.applied).toEqual(['destination_companion']);
     expect(await getSchemaVersion(db)).toBe(6);
 

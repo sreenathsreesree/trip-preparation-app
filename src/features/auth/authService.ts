@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 import { toErrorMessage } from '@/lib/errors';
 
-import { AUTH_STORAGE_KEY, supabaseConfig } from './config';
+import { AUTH_STORAGE_KEY, DRIVE_STORAGE_KEY, supabaseConfig } from './config';
 import { getRedirectUrl, parseAuthCallback } from './redirect';
 import { getAuthStorage, getSupabase } from './supabase';
 
@@ -83,6 +83,9 @@ export async function readStoredUser(): Promise<AuthUser | null> {
 
 const exchanges = new Map<string, Promise<SignInOutcome>>();
 
+/** Receives the Google access token from the next exchange (set only while extra scopes are requested). */
+let providerTokenHandler: ((token: string, user: AuthUser) => void) | null = null;
+
 export function exchangeCodeOnce(code: string): Promise<SignInOutcome> {
   const existing = exchanges.get(code);
   if (existing) return existing;
@@ -92,7 +95,11 @@ export function exchangeCodeOnce(code: string): Promise<SignInOutcome> {
     try {
       const { data, error } = await client.auth.exchangeCodeForSession(code);
       if (error || !data.session) return { status: 'error', message: friendlyAuthError(error) };
-      return { status: 'signedIn', user: toAuthUser(data.session.user) };
+      const user = toAuthUser(data.session.user);
+      // Only a sign-in that asked for extra Google scopes (Connect Google Drive) hands
+      // the Google access token on; a normal sign-in never keeps it.
+      if (providerTokenHandler && data.session.provider_token) providerTokenHandler(data.session.provider_token, user);
+      return { status: 'signedIn', user };
     } catch (error) {
       return { status: 'error', message: friendlyAuthError(error) };
     }
@@ -154,7 +161,29 @@ export async function isGoogleProviderEnabled(): Promise<boolean | null> {
   }
 }
 
-async function runGoogleSignIn(): Promise<SignInOutcome> {
+export interface GoogleScopeRequest {
+  /** Extra Google OAuth scopes, space-separated. */
+  scopes: string;
+  /** Pre-selects this account in Google's chooser. */
+  loginHint?: string | null;
+  onProviderToken: (token: string, user: AuthUser) => void;
+}
+
+/**
+ * Re-runs Google sign-in asking for extra scopes (incremental consent) and
+ * passes the Google access token from that exchange to `onProviderToken`.
+ */
+export function requestGoogleScopes(request: GoogleScopeRequest): Promise<SignInOutcome> {
+  if (signInInFlight) return Promise.resolve({ status: 'error', message: 'Sign-in is already in progress.' });
+  providerTokenHandler = request.onProviderToken;
+  signInInFlight = runGoogleSignIn(request).finally(() => {
+    signInInFlight = null;
+    providerTokenHandler = null;
+  });
+  return signInInFlight;
+}
+
+async function runGoogleSignIn(extra?: Pick<GoogleScopeRequest, 'scopes' | 'loginHint'>): Promise<SignInOutcome> {
   const client = getSupabase();
   if (!client) return { status: 'error', message: NOT_CONFIGURED };
 
@@ -172,7 +201,18 @@ async function runGoogleSignIn(): Promise<SignInOutcome> {
   try {
     const { data, error } = await client.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo, skipBrowserRedirect: true },
+      options: extra
+        ? {
+            redirectTo,
+            skipBrowserRedirect: true,
+            scopes: extra.scopes,
+            queryParams: {
+              include_granted_scopes: 'true',
+              prompt: 'consent',
+              ...(extra.loginHint ? { login_hint: extra.loginHint } : {}),
+            },
+          }
+        : { redirectTo, skipBrowserRedirect: true },
     });
     if (error || !data?.url) return { status: 'error', message: friendlyAuthError(error) };
 
@@ -218,7 +258,7 @@ export async function restoreSession(): Promise<RestoreOutcome> {
 
 async function clearStoredSession(): Promise<void> {
   const storage = getAuthStorage();
-  for (const key of [AUTH_STORAGE_KEY, `${AUTH_STORAGE_KEY}-code-verifier`, `${AUTH_STORAGE_KEY}-user`]) {
+  for (const key of [AUTH_STORAGE_KEY, `${AUTH_STORAGE_KEY}-code-verifier`, `${AUTH_STORAGE_KEY}-user`, DRIVE_STORAGE_KEY]) {
     try {
       await storage.removeItem(key);
     } catch {
@@ -260,6 +300,7 @@ export async function signOutLocally(): Promise<{ revoked: boolean }> {
 
 /** Test hook: forget shared exchanges and in-flight sign-ins. */
 export function resetAuthServiceForTests() {
+  providerTokenHandler = null;
   exchanges.clear();
   signInInFlight = null;
 }

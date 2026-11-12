@@ -36,3 +36,6 @@ export const supabaseConfig: SupabaseConfig | null = parseSupabaseConfig(
 
 /** Storage key for the persisted auth session (SecureStore keys allow [A-Za-z0-9._-]). */
 export const AUTH_STORAGE_KEY = 'tripprep.auth';
+
+/** Secure-storage key of the optional Google Drive connection (journal backup); cleared on sign-out. */
+export const DRIVE_STORAGE_KEY = 'tripprep.drive';

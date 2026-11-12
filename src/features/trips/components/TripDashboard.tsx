@@ -21,6 +21,7 @@ import { toErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing } from '@/theme';
 
 import { PackingSummaryCard } from '../../packing/components/PackingSummaryCard';
+import { JournalSummaryCard } from '../../journal/components/JournalSummaryCard';
 import { PlanSummaryCard } from '../../planner/components/PlanSummaryCard';
 import { useChecklistStore } from '../../preparation/checklistStore';
 import { ReadinessPanel } from '../../preparation/components/ReadinessPanel';
@@ -180,6 +181,8 @@ function DashboardBody({ trip, justCreated }: { trip: TripSummary; justCreated: 
       <PlanSummaryCard trip={trip} />
 
       <PackingSummaryCard tripId={trip.id} />
+
+      <JournalSummaryCard trip={trip} />
 
       {needsVehicle ? (
         <Notice

@@ -74,3 +74,57 @@ export function deleteStoredImage(uri: string | null | undefined): void {
     // A missing file is fine: the reference is already gone.
   }
 }
+
+const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+/** Base64 → bytes without depending on atob (not available everywhere). */
+export function base64ToBytes(base64: string): Uint8Array {
+  const clean = base64.replace(/[^A-Za-z0-9+/]/g, '');
+  const bytes = new Uint8Array(Math.floor((clean.length * 3) / 4));
+  let buffer = 0;
+  let bits = 0;
+  let index = 0;
+  for (const char of clean) {
+    buffer = (buffer << 6) | BASE64.indexOf(char);
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes[index++] = (buffer >> bits) & 0xff;
+    }
+  }
+  return bytes.subarray(0, index);
+}
+
+export function bytesToBase64(bytes: Uint8Array): string {
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i] as number;
+    const b = bytes[i + 1];
+    const c = bytes[i + 2];
+    out += BASE64[a >> 2];
+    out += BASE64[((a & 3) << 4) | ((b ?? 0) >> 4)];
+    out += b === undefined ? '=' : BASE64[((b & 15) << 2) | ((c ?? 0) >> 6)];
+    out += c === undefined ? '=' : BASE64[c & 63];
+  }
+  return out;
+}
+
+/** Bytes and type of a stored photo (app copy or web data URI), for backups. */
+export async function readImageBytes(uri: string): Promise<{ bytes: Uint8Array; mimeType: string }> {
+  const data = /^data:([^;,]+);base64,(.*)$/s.exec(uri);
+  if (data) return { mimeType: data[1] as string, bytes: base64ToBytes(data[2] as string) };
+  const extension = uri.split('.').pop()?.toLowerCase() ?? 'jpg';
+  const mimeType = extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : extension === 'heic' ? 'image/heic' : 'image/jpeg';
+  return { bytes: await new File(uri).bytes(), mimeType };
+}
+
+/** Stores downloaded photo bytes as an app-owned image (restore from a backup). */
+export async function saveImageBytes(bytes: Uint8Array, mimeType: string): Promise<string> {
+  if (Platform.OS === 'web') return `data:${mimeType};base64,${bytesToBase64(bytes)}`;
+  const directory = new Directory(Paths.document, IMAGE_DIR);
+  if (!directory.exists) directory.create({ intermediates: true, idempotent: true });
+  const extension = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : mimeType === 'image/heic' ? 'heic' : 'jpg';
+  const file = new File(directory, `${createId()}.${extension}`);
+  await file.write(bytes);
+  return file.uri;
+}

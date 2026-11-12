@@ -1,3 +1,4 @@
+import { createJournalRepository } from '@/features/journal/journalRepository';
 import { createInventoryRepository } from '@/features/inventory/inventoryRepository';
 import { createPackingRepository } from '@/features/packing/packingRepository';
 import { createPreferencesRepository } from '@/features/packing/preferencesRepository';
@@ -30,6 +31,7 @@ export async function getRepositories() {
     preferences: createPreferencesRepository(db),
     planner: createPlannerRepository(db, { createId }),
     companion: createCompanionRepository(db, { createId }),
+    journal: createJournalRepository(db, { createId }),
     schemaVersion: () => getSchemaVersion(db),
     countTasks: async () => {
       const row = await db.getFirstAsync<{ count: number }>(

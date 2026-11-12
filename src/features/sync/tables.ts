@@ -153,4 +153,8 @@ export const LOCAL_ONLY_TABLES: Readonly<Record<string, string>> = {
   plan_node_notes: 'Notes & my plan (local v6); cloud table pending approval.',
   plan_node_alerts: 'Saved destination notices (local v6); cloud table pending approval.',
   plan_node_memories: 'Personal visit memories (local v6); cloud table pending approval.',
+  // Journey Journal (local schema v7): personal; backed up to the user's own Google Drive.
+  journal_entries: 'Personal journal (local v7); optional backup to the user’s Google Drive, shared entries go through shared trips.',
+  journal_photos: 'Journal photos (local v7); optional backup to the user’s Google Drive.',
+  drive_files: 'Device record of what is already in Google Drive (local v7).',
 };
