@@ -1,4 +1,4 @@
-// Tests for supabase/pending/20261116090000_shared_workspace.sql on real
+// Tests for supabase/migrations/20261116090000_shared_workspace.sql on real
 // Postgres (PGlite): who can read and write the group workspace, readiness
 // privacy, invitations, removal, and that nothing deployed changes.
 import { createHash } from 'node:crypto';
@@ -278,7 +278,9 @@ describe('the migration is additive and hardened', () => {
     assert.deepEqual(privs, ['authenticated:INSERT', 'authenticated:SELECT', 'authenticated:UPDATE']);
   });
 
-  it('is in pending/, not the deploy folder', () => {
-    assert.ok(!readdirSync(join(ROOT, 'migrations')).some((f) => f.includes('shared_workspace')));
+  it('deploys after the privilege hardening, and its rollback stays in pending/rollback', () => {
+    const files = readdirSync(join(ROOT, 'migrations')).filter((f) => f.endsWith('.sql')).sort();
+    assert.ok(files.indexOf('20261116090000_shared_workspace.sql') > files.indexOf('20261115090000_revoke_table_maintenance_privileges.sql'));
+    assert.ok(readdirSync(join(ROOT, 'pending', 'rollback')).includes('20261116090000_shared_workspace.down.sql'));
   });
 });

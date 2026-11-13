@@ -36,7 +36,9 @@ const STUB = `
 async function deployed() {
   const db = new PGlite();
   await db.exec(STUB);
-  for (const f of readdirSync(join(ROOT, 'migrations')).filter((f) => f.endsWith('.sql') && !f.includes('revoke_table_maintenance')).sort()) await db.exec(readFileSync(join(ROOT, 'migrations', f), 'utf8'));
+  // The database as it was just before the hardening: every migration that sorts before it.
+  const HARDENING_FILE = '20261115090000_revoke_table_maintenance_privileges.sql';
+  for (const f of readdirSync(join(ROOT, 'migrations')).filter((f) => f.endsWith('.sql') && f < HARDENING_FILE).sort()) await db.exec(readFileSync(join(ROOT, 'migrations', f), 'utf8'));
   // Prove the PUBLIC path is closed as well (the live project has none, a future grant must not reopen it).
   await db.exec(`grant truncate on public.trips to public`);
   return db;
@@ -174,8 +176,8 @@ describe('table maintenance privileges', () => {
     assert.deepEqual((await privileges(fresh)).filter((p) => !p.startsWith('trips:anon')), original);
   });
 
-  it('deploys last, after the shared-expenses migration', () => {
+  it('deploys after the shared-expenses migration', () => {
     const files = readdirSync(join(ROOT, 'migrations')).filter((f) => f.endsWith('.sql')).sort();
-    assert.equal(files.at(-1), '20261115090000_revoke_table_maintenance_privileges.sql');
+    assert.ok(files.indexOf('20261115090000_revoke_table_maintenance_privileges.sql') > files.indexOf('20261114090000_shared_expenses.sql'));
   });
 });
