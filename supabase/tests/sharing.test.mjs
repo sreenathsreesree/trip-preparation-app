@@ -37,10 +37,12 @@ const sqlFiles = (dir) =>
     .sort()
     .map((f) => join(ROOT, dir, f));
 
-async function freshDatabase({ pending = true } = {}) {
+/** `shared: false` builds only what was deployed before sharing (G1 + G3), the baseline sharing must leave unchanged. */
+async function freshDatabase({ shared = true } = {}) {
   const db = new PGlite();
   await db.exec(STUB);
-  for (const file of [...sqlFiles('migrations'), ...(pending ? sqlFiles('pending') : [])]) await db.exec(readFileSync(file, 'utf8'));
+  const files = [...sqlFiles('migrations'), ...sqlFiles('pending')].filter((f) => shared || !/_shared_/.test(f));
+  for (const file of files) await db.exec(readFileSync(file, 'utf8'));
   return db;
 }
 
@@ -98,7 +100,7 @@ describe('shared trips: separation from G1', () => {
              where table_schema = 'public' and table_name not like 'shared%') as columns`)
       ).rows[0];
     // Compare only what G1 created: other pending migrations may add their own tables.
-    const g1 = await catalog(await freshDatabase({ pending: false }));
+    const g1 = await catalog(await freshDatabase({ shared: false }));
     const withPending = await catalog(await freshDatabase());
     const g1Tables = new Set(g1.tables);
     assert.deepEqual(withPending.tables.filter((t) => g1Tables.has(t)), g1.tables);
@@ -107,8 +109,10 @@ describe('shared trips: separation from G1', () => {
     assert.deepEqual(withPending.columns.filter((c) => g1Tables.has(c.split('.')[0])), g1.columns);
   });
 
-  it('is not in the deploy folder', () => {
-    assert.ok(!readdirSync(join(ROOT, 'migrations')).some((f) => f.includes('shared')));
+  it('deploys after the G1 and G3 migrations, shared trips before shared expenses', () => {
+    const deploy = readdirSync(join(ROOT, 'migrations')).filter((f) => f.endsWith('.sql')).sort();
+    assert.deepEqual(deploy.slice(-2), ['20261113090000_shared_trips.sql', '20261114090000_shared_expenses.sql']);
+    assert.ok(deploy.indexOf('20261112090000_personal_backup.sql') < deploy.indexOf('20261113090000_shared_trips.sql'));
   });
 });
 

@@ -10,8 +10,8 @@ rebuild the SQL-editor bundle if that path is used, and run the workflow.
 
 | File | Phase | What it adds |
 | --- | --- | --- |
-| `20261113090000_shared_trips.sql` | L | Shared trips, members and roles, hashed invitations, shared journal entries, membership functions, `shared_pull` |
-| `20261114090000_shared_expenses.sql` | M | Shared expense participants, group expenses with exact splits, settlements and budgets; members read, owners/editors write; requires the shared-trips migration |
+| ~~`20261113090000_shared_trips.sql`~~ (moved to `supabase/migrations/` for deployment) | L | Shared trips, members and roles, hashed invitations, shared journal entries, membership functions, `shared_pull` |
+| ~~`20261114090000_shared_expenses.sql`~~ (moved to `supabase/migrations/` for deployment) | M | Shared expense participants, group expenses with exact splits, settlements and budgets; members read, owners/editors write; requires the shared-trips migration |
 | ~~`20261112090000_personal_backup.sql`~~ (moved to `supabase/migrations/` for deployment) | G3 | Personal backup tables for the data added after G1 (destination details, journal, memories metadata, trip calculator, v5 columns in side tables); registered with the G1 sync protocol; independent of the shared-trip files |
 
 Deployment order when approved: `20261112090000_personal_backup.sql` (G3) sorts after G1 and before the

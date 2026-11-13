@@ -95,7 +95,9 @@ describe('migrations', () => {
         (select count(*) from pg_policies p where p.tablename = c.relname) as policies,
         exists (select 1 from pg_policies p where p.tablename = c.relname and p.cmd = 'DELETE') as delete_policy
       from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = 'public' and c.relkind = 'r' and c.relname <> 'sync_tables'`);
+      where n.nspname = 'public' and c.relkind = 'r' and c.relname <> 'sync_tables'
+        -- Shared-trip tables are not personal backup tables; sharing.test.mjs / expenses.test.mjs check their RLS.
+        and c.relname not like 'shared\\_%' and c.relname <> 'shared_content_tables'`);
     assert.deepEqual(rows.map((r) => r.relname).sort(), SYNC_TABLES.map((t) => t.name).sort());
     for (const row of rows) {
       assert.equal(row.relrowsecurity, true, `${row.relname} RLS`);
