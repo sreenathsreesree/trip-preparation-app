@@ -77,7 +77,7 @@ const viewerImageSize = (page) =>
   });
 
 await run('Gallery test', async () => {
-  let { context, page, errors } = await launch();
+  let { context, page, errors, dialogs } = await launch();
 
   setStep('empty gallery');
   await page.goto(`${BASE}/gallery`);
@@ -154,15 +154,27 @@ await run('Gallery test', async () => {
   const after = await grid.evaluate((el) => [el, ...el.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 10).scrollTop);
   check(before > 0 && Math.abs(after - before) < 2, `scroll position kept (${before} → ${after})`);
 
+  setStep('removing a photo not in Drive warns that it is the only copy');
+  await page.goto(`${trip}/journal`);
+  await byId(page, 'journal-entry-Hills').click();
+  await byId(page, 'journal-editor').waitFor();
+  const dialogsBefore = dialogs.length;
+  await page.getByLabel('Remove photo 1').first().click();
+  await page.waitForTimeout(300);
+  check(dialogs.length === dialogsBefore + 1 && /only one/.test(dialogs.at(-1)), `removal warning shown (${dialogs.at(-1)})`);
+  await byId(page, 'journal-save').click().catch(() => undefined);
+  await page.goto(`${trip}/gallery`);
+  await byId(page, 'gallery-grid').waitFor();
+
   setStep('by-day grouping and the all-trips gallery after a restart');
   await page.getByText('By day').click();
   await byId(page, 'gallery-photo-0').waitFor();
   await context.close();
-  ({ context, page, errors } = await launch());
+  ({ context, page, errors, dialogs } = await launch());
   await page.goto(`${BASE}/profile`);
   await byId(page, 'profile-gallery').click();
   await byId(page, 'gallery-grid').waitFor({ timeout: 60_000 });
-  check((await page.locator('[data-testid^="gallery-photo-"]').count()) >= 9, 'photos persisted across a restart');
+  check((await page.locator('[data-testid^="gallery-photo-"]').count()) >= 9, 'photos persisted across a restart (one removed)');
   check(errors.length === 0, `no uncaught page errors (${errors.join(' | ') || 'none'})`);
   await context.close();
 });

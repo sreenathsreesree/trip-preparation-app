@@ -109,6 +109,37 @@ removal keeps the original, display from Drive and cache, earlier photos, settin
 **Not verifiable here:** real uploads to Google Drive and native file reads/writes (needs the Drive
 API configured and a device).
 
+### Phase 4 (Nov 2026) — Memories gallery and Drive folders
+
+- **Original photos, no crop.** Memories, journal and cover photos use the picker's `original` mode
+  (`lib/imageStore.ts`): no crop editor, `quality: 1` (Android copies the file byte for byte — size,
+  orientation and EXIF kept; iOS keeps the current representation, so HEIC stays HEIC), several at
+  once from the library (capped at the remaining per-entry limit). Inventory items keep the square
+  crop. Root cause of the old crop: one shared picker always used `allowsEditing` + `aspect: [1, 1]`
+  + `quality: 0.7`.
+- **Drive layout.** `Trip Prep / <trip name> / Memories`, each folder created once and remembered by
+  id in the account's own database; found again by app tags (never by name) after a reconnect or
+  reinstall. Folders and photos from earlier versions ("<trip> (<start>)") are reused as they are —
+  never renamed, moved or deleted. Moving older photos into the new Memories folders would need a
+  separate, reviewed step (Drive `files.update` with `addParents/removeParents` on files the app
+  created); it is not done automatically.
+- **No duplicates.** Each upload is tagged with its queue id; before uploading, Drive is asked for
+  that tag, so an upload interrupted after Drive saved it is not sent again.
+- **Queue states** (derived, nothing extra stored): waiting for internet, waiting for Google Drive,
+  reconnect needed, waiting to upload, uploading, retry scheduled, uploaded, failed. Offline no
+  longer uses up the 8 automatic tries; expired or revoked access pauses for reconnect; busy Drive
+  backs off 1–60 min, then waits for Retry. Uploaded only after Drive confirms; device copies are
+  freed only for uploaded photos.
+- **Gallery** (`features/journal/gallery/`, routes `/gallery` and `/trips/[id]/gallery`): grid grouped
+  by trip or day, 3 columns on phones; thumbnails from the device copy, a cached original, or Drive's
+  own preview (`thumbnailLink`, cached as `thumb:<id>`) — originals are never downloaded for the
+  grid. Full-screen viewer over the grid: swipe, pinch / double-tap zoom, pan, uncropped; originals
+  load from the device, cache or Drive; "only in Drive, offline" is said plainly.
+- **Removing** a photo never touches Drive (the client has no delete call). The confirmation says
+  whether the Drive original stays or Trip Prep's copy is the only one.
+- **No schema or cloud migration** was needed: folder ids live in `drive_files`, previews in
+  `drive_cache`, both inside the account's own partition.
+
 ## 4. Phase L — Shared Trips, invitations, roles, private/shared spaces
 
 **Cloud migration** (new file, not deployed), separate from the G1 owner tables:

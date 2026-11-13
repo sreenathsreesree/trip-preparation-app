@@ -7,6 +7,9 @@ import { fakeSyncServer } from '../../../test/fakeSyncServer';
 import { tripInput } from '../../../test/fixtures';
 import { openTestDatabase, sequentialIds, type TestDatabase } from '../../../test/nodeSqliteDatabase';
 import { linkAccount, linkedAccount, runSync, SyncAccountError } from '../../features/sync/syncEngine';
+import { createPhotoUploadRepository } from '../../features/journal/drive/photoUploadRepository';
+import { createGalleryRepository } from '../../features/journal/galleryRepository';
+import { createJournalRepository } from '../../features/journal/journalRepository';
 import { createTripRepository } from '../../features/trips/tripRepository';
 import { migrate } from '../migrate';
 import { migrations } from '../migrations';
@@ -152,6 +155,36 @@ describe('account partitions', () => {
     await target.execAsync('DROP TABLE trip_luggage');
     await expect(copyDatabase(source, target)).rejects.toThrow(/missing tables/);
     expect(await names(source)).toEqual(['Safe']);
+  });
+
+  it('Memories photos, Drive references and pending uploads stay with the account that added them', async () => {
+    await legacyPhone('A’s trip', A);
+    const client = await freshClient();
+    const a = await client.getPartitionDatabase(partitionFor(A));
+    const tripId = (await tripsIn(a).list())[0]!.id;
+    const journal = createJournalRepository(a, deps());
+    const entry = await journal.create(tripId, { entryDate: '2026-12-20', title: 'A’s day' });
+    await journal.addPhoto(entry.id, 'file:///a/private.jpg');
+    const aUploads = createPhotoUploadRepository(a, deps());
+    await aUploads.enqueue({ accountId: A, tripId, source: 'journal', sourceId: 'x', localUri: 'file:///a/private.jpg', fileName: 'x.jpg' });
+    await journal.saveDriveRecord({ kind: 'folder', localId: 'root', driveFileId: 'A-root-folder', contentHash: '' });
+
+    // Signed out, then signed in as B (offline too: the partition comes from the saved session).
+    client.setActiveAccount(null);
+    client.setActiveAccount(B);
+    const b = await client.getDatabase();
+    expect(await createGalleryRepository(b).list()).toEqual([]);
+    const bUploads = createPhotoUploadRepository(b, deps());
+    // B's database has no queue rows at all, not even A's under A's id.
+    expect(await bUploads.due(A, new Date('2030-01-01'))).toEqual([]);
+    expect(await bUploads.due(B, new Date('2030-01-01'))).toEqual([]);
+    expect(await createJournalRepository(b, deps()).driveRecord('folder', 'root')).toBeNull();
+
+    // Back to A: everything is still there, still pending.
+    client.setActiveAccount(A);
+    const again = await client.getDatabase();
+    expect((await createGalleryRepository(again).list()).map((p) => p.uri)).toEqual(['file:///a/private.jpg']);
+    expect((await createPhotoUploadRepository(again, deps()).due(A, new Date('2030-01-01'))).map((r) => r.localUri)).toEqual(['file:///a/private.jpg']);
   });
 
   it('names one file per account and never reuses the old shared file', () => {

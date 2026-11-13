@@ -5,6 +5,7 @@ import { StyleSheet, View } from 'react-native';
 import { Screen } from '@/components/layout/Screen';
 import { ScreenHeader } from '@/components/layout/ScreenHeader';
 import { AppText, Button, IconButton, LoadingState, Notice, OptionTile, TextField, ToggleRow } from '@/components/ui';
+import { useAuthStore } from '@/features/auth/authStore';
 import { confirmAction } from '@/lib/confirm';
 import { toErrorMessage } from '@/lib/errors';
 import { successFeedback } from '@/lib/haptics';
@@ -17,6 +18,7 @@ import { useTripSharing } from '../sharing/sharingStore';
 import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
 import { DrivePhoto } from './components/DrivePhoto';
+import { confirmPhotoRemoval } from './drive/photoRemoval';
 import { useJournalStore, useTripJournal } from './journalStore';
 import { defaultEntryDate, JOURNAL_LIMITS, MOOD_META, MOODS, validateEntry, type JournalEntry, type Mood } from './model';
 
@@ -85,6 +87,7 @@ function Editor({ trip, entry }: { trip: TripSummary; entry: JournalEntry | null
   }
 
   async function removePhoto(key: string, uri: string) {
+    if (!(await confirmPhotoRemoval(uri, useAuthStore.getState().user?.id ?? null))) return;
     if (entry) await useJournalStore.getState().removePhoto(trip.id, key);
     else {
       setPending((p) => p.filter((u) => u !== uri));

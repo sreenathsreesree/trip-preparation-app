@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppText, Button, IconButton, Notice, TextField } from '@/components/ui';
+import { useAuthStore } from '@/features/auth/authStore';
 import { toErrorMessage } from '@/lib/errors';
 import { deleteStoredImage, pickAndStoreImages } from '@/lib/imageStore';
 import { colors, radii, spacing } from '@/theme';
 
 import { DrivePhoto } from '../../journal/components/DrivePhoto';
 import { PhotoUploadStatus } from '../../journal/components/PhotoUploadStatus';
+import { confirmPhotoRemoval } from '../../journal/drive/photoRemoval';
 import { usePhotoUploadStore } from '../../journal/drive/photoUploadStore';
 import { COMPANION_LIMITS } from '../companion';
 import { useDetailAction, type DetailContext } from './shared';
@@ -38,6 +40,7 @@ export function MemoriesTab({ ctx }: { ctx: DetailContext }) {
   }
 
   async function removePhoto(uri: string) {
+    if (!(await confirmPhotoRemoval(uri, useAuthStore.getState().user?.id ?? null))) return;
     if (await act((c) => c.saveMemory(ctx.node.id, { photos: photos.filter((p) => p !== uri) }))) {
       deleteStoredImage(uri);
       // The original already in Google Drive is kept; Trip Prep just forgets it.
