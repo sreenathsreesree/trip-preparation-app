@@ -21,16 +21,18 @@ export interface DiscoveryCategory {
   label: string;
   icon: IconName;
   search: DiscoverySearch;
+  /** OpenStreetMap tag selectors (Overpass syntax) for the same category. */
+  osm: readonly string[];
 }
 
 /** Google Places (New) place types / text queries per category. */
 export const DISCOVERY_CATEGORIES: readonly DiscoveryCategory[] = [
-  { key: 'attractions', label: 'Attractions', icon: 'star-outline', search: { kind: 'nearby', includedTypes: ['tourist_attraction', 'museum', 'historical_landmark'] } },
-  { key: 'viewpoints', label: 'Viewpoints', icon: 'binoculars', search: { kind: 'text', query: 'viewpoint' } },
-  { key: 'waterfalls', label: 'Waterfalls', icon: 'waves', search: { kind: 'text', query: 'waterfall' } },
-  { key: 'nature', label: 'Nature', icon: 'pine-tree', search: { kind: 'nearby', includedTypes: ['park', 'national_park', 'hiking_area'] } },
-  { key: 'tea', label: 'Tea estates', icon: 'leaf', search: { kind: 'text', query: 'tea estate' } },
-  { key: 'food', label: 'Restaurants', icon: 'silverware-fork-knife', search: { kind: 'nearby', includedTypes: ['restaurant', 'cafe'] } },
+  { key: 'attractions', label: 'Attractions', icon: 'star-outline', search: { kind: 'nearby', includedTypes: ['tourist_attraction', 'museum', 'historical_landmark'] }, osm: ['["tourism"="attraction"]', '["tourism"="museum"]', '["historic"~"^(monument|castle|fort|ruins|archaeological_site)$"]', '["amenity"="place_of_worship"]["wikidata"]'] },
+  { key: 'viewpoints', label: 'Viewpoints', icon: 'binoculars', search: { kind: 'text', query: 'viewpoint' }, osm: ['["tourism"="viewpoint"]'] },
+  { key: 'waterfalls', label: 'Waterfalls', icon: 'waves', search: { kind: 'text', query: 'waterfall' }, osm: ['["natural"="waterfall"]', '["waterway"="waterfall"]'] },
+  { key: 'nature', label: 'Nature', icon: 'pine-tree', search: { kind: 'nearby', includedTypes: ['park', 'national_park', 'hiking_area'] }, osm: ['["leisure"="park"]', '["leisure"="nature_reserve"]', '["boundary"="national_park"]', '["natural"="peak"]', '["natural"="beach"]'] },
+  { key: 'tea', label: 'Tea estates', icon: 'leaf', search: { kind: 'text', query: 'tea estate' }, osm: ['["crop"="tea"]', '["tourism"]["name"~"[Tt]ea"]', '["craft"="tea"]'] },
+  { key: 'food', label: 'Restaurants', icon: 'silverware-fork-knife', search: { kind: 'nearby', includedTypes: ['restaurant', 'cafe'] }, osm: ['["amenity"="restaurant"]', '["amenity"="cafe"]'] },
 ];
 
 const TYPE_LABELS: Record<string, string> = {
@@ -99,9 +101,10 @@ export function rankRecommendations(
   places: readonly PlaceDetails[],
   origin: GeoPoint,
   radiusKm: number,
-  planPlaceIds: ReadonlySet<string>,
+  planPlaceIds: ReadonlySet<string> | ((place: PlaceDetails) => boolean),
   sort: RecommendationSort = 'relevance',
 ): Recommendation[] {
+  const inPlan = typeof planPlaceIds === 'function' ? planPlaceIds : (p: PlaceDetails) => planPlaceIds.has(p.providerPlaceId);
   const seen = new Set<string>();
   const result: Recommendation[] = [];
   for (const place of places) {
@@ -109,7 +112,7 @@ export function rankRecommendations(
     seen.add(place.providerPlaceId);
     const distance = place.location ? distanceMeters(origin, place.location) : null;
     if (distance !== null && distance > radiusKm * 1000) continue;
-    result.push({ place, distanceMeters: distance, inPlan: planPlaceIds.has(place.providerPlaceId) });
+    result.push({ place, distanceMeters: distance, inPlan: inPlan(place) });
   }
   if (sort === 'distance') result.sort((a, b) => (a.distanceMeters ?? Infinity) - (b.distanceMeters ?? Infinity));
   if (sort === 'rating') {
@@ -122,3 +125,28 @@ export function rankRecommendations(
 
 /** Placement choices for a recommendation (exactly one per tap). */
 export type Placement = 'inside' | 'route' | 'main';
+
+/** Lower-case letters and digits only, so "Mattupetty Dam" and "mattupetty-dam" compare equal. */
+export const normalizePlaceName = (name: string) => name.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, ' ').trim();
+
+export const DUPLICATE_RADIUS_METERS = 300;
+
+/**
+ * Whether a found place is already in the plan: same provider id, or the same
+ * name at (about) the same spot — so a place typed in by hand is not added
+ * again from recommendations. Same name without coordinates counts too.
+ */
+export function planMatcher(nodes: readonly Pick<PlanNode, 'name' | 'place'>[]): (place: Pick<PlaceDetails, 'providerPlaceId' | 'name' | 'location'>) => boolean {
+  const ids = new Set(nodes.flatMap((n) => (n.place?.providerPlaceId ? [n.place.providerPlaceId] : [])));
+  const byName = new Map<string, (GeoPoint | null)[]>();
+  for (const n of nodes) {
+    const key = normalizePlaceName(n.name);
+    byName.set(key, [...(byName.get(key) ?? []), n.place?.location ?? null]);
+  }
+  return (place) => {
+    if (ids.has(place.providerPlaceId)) return true;
+    const spots = byName.get(normalizePlaceName(place.name));
+    if (!spots) return false;
+    return spots.some((spot) => !spot || !place.location || distanceMeters(spot, place.location) <= DUPLICATE_RADIUS_METERS);
+  };
+}

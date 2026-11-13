@@ -28,6 +28,7 @@ describe('migrate', () => {
         'shared_trips',
         'trip_expenses',
         'cloud_sync',
+        'travel_experience',
       ],
     });
     expect(await getSchemaVersion(db)).toBe(migrations.length);
@@ -37,6 +38,7 @@ describe('migrate', () => {
       [],
     );
     expect(tables.map((t) => t.name)).toEqual([
+      'auto_covers',
       'checklist_sections',
       'checklist_tasks',
       'checklist_templates',
@@ -58,13 +60,16 @@ describe('migrate', () => {
       'journal_photos',
       'packing_entries',
       'packing_recommendations',
+      'pdf_imports',
       'places',
       'plan_node_alerts',
+      'plan_node_days',
       'plan_node_memories',
       'plan_node_notes',
       'plan_node_profiles',
       'plan_node_tasks',
       'purchase_items',
+      'remote_cache',
       'shared_entries',
       'shared_members',
       'shared_outbox',

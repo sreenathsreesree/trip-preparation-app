@@ -23,6 +23,8 @@ import { colors, radii, spacing } from '@/theme';
 import { PackingSummaryCard } from '../../packing/components/PackingSummaryCard';
 import { JournalSummaryCard } from '../../journal/components/JournalSummaryCard';
 import { PlanSummaryCard } from '../../planner/components/PlanSummaryCard';
+import { TripWeatherCard } from '../../weather/components/TripWeatherCard';
+import { TripCover } from '../../covers/TripCover';
 import { useChecklistStore } from '../../preparation/checklistStore';
 import { ReadinessPanel } from '../../preparation/components/ReadinessPanel';
 import { SectionCard } from '../../preparation/components/SectionCard';
@@ -160,6 +162,8 @@ function DashboardBody({ trip, justCreated }: { trip: TripSummary; justCreated: 
       <LifecycleNotice trip={trip} today={today} />
       {tripActionError ? <Notice tone="danger" title="Action failed" message={tripActionError} /> : null}
 
+      <TripCover trip={trip} />
+
       <View style={styles.hero}>
         <TopoBackdrop opacity={0.35} />
         <View style={styles.heroContent}>
@@ -179,6 +183,8 @@ function DashboardBody({ trip, justCreated }: { trip: TripSummary; justCreated: 
       {actionError ? <Notice tone="danger" title="Something went wrong" message={actionError} /> : null}
 
       <PlanSummaryCard trip={trip} />
+
+      <TripWeatherCard trip={trip} />
 
       <PackingSummaryCard tripId={trip.id} />
 

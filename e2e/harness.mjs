@@ -76,9 +76,91 @@ export function setStep(name) {
 /** The open browser session, so failures can be captured and cleaned up. */
 const session = { context: null, page: null };
 
+/**
+ * Free public providers the app calls directly (OpenStreetMap Photon/Overpass,
+ * Open-Meteo, Wikipedia/Wikimedia Commons) are answered with fixtures in their
+ * documented response formats, so tests are deterministic and never hit the
+ * real services. `providers.offline = true` makes every call fail like a lost
+ * connection; `providers.calls` records what the app asked for.
+ */
+export const providers = { offline: false, calls: [] };
+const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+
+function providerFixture(url, body) {
+  const u = new URL(url);
+  if (u.host === 'photon.komoot.io') {
+    const q = u.searchParams.get('q') ?? 'Place';
+    return { json: { features: [{ geometry: { coordinates: [77.0595, 10.0889] }, properties: { name: q, osm_id: 4242, osm_type: 'N', osm_key: 'place', osm_value: 'town', state: 'Kerala', country: 'India' } }] } };
+  }
+  if (u.host === 'overpass-api.de') {
+    const data = decodeURIComponent(String(body ?? '').replace(/^data=/, '').replace(/\+/g, ' '));
+    const m = /around:(\d+),([-\d.]+),([-\d.]+)/.exec(data);
+    const lat = m ? Number(m[2]) : 10.0889;
+    const lon = m ? Number(m[3]) : 77.0595;
+    return {
+      json: {
+        elements: [
+          { type: 'way', id: 101, center: { lat: lat + 0.02, lon: lon + 0.01 }, tags: { name: 'Lakkam Waterfalls', waterway: 'waterfall', wikipedia: 'en:Lakkam Waterfalls' } },
+          { type: 'node', id: 102, lat: lat + 0.01, lon, tags: { name: 'Attukad Waterfalls', natural: 'waterfall' } },
+          { type: 'node', id: 103, lat: lat + 0.3, lon, tags: { name: 'Distant Falls', natural: 'waterfall' } },
+        ],
+      },
+    };
+  }
+  if (u.host === 'api.open-meteo.com') {
+    const days = Array.from({ length: 16 }, (_, i) => new Date(Date.now() + i * 86_400_000).toISOString().slice(0, 10));
+    return {
+      json: {
+        latitude: Number(u.searchParams.get('latitude')),
+        longitude: Number(u.searchParams.get('longitude')),
+        timezone: 'Asia/Kolkata',
+        current: { time: `${days[0]}T09:00`, temperature_2m: 18.4, relative_humidity_2m: 82, weather_code: 61, wind_speed_10m: 9.5 },
+        daily: {
+          time: days,
+          weather_code: days.map((_, i) => (i === 0 ? 61 : 2)),
+          temperature_2m_max: days.map(() => 23),
+          temperature_2m_min: days.map(() => 11),
+          precipitation_probability_max: days.map((_, i) => (i === 0 ? 80 : 20)),
+          wind_speed_10m_max: days.map(() => 12),
+          uv_index_max: days.map(() => 7),
+        },
+      },
+    };
+  }
+  if (u.host === 'en.wikipedia.org') {
+    const title = u.searchParams.get('titles') ?? u.searchParams.get('gsrsearch') ?? 'Place';
+    return { json: { query: { pages: [{ title, pageimage: 'Fixture_photo.png', index: 1 }] } } };
+  }
+  if (u.host === 'commons.wikimedia.org') {
+    return {
+      json: {
+        query: {
+          pages: [
+            {
+              title: 'File:Fixture_photo.png',
+              imageinfo: [{ thumburl: 'https://upload.wikimedia.org/fixture.png', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Fixture_photo.png', extmetadata: { LicenseShortName: { value: 'CC BY-SA 4.0' }, Artist: { value: 'Fixture Photographer' } } }],
+            },
+          ],
+        },
+      },
+    };
+  }
+  if (u.host === 'upload.wikimedia.org') return { png: true };
+  return null;
+}
+
 export async function launch() {
   const context = await chromium.launchPersistentContext(profile, { viewport });
   session.context = context;
+  await context.route(/^https:\/\/(photon\.komoot\.io|overpass-api\.de|api\.open-meteo\.com|en\.wikipedia\.org|commons\.wikimedia\.org|upload\.wikimedia\.org)\//, async (route) => {
+    const request = route.request();
+    providers.calls.push(new URL(request.url()).host);
+    if (providers.offline) return route.abort('internetdisconnected');
+    const fixture = providerFixture(request.url(), request.postData());
+    if (!fixture) return route.abort();
+    if (fixture.png) return route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1PX, headers: { 'Access-Control-Allow-Origin': '*' } });
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(fixture.json), headers: { 'Access-Control-Allow-Origin': '*' } });
+  });
   context.setDefaultTimeout(15_000);
   const page = context.pages()[0] ?? (await context.newPage());
   const errors = [];

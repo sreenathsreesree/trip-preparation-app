@@ -110,7 +110,7 @@ export function LocationCard({ ctx }: { ctx: DetailContext }) {
         <View style={styles.editor} testID="detail-location-editor">
           {placesProvider.configured ? (
             <View style={styles.info}>
-              <SearchField value={query} onChangeText={setQuery} placeholder="Search Google Maps" testID="detail-location-search" />
+              <SearchField value={query} onChangeText={setQuery} placeholder={`Search ${placesProvider.source?.name ?? 'Google Maps'}`} testID="detail-location-search" />
               <Button label="Search" icon="magnify" variant="secondary" size="sm" loading={searching} onPress={() => void search()} style={styles.left} />
               {results?.map((place) => (
                 <Pressable

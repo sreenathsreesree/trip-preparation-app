@@ -16,7 +16,11 @@ import { createId } from '@/lib/id';
 
 import { getDatabase, getPartitionDatabase } from './client';
 import type { Partition } from './partitions';
+import { createCoverRepository } from '@/features/covers/coverRepository';
 import { createGalleryRepository } from '@/features/journal/galleryRepository';
+import { createPdfImportRepository } from '@/features/pdfImport/pdfImportRepository';
+import { createDayPlanRepository } from '@/features/planner/dayPlanRepository';
+import { createRemoteCacheRepository } from '@/features/remote/remoteCacheRepository';
 import { getSchemaVersion } from './migrate';
 
 /**
@@ -41,6 +45,10 @@ export async function getRepositories(partition?: Partition) {
     sharing: createSharingRepository(db, {}),
     photoUploads: createPhotoUploadRepository(db, { createId }),
     gallery: createGalleryRepository(db),
+    remoteCache: createRemoteCacheRepository(db),
+    dayPlan: createDayPlanRepository(db),
+    covers: createCoverRepository(db),
+    pdfImports: createPdfImportRepository(db, { createId }),
     schemaVersion: () => getSchemaVersion(db),
     countTasks: async () => {
       const row = await db.getFirstAsync<{ count: number }>(

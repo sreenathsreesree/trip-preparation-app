@@ -19,6 +19,7 @@ import {
 } from '../companion';
 import { PLANNER_LIMITS, validateNodeName } from '../model';
 import { usePlannerStore } from '../plannerStore';
+import { DestinationWeather } from '../../weather/components/DestinationWeather';
 import { useDetailAction, type DetailContext } from './shared';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -298,7 +299,7 @@ export function OverviewTab({ ctx }: { ctx: DetailContext }) {
       <NameForm key={ctx.node.updatedAt} ctx={ctx} />
       <FactsForm ctx={ctx} />
       <TagsEditor ctx={ctx} />
-      <Notice tone="info" icon="weather-partly-cloudy" title="Weather isn’t connected" message="Check a forecast service the day before you go." testID="detail-weather-off" />
+      <DestinationWeather ctx={ctx} />
       <Alerts ctx={ctx} />
       <OfflinePack ctx={ctx} />
     </View>

@@ -6,12 +6,17 @@ import { ActionSheet, AppText, Card, Icon, IconButton, LoadingState, Notice, Opt
 import { toErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing } from '@/theme';
 
+import { getRepositories } from '@/db/repositories';
+
+import { PlaceImage } from '../../covers/PlaceImage';
 import { placesProvider } from '../../places/config';
+import { toPlaceInput } from '../../places/placeInput';
 import {
   contextLocation,
   DISCOVERY_CATEGORIES,
   DISTANCE_FILTERS_KM,
   formatDistance,
+  planMatcher,
   rankRecommendations,
   typeLabel,
   type DistanceKm,
@@ -19,24 +24,13 @@ import {
   type Recommendation,
   type RecommendationSort,
 } from '../../places/discovery';
-import { isPlacesError, type PlaceDetails, type PlacesErrorKind } from '../../places/provider';
+import { isPlacesError, type PlaceDetails, type PlacesErrorKind, type PlacesSource } from '../../places/provider';
+import { cachedFetch } from '../../remote/remoteCacheRepository';
+import { timeAgo } from '../../remote/timeAgo';
 import type { TripPlan } from '../model';
 import { usePlannerStore } from '../plannerStore';
 
-/** What is kept when a recommendation is added: identity and location only (no ratings or photos). */
-export function toPlaceInput(place: PlaceDetails) {
-  return {
-    provider: 'google' as const,
-    providerPlaceId: place.providerPlaceId,
-    name: place.name,
-    location: place.location,
-    formattedAddress: place.formattedAddress,
-    types: place.types,
-    district: place.district,
-    state: place.state,
-    country: place.country,
-  };
-}
+export { toPlaceInput } from '../../places/placeInput';
 
 function RecommendationCard({ rec, onAdd }: { rec: Recommendation; onAdd: () => void }) {
   const { place } = rec;
@@ -55,6 +49,8 @@ function RecommendationCard({ rec, onAdd }: { rec: Recommendation; onAdd: () => 
             </AppText>
           ) : null}
         </View>
+      ) : typeof place.metadata?.wikipedia === 'string' ? (
+        <PlaceImage wikipedia={place.metadata.wikipedia} name={place.name} location={place.location ?? null} />
       ) : null}
       <View style={styles.cardBody}>
         <View style={styles.titleRow}>
@@ -100,6 +96,27 @@ function RecommendationCard({ rec, onAdd }: { rec: Recommendation; onAdd: () => 
   );
 }
 
+const PLACES_CACHE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Says where results come from: live, saved earlier (and how long ago), or demo data. */
+function SourceBadge({ source, from, fetchedAt }: { source: PlacesSource; from: 'live' | 'cache' | 'stale_cache' | null; fetchedAt: string | null }) {
+  if (source.kind === 'demo') {
+    return <Notice tone="warning" title="Demo data — not real places" message="This build uses sample entries for testing." testID="rec-source-demo" />;
+  }
+  const when = fetchedAt ? timeAgo(fetchedAt, new Date()) : null;
+  const text =
+    from === 'stale_cache'
+      ? `Saved ${when} from ${source.name} — you seem to be offline, so this may be out of date.`
+      : from === 'cache'
+        ? `From ${source.name}, saved ${when}.`
+        : `Live from ${source.name}.`;
+  return (
+    <AppText variant="caption" tone={from === 'stale_cache' ? 'warning' : 'textMuted'} testID={`rec-source-${from ?? 'live'}`}>
+      {text}
+    </AppText>
+  );
+}
+
 /**
  * Live nearby / famous places around a destination (Google Places through the
  * Trip Prep proxy). Without a configured provider, or without a verified
@@ -111,16 +128,14 @@ export function Recommendations({ tripId, plan, nodeId }: { tripId: string; plan
   const [radiusKm, setRadiusKm] = useState<DistanceKm>(10);
   const [sort, setSort] = useState<RecommendationSort>('relevance');
   /** The latest finished request, keyed by what was asked (so a newer request shows as loading). */
-  const [result, setResult] = useState<{ key: string; places: PlaceDetails[]; error: PlacesErrorKind | null } | null>(null);
+  const [result, setResult] = useState<{ key: string; places: PlaceDetails[]; error: PlacesErrorKind | null; fetchedAt: string | null; from: 'live' | 'cache' | 'stale_cache' | null } | null>(null);
   const [adding, setAdding] = useState<PlaceDetails | null>(null);
   const [message, setMessage] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
 
   const context = useMemo(() => contextLocation(plan.nodes, nodeId), [plan.nodes, nodeId]);
   const current = nodeId ? plan.nodes.find((n) => n.id === nodeId) ?? null : null;
-  const planPlaceIds = useMemo(
-    () => new Set(plan.nodes.flatMap((n) => (n.place?.providerPlaceId ? [n.place.providerPlaceId] : []))),
-    [plan.nodes],
-  );
+  // Already in the plan: same id, or the same name at about the same spot (places typed in by hand).
+  const isInPlan = useMemo(() => planMatcher(plan.nodes), [plan.nodes]);
   const selected = DISCOVERY_CATEGORIES.find((c) => c.key === category) ?? DISCOVERY_CATEGORIES[0];
   const latitude = context?.location.latitude;
   const longitude = context?.location.longitude;
@@ -131,15 +146,28 @@ export function Recommendations({ tripId, plan, nodeId }: { tripId: string; plan
     const controller = new AbortController();
     const location = { latitude, longitude };
     const key = `${latitude},${longitude},${selected.key},${radiusKm}`;
-    const request =
-      selected.search.kind === 'nearby'
-        ? placesProvider.nearby({ location, radiusMeters: radiusKm * 1000, includedTypes: selected.search.includedTypes, maxResults: 20 }, controller.signal)
-        : placesProvider.textSearch({ query: selected.search.query, bias: location, maxResults: 20 }, controller.signal);
+    const fetcher = () =>
+      placesProvider.discover
+        ? placesProvider.discover({ selectors: selected.osm, category: selected.key, location, radiusMeters: radiusKm * 1000, maxResults: 20 }, controller.signal)
+        : selected.search.kind === 'nearby'
+          ? placesProvider.nearby({ location, radiusMeters: radiusKm * 1000, includedTypes: selected.search.includedTypes, maxResults: 20 }, controller.signal)
+          : placesProvider.textSearch({ query: selected.search.query, bias: location, maxResults: 20 }, controller.signal);
+    // Storable providers (OpenStreetMap, demo) are cached for offline use; Google content is shown live only.
+    const cacheable = placesProvider.source !== undefined;
+    const request = cacheable
+      ? getRepositories().then(({ remoteCache }) =>
+          cachedFetch(
+            remoteCache,
+            { key: `places:${placesProvider.source?.name}:${selected.key}:${latitude.toFixed(3)},${longitude.toFixed(3)}:${radiusKm}`, kind: 'places', source: placesProvider.source?.name ?? '', maxAgeMs: PLACES_CACHE_MS, now: new Date() },
+            fetcher,
+          ),
+        )
+      : fetcher().then((payload) => ({ payload, fetchedAt: null, from: 'live' as const }));
     request
-      .then((places) => setResult({ key, places, error: null }))
+      .then((r) => setResult({ key, places: r.payload, error: null, fetchedAt: r.fetchedAt, from: r.from }))
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        setResult({ key, places: [], error: isPlacesError(error) ? error.kind : 'unknown' });
+        setResult({ key, places: [], error: isPlacesError(error) ? error.kind : 'unknown', fetchedAt: null, from: null });
       });
     return () => controller.abort();
   }, [latitude, longitude, selected, radiusKm]);
@@ -147,7 +175,7 @@ export function Recommendations({ tripId, plan, nodeId }: { tripId: string; plan
   const current_ = result && result.key === requestKey ? result : null;
   const status = current_ === null ? 'loading' : current_.error ? 'error' : 'ready';
   const errorKind = current_?.error ?? null;
-  const recs = context && current_ ? rankRecommendations(current_.places, context.location, radiusKm, planPlaceIds, sort) : [];
+  const recs = context && current_ ? rankRecommendations(current_.places, context.location, radiusKm, isInPlan, sort) : [];
 
   const place = (target: Placement) => {
     const chosen = adding;
@@ -183,8 +211,8 @@ export function Recommendations({ tripId, plan, nodeId }: { tripId: string; plan
       <Notice
         tone="info"
         icon="google-maps"
-        title="Live recommendations are not set up yet"
-        message="Nearby and famous places come live from Google Places. This needs the Places API (New) with billing linked and the Trip Prep places proxy. Until then nothing is shown instead — add places by name."
+        title="Place recommendations are switched off in this build"
+        message="Nothing is shown instead of real places. You can still add places by name."
         testID="rec-unconfigured"
       />
     );
@@ -205,8 +233,9 @@ export function Recommendations({ tripId, plan, nodeId }: { tripId: string; plan
     <View style={styles.container} testID="recommendations">
       <AppText variant="caption" tone="textMuted">
         Around {context.from.name}
-        {context.from.id !== nodeId ? ' (the nearest place with a location)' : ''}. Live from Google Maps.
+        {context.from.id !== nodeId ? ' (the nearest place with a location)' : ''}.
       </AppText>
+      <SourceBadge source={placesProvider.source ?? { kind: 'live', name: 'Google Maps', attribution: 'Data © Google' }} from={current_?.from ?? null} fetchedAt={current_?.fetchedAt ?? null} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
         {DISCOVERY_CATEGORIES.map((c) => (
           <OptionTile key={c.key} layout="chip" label={c.label} icon={c.icon} selected={c.key === category} onPress={() => setCategory(c.key)} testID={`rec-cat-${c.key}`} />
@@ -240,7 +269,9 @@ export function Recommendations({ tripId, plan, nodeId }: { tripId: string; plan
       )}
       {recs.length > 0 ? (
         <AppText variant="caption" tone="textMuted">
-          Data, ratings and photos © Google. Shown live; only a place’s name, ID and location are saved when you add it.
+          {placesProvider.source
+            ? `${placesProvider.source.attribution}. Adding a place saves its name and location in your plan.`
+            : 'Data, ratings and photos © Google. Shown live; only a place’s name, ID and location are saved when you add it.'}
         </AppText>
       ) : null}
       <ActionSheet

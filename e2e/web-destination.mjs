@@ -74,8 +74,10 @@ await run('Destination page test', async () => {
   setStep('hero, tabs and honest "not connected" states');
   await openPlace(page, trip, 'Munnar');
   for (const t of ['overview', 'explore', 'prepare', 'plan', 'memories']) check((await byId(page, `detail-tab-${t}`).count()) === 1, `has the ${t} tab`);
-  await byId(page, 'detail-weather-off').waitFor();
-  check(/Add your own cover photo/.test(await text(page, 'detail-hero')), 'no cover photo is invented');
+  await byId(page, 'weather-no-location').waitFor();
+  check(/needs Munnar’s location/.test(await text(page, 'weather-no-location')), 'weather asks for a location instead of guessing');
+  await byId(page, 'detail-auto-cover-credit').waitFor();
+  check(/CC BY-SA 4\.0 · Wikimedia Commons/.test(await text(page, 'detail-auto-cover-credit')), 'automatic cover shows its licence and source');
   check(/Route stop 1/.test(await text(page, 'detail-hero')), 'shows the route position');
   await shot(page, 'dest-01-overview');
 
@@ -84,7 +86,8 @@ await run('Destination page test', async () => {
   await byId(page, 'detail-location-input').fill('https://maps.app.goo.gl/abc');
   check(/Short share links/.test(await text(page, 'detail-location-editor')), 'short links are explained, not guessed');
   check(await byId(page, 'detail-location-save').isDisabled(), 'cannot save an unreadable location');
-  await byId(page, 'detail-location-search-off').waitFor();
+  await byId(page, 'detail-location-search').waitFor();
+  check((await byId(page, 'detail-location-search-off').count()) === 0, 'place search is available (OpenStreetMap)');
   await byId(page, 'detail-location-input').fill('https://www.google.com/maps/place/Munnar/@10.0,77.0,13z/data=!3d10.0889!4d77.0595');
   await byId(page, 'detail-location-save').click();
   await waitText(page, 'detail-coordinates', (v) => v === '10.08890, 77.05950');
@@ -168,8 +171,10 @@ await run('Destination page test', async () => {
   setStep('explore: places inside and recommendations');
   await tab(page, 'explore');
   check(/Places inside \(1\)/.test(await text(page, 'detail-explore')), 'lists places inside');
-  await byId(page, 'rec-unconfigured').waitFor();
-  check((await page.locator('[data-testid^="rec-add-"]').count()) === 0, 'no sample recommendations');
+  await byId(page, 'recommendations').waitFor();
+  await byId(page, 'rec-Lakkam Waterfalls').waitFor();
+  check(/Live from OpenStreetMap/.test(await text(page, 'recommendations')), 'recommendations say they are live from OpenStreetMap');
+  check((await byId(page, 'rec-Distant Falls').count()) === 0, 'places beyond the distance filter are left out');
 
   setStep('quick actions on a place inside: route, distance, Navigation, visited');
   await openPlace(page, trip, 'Echo Point');

@@ -76,6 +76,14 @@ function PlannerBody({ trip, initialTab }: { trip: TripSummary; initialTab: Plan
   const destinations = (current: TripPlan) => (
     <>
       <Button label="Add destination" icon="map-marker-plus-outline" onPress={addDestination} fullWidth testID="planner-add" />
+      <Button
+        label="Import plan from PDF"
+        icon="file-pdf-box"
+        variant="secondary"
+        onPress={() => router.push({ pathname: '/trips/[tripId]/plan/import', params: { tripId: trip.id } })}
+        fullWidth
+        testID="planner-import-pdf"
+      />
       {error || actions.error ? <Notice tone="danger" title="Not changed" message={error ?? actions.error ?? ''} /> : null}
       {actions.notice ? <Notice tone="success" title={actions.notice} testID="planner-notice" /> : null}
       {total === 0 ? (

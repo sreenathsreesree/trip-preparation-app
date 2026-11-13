@@ -144,6 +144,11 @@ export const SYNC_TABLES: readonly SyncTable[] = [
 
 /** Local tables that never sync, with the reason. */
 export const LOCAL_ONLY_TABLES: Readonly<Record<string, string>> = {
+  // Travel experience (local schema v12): caches and drafts, rebuilt or re-chosen on another device.
+  remote_cache: 'Public provider responses (OpenStreetMap, Open-Meteo), re-fetched on each device.',
+  auto_covers: 'Automatically chosen cover images (Wikimedia Commons), re-chosen on each device; own covers sync as before.',
+  pdf_imports: 'Itinerary PDFs and drafts on this device; the confirmed plan syncs as ordinary places.',
+  plan_node_days: 'Planned day per destination; syncs once a matching cloud migration is approved.',
   trip_destinations: 'Derived from the planner’s main destinations (rebuilt on each device after sync).',
   // Destination planner upgrade (local schema v6). Synced only after a matching cloud
   // migration is separately approved (needed before G4).

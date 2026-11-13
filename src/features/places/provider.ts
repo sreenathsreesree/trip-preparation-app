@@ -59,10 +59,30 @@ export interface TextSearchRequest {
   maxResults?: number;
 }
 
+export interface DiscoverRequest {
+  /** OpenStreetMap-style tag selectors for the category (see discovery.ts). */
+  selectors: readonly string[];
+  /** Category key, for providers that search by their own types. */
+  category: string;
+  location: GeoPoint;
+  radiusMeters: number;
+  maxResults?: number;
+}
+
+/** Where a provider's data comes from, shown with every result. Demo data is never presented as live. */
+export interface PlacesSource {
+  kind: 'live' | 'demo';
+  name: string;
+  attribution: string;
+}
+
 export interface PlacesProvider {
   readonly id: PlaceProviderId;
   /** False when the app has no provider configured; every call then fails with `not_configured`. */
   readonly configured: boolean;
+  readonly source?: PlacesSource;
+  /** Places of a category around a point (providers without it use nearby / text search). */
+  discover?(request: DiscoverRequest, signal?: AbortSignal): Promise<PlaceDetails[]>;
   autocomplete(request: AutocompleteRequest, signal?: AbortSignal): Promise<PlaceSuggestion[]>;
   details(providerPlaceId: string, options: { sessionToken?: string }, signal?: AbortSignal): Promise<PlaceDetails>;
   nearby(request: NearbyRequest, signal?: AbortSignal): Promise<PlaceDetails[]>;

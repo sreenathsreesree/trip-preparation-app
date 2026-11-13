@@ -12,6 +12,7 @@
     "expo-constants": "~58.0.15",
     "expo-crypto": "~58.0.7",
     "expo-dev-client": "~58.0.18",
+    "expo-document-picker": "~58.0.5",
     "expo-file-system": "~58.0.13",
     "expo-font": "~58.0.11",
     "expo-haptics": "~58.0.7",
@@ -27,6 +28,7 @@
     "expo-status-bar": "~58.0.4",
     "expo-system-ui": "~58.0.7",
     "expo-web-browser": "~58.0.8",
+    "fflate": "^0.8.3",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
@@ -78,7 +80,8 @@
     "e2e:calculator": "node e2e/web-calculator.mjs",
     "build:android:dev": "npx eas-cli@latest build --platform android --profile development",
     "build:android:preview": "npx eas-cli@latest build --platform android --profile preview",
-    "e2e:gallery": "node e2e/web-gallery.mjs"
+    "e2e:gallery": "node e2e/web-gallery.mjs",
+    "e2e:travel": "node e2e/web-travel.mjs"
   },
   "private": true,
   "jest": {

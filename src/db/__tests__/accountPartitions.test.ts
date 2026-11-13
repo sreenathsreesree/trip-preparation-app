@@ -10,6 +10,10 @@ import { linkAccount, linkedAccount, runSync, SyncAccountError } from '../../fea
 import { createPhotoUploadRepository } from '../../features/journal/drive/photoUploadRepository';
 import { createGalleryRepository } from '../../features/journal/galleryRepository';
 import { createJournalRepository } from '../../features/journal/journalRepository';
+import { createCoverRepository } from '../../features/covers/coverRepository';
+import { createPdfImportRepository } from '../../features/pdfImport/pdfImportRepository';
+import { createDayPlanRepository } from '../../features/planner/dayPlanRepository';
+import { createRemoteCacheRepository } from '../../features/remote/remoteCacheRepository';
 import { createTripRepository } from '../../features/trips/tripRepository';
 import { migrate } from '../migrate';
 import { migrations } from '../migrations';
@@ -185,6 +189,36 @@ describe('account partitions', () => {
     const again = await client.getDatabase();
     expect((await createGalleryRepository(again).list()).map((p) => p.uri)).toEqual(['file:///a/private.jpg']);
     expect((await createPhotoUploadRepository(again, deps()).due(A, new Date('2030-01-01'))).map((r) => r.localUri)).toEqual(['file:///a/private.jpg']);
+  });
+
+  it('imported PDFs, drafts, planned days, covers, cached places and weather stay with their account', async () => {
+    await legacyPhone('A’s trip', A);
+    const client = await freshClient();
+    const a = await client.getPartitionDatabase(partitionFor(A));
+    const tripId = (await tripsIn(a).list())[0]!.id;
+    const node = (await a.getFirstAsync<{ id: string }>('SELECT id FROM trip_plan_nodes LIMIT 1', []))?.id ?? null;
+    const imports = createPdfImportRepository(a, deps());
+    const rec = await imports.create(tripId, 'a-private-itinerary.pdf', 'file:///a/x.pdf');
+    await imports.update(rec.id, { status: 'draft', text: 'Day 1 - Munnar' });
+    if (node) await createDayPlanRepository(a).set(tripId, node, { dayNumber: 1 });
+    await createCoverRepository(a).save({ subjectType: 'trip', subjectId: tripId, query: 'Munnar', status: 'found', imageUrl: 'https://upload.wikimedia.org/x.jpg', localUri: 'file:///a/cover.jpg', title: 'Munnar', credit: 'c', license: 'CC BY-SA 4.0', sourceUrl: 'https://commons.wikimedia.org/wiki/File:x.jpg', skipped: [], fetchedAt: '2026-11-13T00:00:00Z' });
+    await createRemoteCacheRepository(a).set('weather:10.09,77.06', 'weather', 'Open-Meteo', { daily: [] }, '2026-11-13T00:00:00Z');
+    await createRemoteCacheRepository(a).set('places:OpenStreetMap:waterfalls:10.089,77.060:10', 'places', 'OpenStreetMap', [], '2026-11-13T00:00:00Z');
+
+    client.setActiveAccount(null);
+    client.setActiveAccount(B);
+    const b = await client.getDatabase();
+    for (const table of ['pdf_imports', 'plan_node_days', 'auto_covers', 'remote_cache']) {
+      expect([table, (await b.getFirstAsync<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`, []))!.n]).toEqual([table, 0]);
+    }
+    expect(await createPdfImportRepository(b, deps()).get(rec.id)).toBeNull();
+    expect(await createCoverRepository(b).get('trip', tripId)).toBeNull();
+    expect(await createRemoteCacheRepository(b).get('weather:10.09,77.06')).toBeNull();
+
+    client.setActiveAccount(A);
+    const again = await client.getDatabase();
+    expect((await createPdfImportRepository(again, deps()).get(rec.id))?.fileName).toBe('a-private-itinerary.pdf');
+    expect((await createCoverRepository(again).get('trip', tripId))?.localUri).toBe('file:///a/cover.jpg');
   });
 
   it('names one file per account and never reuses the old shared file', () => {

@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Share, StyleSheet, View } from 'react-native';
 
-import { AppText, Button, Icon, IconButton, Notice, Tag } from '@/components/ui';
+import { Button, IconButton, Notice, Tag } from '@/components/ui';
 import { toErrorMessage } from '@/lib/errors';
 import { deleteStoredImage, pickAndStoreImage } from '@/lib/imageStore';
 import { colors, radii, spacing } from '@/theme';
 
+import { AutoCover } from '../../covers/AutoCover';
 import { DrivePhoto } from '../../journal/components/DrivePhoto';
+import { contextLocation } from '../../places/discovery';
 import { usePhotoUploadStore } from '../../journal/drive/photoUploadStore';
 import { visitLength } from '../companion';
 import { destinationShareText } from '../share';
@@ -20,6 +22,11 @@ export function Hero({ ctx, trail }: { ctx: DetailContext; trail: string[] }) {
   const routeIndex = plan.route.findIndex((s) => s.nodeId === node.id);
   const length = visitLength(profile.visitMinutes);
   const visited = profile.visitStatus === 'visited';
+  const located = contextLocation(plan.nodes, node.id);
+  const wikipedia = typeof node.place?.metadata?.wikipedia === 'string' ? node.place.metadata.wikipedia : null;
+  const coverQuery = profile.coverImageUri
+    ? null
+    : { name: node.name, context: [...[...trail].reverse(), node.place?.state, node.place?.country].filter(Boolean).join(', '), location: located?.location ?? null, wikipedia };
 
   async function pickCover() {
     try {
@@ -56,12 +63,8 @@ export function Hero({ ctx, trail }: { ctx: DetailContext; trail: string[] }) {
         {profile.coverImageUri ? (
           <DrivePhoto uri={profile.coverImageUri} style={StyleSheet.absoluteFill} label={`Cover photo of ${node.name}`} testID="detail-cover" />
         ) : (
-          <View style={styles.placeholder}>
-            <Icon name="image-filter-hdr" size={40} color={colors.textMuted} />
-            <AppText variant="caption" tone="textMuted">
-              Add your own cover photo
-            </AppText>
-          </View>
+          // No own photo: a representative free image is chosen automatically (never replaces an own photo).
+          <AutoCover subject={{ type: 'node', id: node.id }} query={coverQuery} style={StyleSheet.absoluteFill} label={`Photo of ${node.name}`} testID="detail-auto-cover" />
         )}
         <View style={styles.coverActions}>
           <IconButton

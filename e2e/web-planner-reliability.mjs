@@ -129,7 +129,7 @@ await run('Planner reliability test', async () => {
   setStep('offline: add screen and place details');
   await byId(page, 'planner-add').click();
   await byId(page, 'plan-add').waitFor();
-  check(await byId(page, 'plan-add-search-unavailable').isVisible(), 'add screen explains search is unavailable, manual entry works');
+  check(await byId(page, 'plan-add-name').isVisible(), 'offline, places can still be added by name');
   await goBack(page);
   await byId(page, 'plan-open-Manali').click();
   await byId(page, 'plan-place').waitFor();
