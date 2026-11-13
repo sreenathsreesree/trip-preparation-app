@@ -141,7 +141,7 @@ describe('sharing a trip', () => {
   it('never syncs a trip linked to another account on this device', async () => {
     const ctx = await setup();
     await shareTrip(ctx.trip, ASHA, { api: ctx.server.apiFor(ASHA.id), repos: ctx.asha });
-    expect(await ctx.sync(ctx.asha, ctx.trip.id, VEE)).toEqual({ pushed: 0, withdrawn: 0, pulled: 0, expensesSent: 0, removed: false, error: null });
+    expect(await ctx.sync(ctx.asha, ctx.trip.id, VEE)).toEqual({ pushed: 0, withdrawn: 0, pulled: 0, expensesSent: 0, removed: false, error: null, groupSent: 0, groupPulled: 0, groupConflicts: 0, groupNotReady: false });
     expect(ctx.server.entries.size).toBe(0);
   });
 

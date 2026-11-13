@@ -7,7 +7,7 @@ import { SharingError, type SharedMember, type SharedRole, type SharingApi } fro
  * supabase/pending/20261113090000_shared_trips.sql (which is tested against
  * real Postgres in supabase/tests/sharing.test.mjs).
  */
-export function fakeSharingServer() {
+export function fakeSharingServer(options: { workspace?: boolean } = {}) {
   let seq = 0;
   let revision = 0;
   const trips = new Map<string, { name: string; start: string; end: string; members: Map<string, { role: SharedRole; name: string }> }>();
@@ -134,6 +134,20 @@ export function fakeSharingServer() {
         const old = records.get(key);
         if (!old || old.deleted_at) return;
         records.set(key, { ...old, deleted_at: at, updated_at: at, revision: ++revision });
+      },
+      async upsertGroupItem(row) {
+        await online();
+        if (options.workspace === false) throw new SharingError("server_not_ready", "not deployed");
+        const role = roleOf(row.trip_id, user);
+        const key = `shared_trip_items/${row.trip_id}/${row.id}`;
+        const old = records.get(key);
+        const ok = row.kind === 'readiness' ? role !== null && row.id === user && (!old || old.created_by === user) : role === 'owner' || role === 'editor';
+        if (!ok) throw deny('new row violates row-level security policy');
+        if (row.kind === 'readiness' && (Object.keys(row.data).some((k) => k !== 'ready') || typeof row.data.ready !== 'boolean')) throw deny('violates check constraint shared_trip_items_readiness');
+        if (row.kind === 'document' && !['hotel', 'vehicle', 'transport_ticket', 'group_ticket', 'epass', 'activity', 'other'].includes(String(row.data.type))) throw deny('violates check constraint shared_trip_items_document_type');
+        if (old && old.kind !== row.kind) throw deny('kind cannot change');
+        if (old && (row.base_updated_at ?? null) !== old.updated_at) throw new SharingError('stale', 'stale write: the shared copy changed since you last saw it');
+        records.set(key, { ...row, table: 'shared_trip_items', created_by: old?.created_by ?? user, revision: ++revision, deleted_at: row.deleted_at });
       },
       async pull(tripId, cursor) {
         await online();

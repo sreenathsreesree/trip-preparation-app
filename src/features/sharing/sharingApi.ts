@@ -80,6 +80,21 @@ export interface SharingApi {
   upsertRecord(table: SharedRecordTable, row: Record<string, unknown> & { trip_id: string; id: string }): Promise<void>;
   /** Withdraws a group record (tombstone). No-op if it was never sent. */
   withdrawRecord(table: SharedRecordTable, tripId: string, id: string, at: string): Promise<void>;
+  /** Inserts or updates a Group Trip workspace item (a removal is sent with `deleted_at`). */
+  upsertGroupItem(row: GroupItemRow): Promise<void>;
+}
+
+export interface GroupItemRow {
+  trip_id: string;
+  id: string;
+  kind: 'place' | 'checklist' | 'document' | 'note' | 'readiness';
+  data: Record<string, unknown>;
+  author_name: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  /** The group copy's updated_at this change is based on (null for a new item). */
+  base_updated_at: string | null;
 }
 
 export const SHARED_RECORD_TABLES = ['shared_expense_participants', 'shared_expenses', 'shared_expense_settlements', 'shared_expense_budgets'] as const;
@@ -185,6 +200,9 @@ export function createSupabaseSharingApi(client: SupabaseClient): SharingApi {
     },
     async withdrawRecord(table, tripId, id, at) {
       await query(() => client.from(table).update({ deleted_at: at, updated_at: at }).eq('trip_id', tripId).eq('id', id).is('deleted_at', null));
+    },
+    async upsertGroupItem(row) {
+      await query(() => client.from('shared_trip_items').upsert(row, { onConflict: 'trip_id,id' }));
     },
     async pull(tripId, cursor) {
       const r = await rpc<{ rows: PullPage['rows']; has_more: boolean; cursor: { txid: string; revision: number } }>('shared_pull', {

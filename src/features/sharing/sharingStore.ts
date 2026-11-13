@@ -109,8 +109,8 @@ export const useSharingStore = accountScoped(create<SharingState>()((set, get) =
       if (!api || !account || get().byTrip[tripId]?.syncing) return;
       put(tripId, { syncing: true });
       try {
-        const { sharing, expenses } = await getRepositories();
-        const result = await syncSharedTrip(tripId, { api, repo: sharing, accountId: account.id, expenses });
+        const { sharing, expenses, group } = await getRepositories();
+        const result = await syncSharedTrip(tripId, { api, repo: sharing, accountId: account.id, expenses, group });
         put(tripId, { error: result.error });
       } finally {
         put(tripId, { syncing: false });

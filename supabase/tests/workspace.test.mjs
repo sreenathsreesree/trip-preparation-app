@@ -77,7 +77,7 @@ describe('group workspace: roles', () => {
 
   it('the viewer cannot add, change or remove shared content', async () => {
     await assert.rejects(put(db, VIEWER, trip, 'x1', 'note', { title: 'x' }), denied);
-    assert.equal((await q(db, VIEWER, `update public.shared_trip_items set data = '{"title":"hacked"}', updated_at = $1 where id = 'n1'`, [LATER])).affectedRows, 0);
+    assert.equal((await q(db, VIEWER, `update public.shared_trip_items set data = '{"title":"hacked"}', updated_at = $1, base_updated_at = updated_at where id = 'n1'`, [LATER])).affectedRows, 0);
     await assert.rejects(q(db, VIEWER, `delete from public.shared_trip_items where id = 'n1'`), denied);
   });
 
@@ -90,17 +90,25 @@ describe('group workspace: roles', () => {
 
   it('nobody hard-deletes; removal is a tombstone that members pull', async () => {
     await assert.rejects(q(db, OWNER, `delete from public.shared_trip_items where id = 'd2'`), /permission denied/);
-    await q(db, EDITOR, `update public.shared_trip_items set deleted_at = $1, updated_at = $1 where id = 'd2'`, [LATER]);
+    await q(db, EDITOR, `update public.shared_trip_items set deleted_at = $1, updated_at = $1, base_updated_at = updated_at where id = 'd2'`, [LATER]);
     const pulled = (await q(db, VIEWER, 'select public.shared_pull($1) as r', [trip])).rows[0].r;
     assert.equal(pulled.rows.find((r) => r.pk === 'd2').deleted, true);
   });
 
   it('an older write never replaces a newer one; creator and kind cannot change', async () => {
-    await q(db, EDITOR, `update public.shared_trip_items set data = '{"title":"Meeting point","body":"Gate 4"}', updated_at = $1 where id = 'n1'`, [LATER]);
-    await assert.rejects(q(db, OWNER, `update public.shared_trip_items set data = '{"title":"old"}', updated_at = $1 where id = 'n1'`, [T]), /stale write/);
-    await assert.rejects(q(db, OWNER, `update public.shared_trip_items set kind = 'place', updated_at = now() where id = 'n1'`), /kind cannot change/);
-    await assert.rejects(q(db, OWNER, `update public.shared_trip_items set created_by = '${OWNER}', updated_at = now() where id = 'n1'`), /cannot change/);
+    await q(db, EDITOR, `update public.shared_trip_items set data = '{"title":"Meeting point","body":"Gate 4"}', updated_at = $1, base_updated_at = updated_at where id = 'n1'`, [LATER]);
+    await assert.rejects(q(db, OWNER, `update public.shared_trip_items set data = '{"title":"old"}', updated_at = $1, base_updated_at = updated_at where id = 'n1'`, [T]), /stale write/);
+    await assert.rejects(q(db, OWNER, `update public.shared_trip_items set kind = 'place', updated_at = now(), base_updated_at = updated_at where id = 'n1'`), /kind cannot change/);
+    await assert.rejects(q(db, OWNER, `update public.shared_trip_items set created_by = '${OWNER}', updated_at = now(), base_updated_at = updated_at where id = 'n1'`), /cannot change/);
     assert.equal((await db.query(`select data ->> 'body' b from public.shared_trip_items where id = 'n1'`)).rows[0].b, 'Gate 4');
+  });
+
+  it('an edit based on an outdated copy is refused even with a later clock (concurrent edits become conflicts)', async () => {
+    const seen = (await db.query(`select updated_at from public.shared_trip_items where id = 'c1'`)).rows[0].updated_at;
+    await q(db, EDITOR, `update public.shared_trip_items set data = '{"title":"Hotel confirmation","done":true}', updated_at = '2026-11-13T12:00:00Z', base_updated_at = $1 where id = 'c1'`, [seen]);
+    // The owner edited the same copy offline, with a much later clock: refused, nothing overwritten.
+    await assert.rejects(q(db, OWNER, `update public.shared_trip_items set data = '{"title":"Hotel","done":false}', updated_at = '2026-11-14T00:00:00Z', base_updated_at = $1 where id = 'c1'`, [seen]), /stale write/);
+    assert.equal((await db.query(`select data ->> 'done' d from public.shared_trip_items where id = 'c1'`)).rows[0].d, 'true');
   });
 
   it('personal document types cannot be shared', async () => {
@@ -120,7 +128,7 @@ describe('group readiness without private details', () => {
     await put(db, VIEWER, trip, VIEWER, 'readiness', { ready: true });
     await put(db, EDITOR, trip, EDITOR, 'readiness', { ready: false });
     await assert.rejects(put(db, EDITOR, trip, OWNER, 'readiness', { ready: true }), denied);
-    assert.equal((await q(db, EDITOR, `update public.shared_trip_items set data = '{"ready":false}', updated_at = $1 where id = $2`, [LATER, VIEWER])).affectedRows, 0);
+    assert.equal((await q(db, EDITOR, `update public.shared_trip_items set data = '{"ready":false}', updated_at = $1, base_updated_at = updated_at where id = $2`, [LATER, VIEWER])).affectedRows, 0);
     const ready = (await q(db, OWNER, `select count(*) filter (where data ->> 'ready' = 'true') r, count(*) n from public.shared_trip_items where kind = 'readiness'`)).rows[0];
     assert.deepEqual([Number(ready.r), Number(ready.n)], [1, 2]);
   });

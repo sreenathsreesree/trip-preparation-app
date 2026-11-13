@@ -18,6 +18,8 @@ import { getDatabase, getPartitionDatabase } from './client';
 import type { Partition } from './partitions';
 import { createCoverRepository } from '@/features/covers/coverRepository';
 import { createGalleryRepository } from '@/features/journal/galleryRepository';
+import { createGroupRepository } from '@/features/group/groupRepository';
+import { createMyDocumentsRepository } from '@/features/group/myDocumentsRepository';
 import { createPdfImportRepository } from '@/features/pdfImport/pdfImportRepository';
 import { createDayPlanRepository } from '@/features/planner/dayPlanRepository';
 import { createRemoteCacheRepository } from '@/features/remote/remoteCacheRepository';
@@ -49,6 +51,8 @@ export async function getRepositories(partition?: Partition) {
     dayPlan: createDayPlanRepository(db),
     covers: createCoverRepository(db),
     pdfImports: createPdfImportRepository(db, { createId }),
+    group: createGroupRepository(db, { createId }),
+    myDocuments: createMyDocumentsRepository(db, { createId }),
     schemaVersion: () => getSchemaVersion(db),
     countTasks: async () => {
       const row = await db.getFirstAsync<{ count: number }>(

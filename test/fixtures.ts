@@ -20,6 +20,8 @@ import { createTripRepository } from '@/features/trips/tripRepository';
 
 import { openTestDatabase, sequentialIds, type TestDatabase } from './nodeSqliteDatabase';
 
+import { createGroupRepository } from '@/features/group/groupRepository';
+import { createMyDocumentsRepository } from '@/features/group/myDocumentsRepository';
 export function tripInput(overrides: Partial<TripInput> = {}): TripInput {
   return {
     name: 'Goa Getaway',
@@ -70,6 +72,8 @@ export async function setupRepositories(db: TestDatabase = openTestDatabase(), c
     expenses: createExpenseRepository(shared, deps),
     sharing: createSharingRepository(shared, deps),
     photoUploads: createPhotoUploadRepository(shared, deps),
+    group: createGroupRepository(shared, deps),
+    myDocuments: createMyDocumentsRepository(shared, deps),
     /** Moves the shared clock forward (e.g. to test cache expiry). */
     advanceClock: (ms: number) => {
       time += ms;

@@ -1,6 +1,7 @@
 import type { ExpenseRepository } from '../expenses/expenseRepository';
 import { applyExpenseRow, ensureMyParticipant, isExpenseTable, pushExpenses } from '../expenses/expenseSync';
-import { isSharingError, type SharingApi } from './sharingApi';
+import type { GroupRepository } from '../group/groupRepository';
+import { isSharingError, type GroupItemRow, type SharingApi } from './sharingApi';
 import type { SharingRepository } from './sharingRepository';
 
 /**
@@ -27,14 +28,21 @@ export interface SharedSyncResult {
   expensesSent: number;
   removed: boolean;
   error: string | null;
+  /** Group Trip items sent and received. */
+  groupSent: number;
+  groupPulled: number;
+  /** Both sides changed the same group item: kept for the user to choose. */
+  groupConflicts: number;
+  /** The cloud does not have the group workspace yet (migration pending): items wait on the device. */
+  groupNotReady: boolean;
 }
 
 export async function syncSharedTrip(
   tripId: string,
-  deps: { api: SharingApi; repo: SharingRepository; accountId: string; now?: () => Date; expenses?: ExpenseRepository },
+  deps: { api: SharingApi; repo: SharingRepository; accountId: string; now?: () => Date; expenses?: ExpenseRepository; group?: GroupRepository },
 ): Promise<SharedSyncResult> {
   const now = deps.now ?? (() => new Date());
-  const result: SharedSyncResult = { pushed: 0, withdrawn: 0, pulled: 0, expensesSent: 0, removed: false, error: null };
+  const result: SharedSyncResult = { pushed: 0, withdrawn: 0, pulled: 0, expensesSent: 0, removed: false, error: null, groupSent: 0, groupPulled: 0, groupConflicts: 0, groupNotReady: false };
   const space = await deps.repo.space(tripId);
   if (!space || space.accountId !== deps.accountId || space.role === 'removed') return result;
   const cloud = space.cloudTripId;
@@ -45,6 +53,8 @@ export async function syncSharedTrip(
     const me = members.find((m) => m.userId === deps.accountId);
     if (!me) {
       await deps.repo.setRole(tripId, 'removed');
+      // A removed member keeps their own trip but no longer the group's workspace.
+      await deps.group?.clear(tripId);
       await deps.repo.setError(tripId, null);
       result.removed = true;
       return result;
@@ -98,6 +108,41 @@ export async function syncSharedTrip(
       result.expensesSent = sent.sent + sent.withdrawn;
     }
 
+    // 2c. Group Trip workspace: owners and editors send their changes; every member sends only their own readiness flag.
+    if (deps.group) {
+      for (const item of await deps.group.pending(tripId)) {
+        const allowed = item.kind === 'readiness' ? item.id === deps.accountId : me.role === 'owner' || me.role === 'editor';
+        if (!allowed) {
+          await deps.group.markFailed(tripId, item.id, 'Only the owner and editors can change the Group Trip.');
+          continue;
+        }
+        try {
+          await deps.api.upsertGroupItem({
+            trip_id: cloud,
+            id: item.id,
+            kind: item.kind,
+            data: item.data,
+            author_name: me.displayName,
+            created_at: item.createdAt,
+            updated_at: item.updatedAt,
+            deleted_at: item.deleted ? item.updatedAt : null,
+            base_updated_at: item.baseUpdatedAt,
+          });
+          await deps.group.markSent(tripId, item.id, item.updatedAt);
+          result.groupSent += 1;
+        } catch (error) {
+          if (isSharingError(error) && error.kind === 'server_not_ready') {
+            result.groupNotReady = true;
+            break;
+          }
+          // A newer copy exists in the group: the pull below turns it into a conflict for the user.
+          if (isSharingError(error) && error.kind === 'stale') continue;
+          await deps.group.markFailed(tripId, item.id, error instanceof Error ? error.message : 'Could not send.');
+          if (isSharingError(error) && error.kind === 'network') throw error;
+        }
+      }
+    }
+
     // 3. Pull other members' shared entries and group expense records.
     let cursor = space.cursor;
     for (;;) {
@@ -106,6 +151,24 @@ export async function syncSharedTrip(
         if (isExpenseTable(row.table)) {
           if (deps.expenses) await applyExpenseRow(tripId, row, { repo: deps.expenses, accountId: deps.accountId });
           result.pulled += 1;
+          continue;
+        }
+        if (row.table === 'shared_trip_items') {
+          if (deps.group) {
+            const d = row.data as Record<string, unknown>;
+            const outcome = await deps.group.applyRemote(tripId, {
+              id: row.pk,
+              kind: d.kind as GroupItemRow['kind'],
+              data: (d.data ?? {}) as Record<string, unknown>,
+              authorId: String(d.created_by ?? ''),
+              authorName: String(d.author_name ?? ''),
+              createdAt: String(d.created_at ?? ''),
+              updatedAt: String(d.updated_at ?? ''),
+              deleted: row.deleted,
+            });
+            if (outcome === 'conflict') result.groupConflicts += 1;
+            result.groupPulled += 1;
+          }
           continue;
         }
         if (row.table !== 'shared_journal_entries') continue;

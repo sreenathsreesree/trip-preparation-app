@@ -30,6 +30,9 @@ create table public.shared_trip_items (
   created_at timestamptz not null,
   updated_at timestamptz not null,
   deleted_at timestamptz,
+  -- The version the writer last saw (compare-and-set): an update based on an
+  -- outdated copy is refused, so concurrent edits become conflicts, never overwrites.
+  base_updated_at timestamptz,
   revision bigint not null default 0,
   txid xid8 not null default pg_current_xact_id(),
   primary key (trip_id, id),
@@ -45,7 +48,8 @@ create table public.shared_trip_items (
 
 create index shared_trip_items_pull on public.shared_trip_items (trip_id, txid, revision);
 
--- The kind of an item never changes (a note cannot become a readiness row or the reverse).
+-- The kind of an item never changes (a note cannot become a readiness row or
+-- the reverse), and an update must be based on the current group copy.
 create or replace function public.shared_trip_item_guard() returns trigger
 language plpgsql
 set search_path = public
@@ -53,6 +57,9 @@ as $$
 begin
   if new.kind is distinct from old.kind then
     raise exception 'kind cannot change' using errcode = '42501';
+  end if;
+  if new.base_updated_at is distinct from old.updated_at then
+    raise exception 'stale write: the shared copy changed since you last saw it' using errcode = '40001';
   end if;
   return new;
 end;
