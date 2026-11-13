@@ -180,6 +180,81 @@ describe('membership changes', () => {
   });
 });
 
+// Exactly the statement PostgREST runs for the app's
+// client.from('shared_trip_items').upsert(row, { onConflict: 'trip_id,id' })
+// (src/features/sharing/sharingApi.ts): every column of the row is set from EXCLUDED.
+const UPSERT = `insert into public.shared_trip_items (trip_id, id, kind, data, author_name, created_at, updated_at, deleted_at, base_updated_at)
+  values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+  on conflict (trip_id, id) do update set kind = excluded.kind, data = excluded.data, author_name = excluded.author_name,
+    created_at = excluded.created_at, updated_at = excluded.updated_at, deleted_at = excluded.deleted_at, base_updated_at = excluded.base_updated_at`;
+const upsert = (db, user, trip, r) =>
+  q(db, user, UPSERT, [trip, r.id, r.kind ?? 'note', JSON.stringify(r.data), r.author ?? '', r.createdAt ?? T, r.updatedAt, r.deletedAt ?? null, r.base ?? null]);
+const stored = async (db, id) => (await db.query(`select data, updated_at, created_by from public.shared_trip_items where id = $1`, [id])).rows[0];
+
+describe('the app’s upsert path (INSERT … ON CONFLICT DO UPDATE)', () => {
+  let db;
+  let trip;
+  const V1 = '2026-11-13T10:00:00.000Z';
+  const V2 = '2026-11-13T10:05:00.000Z';
+  before(async () => {
+    db = await database();
+    trip = await sharedTrip(db);
+    await upsert(db, OWNER, trip, { id: 'n1', data: { body: 'v1' }, updatedAt: V1 });
+  });
+
+  it('a new item is inserted with the caller as creator', async () => {
+    const row = await stored(db, 'n1');
+    assert.deepEqual([row.data, row.created_by], [{ body: 'v1' }, OWNER]);
+  });
+
+  it('a valid update (based on the current version) is accepted; the creator is unchanged', async () => {
+    await upsert(db, EDITOR, trip, { id: 'n1', data: { body: 'v2' }, updatedAt: V2, base: V1 });
+    const row = await stored(db, 'n1');
+    assert.deepEqual([row.data, new Date(row.updated_at).toISOString(), row.created_by], [{ body: 'v2' }, V2, OWNER]);
+  });
+
+  it('a stale base_updated_at is refused, even with a much later clock, and the accepted version stays', async () => {
+    await assert.rejects(upsert(db, OWNER, trip, { id: 'n1', data: { body: 'stale' }, updatedAt: '2027-01-01T00:00:00.000Z', base: V1 }), /stale write/);
+    assert.deepEqual((await stored(db, 'n1')).data, { body: 'v2' });
+  });
+
+  it('a missing base_updated_at on an existing item is refused', async () => {
+    await assert.rejects(upsert(db, OWNER, trip, { id: 'n1', data: { body: 'no base' }, updatedAt: '2027-01-01T00:00:00.000Z' }), /stale write/);
+    assert.deepEqual((await stored(db, 'n1')).data, { body: 'v2' });
+  });
+
+  it('two writers from the same version: the first wins, the second is refused and cannot overwrite it', async () => {
+    // Both members last saw V2. (PGlite has one connection, so the two writes run one after the other —
+    // the same outcome Postgres gives truly simultaneous writers: the second is re-checked against the committed row.)
+    await upsert(db, OWNER, trip, { id: 'n1', data: { body: 'owner' }, updatedAt: '2026-11-13T11:00:00.000Z', base: V2 });
+    await assert.rejects(upsert(db, EDITOR, trip, { id: 'n1', data: { body: 'editor' }, updatedAt: '2026-11-13T12:00:00.000Z', base: V2 }), /stale write/);
+    assert.deepEqual((await stored(db, 'n1')).data, { body: 'owner' });
+  });
+
+  it('within one transaction, a second stale write after an accepted one is refused too', async () => {
+    const before_ = new Date((await stored(db, 'n1')).updated_at).toISOString();
+    await as(db, EDITOR, async () => {
+      await db.exec('begin');
+      try {
+        await db.query(UPSERT, [trip, 'n1', 'note', JSON.stringify({ body: 'first' }), '', T, '2026-11-13T13:00:00.000Z', null, before_]);
+        await assert.rejects(db.query(UPSERT, [trip, 'n1', 'note', JSON.stringify({ body: 'second' }), '', T, '2026-11-13T14:00:00.000Z', null, before_]), /stale write/);
+      } finally {
+        await db.exec('rollback');
+      }
+    });
+    assert.deepEqual((await stored(db, 'n1')).data, { body: 'owner' });
+  });
+
+  it('the upsert path keeps role rules: viewers cannot write, kind and readiness rules hold', async () => {
+    const at = new Date((await stored(db, 'n1')).updated_at).toISOString();
+    await assert.rejects(upsert(db, VIEWER, trip, { id: 'n1', data: { body: 'viewer' }, updatedAt: '2027-01-01T00:00:00.000Z', base: at }), denied);
+    await assert.rejects(upsert(db, EDITOR, trip, { id: 'n1', kind: 'readiness', data: { ready: true }, updatedAt: '2027-01-01T00:00:00.000Z', base: at }), denied);
+    await upsert(db, VIEWER, trip, { id: VIEWER, kind: 'readiness', data: { ready: true }, updatedAt: V1 });
+    await assert.rejects(upsert(db, EDITOR, trip, { id: VIEWER, kind: 'readiness', data: { ready: false }, updatedAt: V2, base: V1 }), denied);
+    assert.deepEqual((await stored(db, 'n1')).data, { body: 'owner' });
+  });
+});
+
 describe('the migration is additive and hardened', () => {
   it('changes no existing table, policy, function, grant or default privilege', async () => {
     const catalog = async (db) =>
