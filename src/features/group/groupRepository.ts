@@ -89,11 +89,14 @@ export interface RemoteItem {
 
 export function createGroupRepository(db: Database, deps: { createId: () => string; now?: () => Date }) {
   const now = () => (deps.now ?? (() => new Date()))();
-  /** A write time later than anything seen from the cloud, so a slow clock never makes an edit "older". */
-  const stamp = (seen: string | null) => {
-    const t = now().getTime();
-    const floor = seen ? Date.parse(seen) + 1 : 0;
-    return new Date(Math.max(t, floor)).toISOString();
+  /**
+   * A write time later than anything seen from the cloud and than this
+   * device's previous edit of the item, so neither a slow clock nor a quick
+   * second edit makes a change "older" than one already sent.
+   */
+  const stamp = (...seen: (string | null | undefined)[]) => {
+    const floor = Math.max(0, ...seen.filter((s): s is string => !!s).map((s) => Date.parse(s) + 1));
+    return new Date(Math.max(now().getTime(), floor)).toISOString();
   };
   const get = async (tripId: string, id: string) => db.getFirstAsync<Row>('SELECT * FROM group_items WHERE trip_id = ? AND id = ?', [tripId, id]);
 
@@ -116,7 +119,7 @@ export function createGroupRepository(db: Database, deps: { createId: () => stri
       const id = input.id ?? deps.createId();
       const existing = await get(tripId, id);
       if (existing && existing.kind !== input.kind) throw new Error('An item cannot change its kind.');
-      const at = stamp(existing?.remote_updated_at ?? null);
+      const at = stamp(existing?.remote_updated_at, existing?.updated_at);
       if (existing) {
         await db.runAsync('UPDATE group_items SET data = ?, updated_at = ?, deleted_at = NULL, pending = 1, last_error = NULL WHERE trip_id = ? AND id = ?', [JSON.stringify(input.data), at, tripId, id]);
       } else {
@@ -132,7 +135,7 @@ export function createGroupRepository(db: Database, deps: { createId: () => stri
     async remove(tripId: string, id: string): Promise<void> {
       const existing = await get(tripId, id);
       if (!existing) return;
-      const at = stamp(existing.remote_updated_at);
+      const at = stamp(existing.remote_updated_at, existing.updated_at);
       await db.runAsync('UPDATE group_items SET deleted_at = ?, updated_at = ?, pending = 1 WHERE trip_id = ? AND id = ?', [at, at, tripId, id]);
     },
 
@@ -140,9 +143,18 @@ export function createGroupRepository(db: Database, deps: { createId: () => stri
       return (await db.getAllAsync<Row>('SELECT * FROM group_items WHERE trip_id = ? AND pending = 1 AND conflict IS NULL ORDER BY updated_at', [tripId])).map(toItem);
     },
 
+    /**
+     * The group now holds the version sent (`updatedAt`): that becomes the base
+     * of the next change. If the user edited the item again while it was being
+     * sent, the newer edit stays queued (pending) on top of this base — it is
+     * not mistaken for someone else's change.
+     */
     async markSent(tripId: string, id: string, updatedAt: string): Promise<void> {
-      // Only if nothing changed meanwhile.
-      await db.runAsync('UPDATE group_items SET pending = 0, last_error = NULL, remote_updated_at = ? WHERE trip_id = ? AND id = ? AND updated_at = ?', [updatedAt, tripId, id, updatedAt]);
+      await db.runAsync(
+        `UPDATE group_items SET remote_updated_at = ?, last_error = NULL, pending = CASE WHEN updated_at = ? THEN 0 ELSE 1 END
+         WHERE trip_id = ? AND id = ? AND (remote_updated_at IS NULL OR remote_updated_at < ?)`,
+        [updatedAt, updatedAt, tripId, id, updatedAt],
+      );
     },
 
     async markFailed(tripId: string, id: string, error: string): Promise<void> {

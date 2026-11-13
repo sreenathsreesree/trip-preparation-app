@@ -4,6 +4,7 @@ import { fakeSharingServer } from '../../../../test/fakeSharingServer';
 import { setupRepositories, tripInput } from '../../../../test/fixtures';
 import { syncSharedTrip } from '../../sharing/sharedSync';
 import { createInvite, joinTrip, shareTrip } from '../../sharing/sharingService';
+import { createGroupRepository } from '../groupRepository';
 
 const ASHA = { id: 'user-asha', displayName: 'Asha' };
 const BEN = { id: 'user-ben', displayName: 'Ben' };
@@ -124,6 +125,46 @@ describe('Group Trip workspace sync', () => {
     const r = await c.sync(c.asha, c.trip.id, ASHA);
     expect(r).toMatchObject({ groupNotReady: true, error: null });
     expect(await c.asha.group.pending(c.trip.id)).toHaveLength(1);
+  });
+});
+
+describe('editing again while the previous version is being sent', () => {
+  it('keeps the newest local edit, sends it on the right base, and never reports it as someone else’s change', async () => {
+    const c = await setup();
+    await c.ben.group.save(c.benTrip, { id: 'n1', kind: 'note', data: { title: 'Pickup', body: 'v1' } }, BEN);
+    // While v1 is on its way to the server, Ben edits the note again (v2).
+    const api = c.server.apiFor(BEN.id);
+    const slow = {
+      ...api,
+      upsertGroupItem: async (row: Parameters<typeof api.upsertGroupItem>[0]) => {
+        await api.upsertGroupItem(row);
+        if (row.data.body === 'v1') await c.ben.group.save(c.benTrip, { id: 'n1', kind: 'note', data: { title: 'Pickup', body: 'v2' } }, BEN);
+      },
+    };
+    const first = await syncSharedTrip(c.benTrip, { api: slow, repo: c.ben.sharing, accountId: BEN.id, group: c.ben.group });
+    expect(first).toMatchObject({ groupSent: 1, groupConflicts: 0, error: null });
+    const between = await c.ben.group.get(c.benTrip, 'n1');
+    expect(between).toMatchObject({ pending: true, conflict: null });
+    expect(between?.data.body).toBe('v2');
+    // v2 is based on v1 (what the server holds), so it is accepted — no conflict, nothing lost.
+    const second = await c.sync(c.ben, c.benTrip, BEN);
+    expect(second).toMatchObject({ groupSent: 1, groupConflicts: 0, error: null });
+    expect(await c.ben.group.get(c.benTrip, 'n1')).toMatchObject({ pending: false, conflict: null, lastError: null });
+    expect([...c.server.records.values()].find((r) => r.id === 'n1')?.data).toEqual({ title: 'Pickup', body: 'v2' });
+    // Pulling its own versions back changes nothing.
+    expect(await c.sync(c.ben, c.benTrip, BEN)).toMatchObject({ groupConflicts: 0 });
+    expect((await c.ben.group.get(c.benTrip, 'n1'))?.data.body).toBe('v2');
+    await c.sync(c.asha, c.trip.id, ASHA);
+    expect((await c.asha.group.get(c.trip.id, 'n1'))?.data.body).toBe('v2');
+  });
+
+  it('a quick second edit is always newer than the version already sent, even with a stopped clock', async () => {
+    const r = await setupRepositories(undefined, '2026-11-13T08:00:00.000Z', 'q');
+    const t = await r.trips.create(tripInput({ name: 'K', destinations: [] }), { sections: [] });
+    const frozen = createGroupRepository(r.database, { createId: () => 'x', now: () => new Date('2026-11-13T08:00:00.000Z') });
+    const a = await frozen.save(t.id, { id: 'n', kind: 'note', data: { body: '1' } }, { id: 'me' });
+    const b = await frozen.save(t.id, { id: 'n', kind: 'note', data: { body: '2' } }, { id: 'me' });
+    expect(Date.parse(b.updatedAt)).toBeGreaterThan(Date.parse(a.updatedAt));
   });
 });
 
