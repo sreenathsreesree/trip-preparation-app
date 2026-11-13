@@ -23,6 +23,7 @@ import { createMyDocumentsRepository } from '@/features/group/myDocumentsReposit
 import { createPdfImportRepository } from '@/features/pdfImport/pdfImportRepository';
 import { createDayPlanRepository } from '@/features/planner/dayPlanRepository';
 import { createRemoteCacheRepository } from '@/features/remote/remoteCacheRepository';
+import { createRouteUndoRepository } from '@/features/route/routeUndoRepository';
 import { getSchemaVersion } from './migrate';
 
 /**
@@ -52,6 +53,7 @@ export async function getRepositories(partition?: Partition) {
     covers: createCoverRepository(db),
     pdfImports: createPdfImportRepository(db, { createId }),
     group: createGroupRepository(db, { createId }),
+    routeUndo: createRouteUndoRepository(db),
     myDocuments: createMyDocumentsRepository(db, { createId }),
     schemaVersion: () => getSchemaVersion(db),
     countTasks: async () => {

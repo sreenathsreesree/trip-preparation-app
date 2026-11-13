@@ -35,6 +35,8 @@ interface PlannerStoreState {
   addRouteStop: (tripId: string, nodeId: string, index?: number) => Promise<void>;
   removeRouteStop: (tripId: string, nodeId: string) => Promise<void>;
   moveRouteStop: (tripId: string, nodeId: string, toIndex: number) => Promise<void>;
+  /** Replaces the whole route order (optimise / undo; only ever on an explicit user action). */
+  setRouteOrder: (tripId: string, nodeIds: readonly string[]) => Promise<void>;
   savedPlaces: () => Promise<Place[]>;
   /** Explicit user action only (button or a confirmed arrival prompt). */
   setVisited: (tripId: string, nodeId: string, visited: boolean) => Promise<void>;
@@ -101,6 +103,7 @@ export const usePlannerStore = accountScoped(create<PlannerStoreState>()((set, g
     removeRouteStop: (tripId, nodeId) => write(tripId, ({ planner }) => planner.removeRouteStop(tripId, nodeId), false),
     moveRouteStop: (tripId, nodeId, toIndex) =>
       write(tripId, ({ planner }) => planner.moveRouteStop(tripId, nodeId, toIndex), false),
+    setRouteOrder: (tripId, nodeIds) => write(tripId, ({ planner }) => planner.setRoute(tripId, nodeIds), false),
 
     setVisited: (tripId, nodeId, visited) =>
       write(tripId, async ({ companion }) => {

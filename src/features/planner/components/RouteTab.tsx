@@ -9,6 +9,7 @@ import { routeIndexForUpcoming } from '../companion';
 import { siblingMap } from '../dragDrop';
 import { ancestorIds, buildTree, routeNodes, visibleRows, type PlanNode, type TripPlan } from '../model';
 import { usePlannerStore } from '../plannerStore';
+import { legText, RouteOverview, useRouteLegs } from '../../route/RouteOverview';
 import { DraggableList, type DraggableItem, type ScrollBinding } from './DraggableList';
 
 const trail = (plan: TripPlan, node: PlanNode) =>
@@ -63,6 +64,9 @@ export function RouteTab({
     [numbered, visited],
   );
   const completed = numbered.filter(({ node }) => visited.has(node.id));
+  const upcoming = useMemo(() => rows.map((r) => r.node), [rows]);
+  const legs = useRouteLegs(upcoming);
+  const legFor = (index: number) => (legs.status === 'ready' ? legs.result.legs[index] : undefined);
   const order = stops.map((n) => n.id);
   const moveTo = (id: string, upcomingIndex: number) =>
     run(() => store().moveRouteStop(tripId, id, routeIndexForUpcoming(order, visited, id, upcomingIndex)));
@@ -87,9 +91,10 @@ export function RouteTab({
   return (
     <View style={styles.container} testID="plan-route">
       <AppText variant="caption" tone="textMuted">
-        Your route is separate from how places are organised. Drag stops into travel order — nesting, moving or
-        promoting places never changes it.
+        Plan the journey: the travel order, road distances and driving times between stops. Drag stops to change the
+        order — it is separate from how places are organised.
       </AppText>
+      {stops.length > 0 ? <RouteOverview tripId={tripId} order={order} upcoming={upcoming} visited={visited} legs={legs} /> : null}
       {error ? <Notice tone="danger" title="Not changed" message={error} /> : null}
       {undo ? (
         <Notice
@@ -145,11 +150,22 @@ export function RouteTab({
                   <AppText variant="bodyStrong" tone={done ? 'textSecondary' : 'textPrimary'} numberOfLines={1}>
                     {row.node.name}
                   </AppText>
-                  {row.node.parentId || done ? (
+                  {row.node.parentId || done || !row.node.place?.location ? (
                     <AppText variant="caption" tone="textMuted" numberOfLines={1}>
-                      {[done ? 'Visited' : '', row.node.parentId ? `In ${trail(plan, row.node)}` : ''].filter(Boolean).join(' · ')}
+                      {[done ? 'Visited' : '', row.node.parentId ? `In ${trail(plan, row.node)}` : '', row.node.place?.location ? '' : 'No location'].filter(Boolean).join(' · ')}
                     </AppText>
                   ) : null}
+                  {(() => {
+                    const i = rows.findIndex((r) => r.id === row.id);
+                    const next = rows[i + 1];
+                    if (!next) return null;
+                    const t = legText(legFor(i), next.node.name);
+                    return (
+                      <AppText variant="caption" tone={t.tone} numberOfLines={2} testID={`route-leg-${row.node.name}`}>
+                        {t.text}
+                      </AppText>
+                    );
+                  })()}
                 </View>
                 <IconButton
                   icon="check-circle-outline"
