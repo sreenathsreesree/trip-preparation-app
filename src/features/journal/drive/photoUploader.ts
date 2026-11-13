@@ -12,7 +12,9 @@ import type { PhotoUpload, PhotoUploadRepository, UploadSource } from './photoUp
  * - No duplicates after an interrupted run: every upload is tagged with the
  *   queue item's id, and Drive is asked for that tag before uploading again.
  *
- * - Offline / busy / server errors: the photo stays queued and is retried with
+ * - Offline: the run pauses ("waiting for internet") and the photo keeps its
+ *   tries; the watcher resumes when the connection is back.
+ * - Busy / server errors: the photo stays queued and is retried with
  *   growing gaps (1, 2, 5, 15, 30, 60 minutes); after 8 tries it waits for the
  *   user's Retry so a broken photo does not retry forever.
  * - Expired or revoked connection, Drive API off, Drive full: the run pauses
@@ -24,7 +26,7 @@ import type { PhotoUpload, PhotoUploadRepository, UploadSource } from './photoUp
 export const RETRY_DELAYS_MIN = [1, 2, 5, 15, 30, 60] as const;
 export const MAX_AUTOMATIC_ATTEMPTS = 8;
 
-export type PauseReason = 'auth' | 'not_enabled' | 'storage_full';
+export type PauseReason = 'auth' | 'not_enabled' | 'storage_full' | 'offline';
 
 export interface UploadRunResult {
   uploaded: number;
@@ -40,6 +42,8 @@ export interface UploaderDeps {
   readPhoto: (uri: string) => Promise<{ bytes: Uint8Array; mimeType: string }>;
   now?: () => Date;
   onProgress?: (done: number, total: number) => void;
+  /** Called as each photo starts uploading (null when the run ends). */
+  onItem?: (id: string | null) => void;
 }
 
 export function nextAttempt(attempts: number, from: Date): Date {
@@ -101,6 +105,7 @@ export async function runUploads(accountId: string, deps: UploaderDeps): Promise
   const result: UploadRunResult = { uploaded: 0, retrying: 0, failed: 0, paused: null };
   let done = 0;
   for (const item of due) {
+    deps.onItem?.(item.id);
     try {
       const driveFileId = await uploadOne(item, deps);
       await deps.uploads.markUploaded(item.id, driveFileId);
@@ -112,6 +117,10 @@ export async function runUploads(accountId: string, deps: UploaderDeps): Promise
       if (error instanceof LocalPhotoMissing) {
         await deps.uploads.markFailed(item.id, error.message);
         result.failed += 1;
+      } else if ((error instanceof DriveError && error.kind === 'network') || (error instanceof TypeError && /network/i.test(error.message))) {
+        // No connection: wait for it without using up one of the automatic tries.
+        result.paused = 'offline';
+        break;
       } else if (error instanceof DriveError && (error.kind === 'auth' || error.kind === 'denied')) {
         result.paused = 'auth';
         break;
@@ -131,6 +140,7 @@ export async function runUploads(accountId: string, deps: UploaderDeps): Promise
     }
     deps.onProgress?.(++done, due.length);
   }
+  deps.onItem?.(null);
   return result;
 }
 
@@ -195,4 +205,38 @@ export async function freeDeviceCopies(
     }
   }
   return removed;
+}
+
+/** What a photo's upload looks like to the user. */
+export type UploadDisplayState = 'waiting_internet' | 'waiting_drive' | 'needs_reconnect' | 'queued' | 'uploading' | 'retry_scheduled' | 'uploaded' | 'failed';
+
+export const UPLOAD_STATE_LABELS: Record<UploadDisplayState, string> = {
+  waiting_internet: 'Waiting for internet',
+  waiting_drive: 'Waiting for Google Drive',
+  needs_reconnect: 'Reconnect Google Drive to upload',
+  queued: 'Waiting to upload',
+  uploading: 'Uploading to Google Drive',
+  retry_scheduled: 'Upload will be retried',
+  uploaded: 'Saved in your Google Drive',
+  failed: 'Upload failed — tap Retry',
+};
+
+/**
+ * Derives the display state from the stored queue row (pending / uploaded /
+ * failed) and the current run, so no extra state has to be stored or kept in
+ * step. "Uploaded" only ever comes from a row Drive confirmed.
+ */
+export function uploadDisplayState(
+  item: Pick<PhotoUpload, 'id' | 'status' | 'attempts' | 'nextAttemptAt'>,
+  run: { driveConnected: boolean; paused: PauseReason | null; uploadingId: string | null; now: Date },
+): UploadDisplayState {
+  if (item.status === 'uploaded') return 'uploaded';
+  if (item.status === 'failed') return 'failed';
+  if (run.uploadingId === item.id) return 'uploading';
+  if (!run.driveConnected) return 'waiting_drive';
+  if (run.paused === 'auth') return 'needs_reconnect';
+  if (run.paused === 'offline') return 'waiting_internet';
+  if (run.paused) return 'waiting_drive';
+  if (item.attempts > 0 && item.nextAttemptAt && new Date(item.nextAttemptAt) > run.now) return 'retry_scheduled';
+  return 'queued';
 }

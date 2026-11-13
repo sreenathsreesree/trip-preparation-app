@@ -8,17 +8,23 @@ import { getRepositories } from '@/db/repositories';
 import { useAuthStore } from '@/features/auth/authStore';
 import { imageExists, saveImageBytes } from '@/lib/imageStore';
 import { colors, radii, spacing, withAlpha } from '@/theme';
+import type { IconName } from '@/theme/icons';
 
 import { driveToken } from '../drive/driveAuth';
 import { createDriveClient } from '../drive/driveClient';
-import type { UploadStatus } from '../drive/photoUploadRepository';
-import { resolvePhoto } from '../drive/photoUploader';
+import type { PhotoUpload } from '../drive/photoUploadRepository';
+import { resolvePhoto, uploadDisplayState, UPLOAD_STATE_LABELS, type UploadDisplayState } from '../drive/photoUploader';
 import { usePhotoUploadStore } from '../drive/photoUploadStore';
 
-const BADGES: Record<UploadStatus, { icon: 'cloud-check-outline' | 'cloud-upload-outline' | 'cloud-alert'; color: string; label: string }> = {
-  uploaded: { icon: 'cloud-check-outline', color: colors.accent, label: 'Saved in your Google Drive' },
-  pending: { icon: 'cloud-upload-outline', color: colors.info, label: 'Waiting to upload to Google Drive' },
-  failed: { icon: 'cloud-alert', color: colors.warning, label: 'Upload to Google Drive failed' },
+const BADGES: Record<UploadDisplayState, { icon: IconName; color: string }> = {
+  uploaded: { icon: 'cloud-check-outline', color: colors.accent },
+  uploading: { icon: 'cloud-sync-outline', color: colors.info },
+  queued: { icon: 'cloud-upload-outline', color: colors.info },
+  retry_scheduled: { icon: 'cloud-refresh', color: colors.info },
+  waiting_internet: { icon: 'cloud-off-outline', color: colors.textMuted },
+  waiting_drive: { icon: 'cloud-upload-outline', color: colors.textMuted },
+  needs_reconnect: { icon: 'cloud-lock-outline', color: colors.warning },
+  failed: { icon: 'cloud-alert', color: colors.warning },
 };
 
 /**
@@ -29,7 +35,9 @@ const BADGES: Record<UploadStatus, { icon: 'cloud-check-outline' | 'cloud-upload
 export function DrivePhoto({ uri, style, label, testID }: { uri: string; style: StyleProp<ViewStyle>; label: string; testID?: string }) {
   const accountId = useAuthStore((s) => s.user?.id ?? null);
   const version = usePhotoUploadStore((s) => s.version);
-  const [state, setState] = useState<{ key: string; shown: string | null; status: UploadStatus | null; missing: boolean } | null>(null);
+  const [state, setState] = useState<{ key: string; shown: string | null; row: PhotoUpload | null; missing: boolean } | null>(null);
+  const paused = usePhotoUploadStore((s) => s.paused);
+  const uploadingId = usePhotoUploadStore((s) => s.uploadingId);
   const key = `${uri}|${accountId}|${version}`;
 
   useEffect(() => {
@@ -53,7 +61,7 @@ export function DrivePhoto({ uri, style, label, testID }: { uri: string; style: 
           },
         },
       });
-      if (live) setState({ key, shown: resolved.uri, status: row?.status ?? null, missing: resolved.uri === null });
+      if (live) setState({ key, shown: resolved.uri, row: row ?? null, missing: resolved.uri === null });
     })();
     return () => {
       live = false;
@@ -63,7 +71,9 @@ export function DrivePhoto({ uri, style, label, testID }: { uri: string; style: 
   const current = state?.key === key ? state : null;
   // Until resolved, show the device copy directly (the common case).
   const shown = current ? current.shown : uri.startsWith('drive:') ? null : uri;
-  const badge = current?.status ? BADGES[current.status] : null;
+  // Rows exist only once Drive is connected; the state is derived, never stored.
+  const display = current?.row ? uploadDisplayState(current.row, { driveConnected: true, paused, uploadingId, now: new Date() }) : null;
+  const badge = display ? { ...BADGES[display], label: UPLOAD_STATE_LABELS[display] } : null;
 
   return (
     <View style={[styles.frame, style]} testID={testID}>
@@ -78,7 +88,7 @@ export function DrivePhoto({ uri, style, label, testID }: { uri: string; style: 
         </View>
       )}
       {badge ? (
-        <View style={styles.badge} accessibilityLabel={badge.label} testID={testID ? `${testID}-${current?.status}` : undefined}>
+        <View style={styles.badge} accessibilityLabel={badge.label} testID={testID ? `${testID}-${current?.row?.status}` : undefined}>
           <Icon name={badge.icon} size={14} color={badge.color} />
         </View>
       ) : null}

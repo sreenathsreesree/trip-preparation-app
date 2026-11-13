@@ -1,3 +1,5 @@
+import { pickAndStoreImage, pickAndStoreImages, pickerOptions, storedExtension } from '../imageStore';
+
 const mockLaunchLibrary = jest.fn();
 const mockLaunchCamera = jest.fn();
 const mockCopies: { from: string; to: string }[] = [];
@@ -29,7 +31,6 @@ jest.mock('expo-file-system', () => {
 });
 jest.mock('react-native', () => ({ Platform: { OS: 'android' } }));
 
-import { pickAndStoreImage, pickAndStoreImages, pickerOptions, storedExtension } from '../imageStore';
 
 const asset = (uri: string, width: number, height: number, mimeType = 'image/jpeg') => ({ uri, width, height, mimeType });
 

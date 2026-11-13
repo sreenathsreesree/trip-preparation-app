@@ -46,6 +46,8 @@ export function PhotoUploadStatus({ tripId }: { tripId: string }) {
     ? 'Automatic upload is off.'
     : paused === 'auth'
       ? 'Google Drive connection expired — reconnect in the journal to continue uploading.'
+      : paused === 'offline'
+        ? `Waiting for internet · ${counts.pending} photo(s) will upload when you’re back online.`
       : paused
         ? 'Uploads are paused: Google Drive isn’t available.'
         : running || counts.pending > 0
@@ -59,7 +61,7 @@ export function PhotoUploadStatus({ tripId }: { tripId: string }) {
       <AppText variant="caption" tone="textSecondary" style={styles.flex}>
         {text}
       </AppText>
-      {counts.failed > 0 || (paused && paused !== 'auth') ? (
+      {counts.failed > 0 || (paused && paused !== 'auth' && paused !== 'offline') ? (
         <Button label="Retry" variant="ghost" size="sm" onPress={() => void usePhotoUploadStore.getState().retry()} testID="photo-upload-retry" />
       ) : null}
     </View>

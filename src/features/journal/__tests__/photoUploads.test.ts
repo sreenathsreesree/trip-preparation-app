@@ -2,7 +2,7 @@ import { fakeDrive } from '../../../../test/fakeDrive';
 import { setupRepositories, tripInput } from '../../../../test/fixtures';
 import { backupTrip } from '../drive/driveBackup';
 import { DriveError } from '../drive/driveClient';
-import { freeDeviceCopies, MAX_AUTOMATIC_ATTEMPTS, resolvePhoto, runUploads, uploadFileName } from '../drive/photoUploader';
+import { freeDeviceCopies, MAX_AUTOMATIC_ATTEMPTS, resolvePhoto, runUploads, uploadDisplayState, uploadFileName } from '../drive/photoUploader';
 
 const ME = 'account-me';
 const OTHER = 'account-other';
@@ -60,12 +60,12 @@ describe('automatic photo upload to the user’s Google Drive', () => {
     expect(backup).toMatchObject({ photosUploaded: 0, photosSkipped: 1 });
   });
 
-  it('queues offline and resumes with growing gaps, then waits for Retry after repeated failures', async () => {
+  it('Drive busy: retries with growing gaps, then waits for Retry after repeated failures (offline is covered below)', async () => {
     const ctx = await setup();
     await ctx.select('memory', ctx.munnar.id, 'file:///m1.jpg');
     const upload = ctx.drive.client.upload;
     ctx.drive.client.upload = jest.fn(async () => {
-      throw new DriveError('network');
+      throw new DriveError('rate_limited');
     });
 
     expect(await runUploads(ME, ctx.deps)).toMatchObject({ uploaded: 0, retrying: 1 });
@@ -77,7 +77,7 @@ describe('automatic photo upload to the user’s Google Drive', () => {
     ctx.advance(1);
     expect(await runUploads(ME, ctx.deps)).toMatchObject({ retrying: 1 });
 
-    // Back online: the queued photo goes up.
+    // Drive available again: the queued photo goes up.
     ctx.drive.client.upload = upload;
     ctx.advance(10);
     expect(await runUploads(ME, ctx.deps)).toMatchObject({ uploaded: 1 });
@@ -301,5 +301,89 @@ describe('Drive folders: Trip Prep / <trip> / Memories', () => {
     const memories = folders(ctx).find((f) => f.name === 'Memories');
     expect(memories?.parents).toEqual([old]);
     expect(folders(ctx).filter((f) => f.appProperties.kind === 'trip')).toHaveLength(1);
+  });
+});
+
+describe('upload queue states', () => {
+  const row = async (ctx: Awaited<ReturnType<typeof setup>>, uri: string, account = ME) => (await ctx.photoUploads.byUris(account, [uri])).get(uri)!;
+
+  it('offline: waits for internet without using up automatic tries, then resumes', async () => {
+    const ctx = await setup();
+    await ctx.select('memory', ctx.munnar.id, 'file:///m1.jpg');
+    const upload = ctx.drive.client.upload;
+    ctx.drive.client.upload = jest.fn(async () => {
+      throw new DriveError('network');
+    });
+    for (let i = 0; i < MAX_AUTOMATIC_ATTEMPTS + 2; i++) expect(await runUploads(ME, ctx.deps)).toMatchObject({ paused: 'offline', failed: 0 });
+    const waiting = await row(ctx, 'file:///m1.jpg');
+    expect(waiting).toMatchObject({ status: 'pending', attempts: 0 });
+    expect(uploadDisplayState(waiting, { driveConnected: true, paused: 'offline', uploadingId: null, now: ctx.now() })).toBe('waiting_internet');
+    // Back online: the same queue row uploads (nothing re-picked, nothing duplicated).
+    ctx.drive.client.upload = upload;
+    expect(await runUploads(ME, ctx.deps)).toMatchObject({ uploaded: 1, paused: null });
+    expect((await row(ctx, 'file:///m1.jpg')).status).toBe('uploaded');
+  });
+
+  it('expired token or revoked access: pauses as "reconnect", marks nothing failed, resumes after reconnecting', async () => {
+    for (const kind of ['auth', 'denied'] as const) {
+      const ctx = await setup();
+      await ctx.select('memory', ctx.munnar.id, 'file:///m1.jpg');
+      const upload = ctx.drive.client.upload;
+      ctx.drive.client.upload = jest.fn(async () => {
+        throw new DriveError(kind);
+      });
+      expect(await runUploads(ME, ctx.deps)).toMatchObject({ paused: 'auth', failed: 0, uploaded: 0 });
+      const r = await row(ctx, 'file:///m1.jpg');
+      expect(r).toMatchObject({ status: 'pending', attempts: 0 });
+      expect(uploadDisplayState(r, { driveConnected: true, paused: 'auth', uploadingId: null, now: ctx.now() })).toBe('needs_reconnect');
+      ctx.drive.client.upload = upload;
+      expect(await runUploads(ME, ctx.deps)).toMatchObject({ uploaded: 1 });
+    }
+  });
+
+  it('transient errors retry on a schedule, then wait for a manual Retry; the device copy is kept throughout', async () => {
+    const ctx = await setup();
+    await ctx.select('memory', ctx.munnar.id, 'file:///m1.jpg');
+    const upload = ctx.drive.client.upload;
+    ctx.drive.client.upload = jest.fn(async () => {
+      throw new DriveError('rate_limited');
+    });
+    await runUploads(ME, ctx.deps);
+    const scheduled = await row(ctx, 'file:///m1.jpg');
+    expect(uploadDisplayState(scheduled, { driveConnected: true, paused: null, uploadingId: null, now: ctx.now() })).toBe('retry_scheduled');
+    for (let i = 0; i < MAX_AUTOMATIC_ATTEMPTS + 2; i++) {
+      ctx.advance(120);
+      await runUploads(ME, ctx.deps);
+    }
+    const failed = await row(ctx, 'file:///m1.jpg');
+    expect(failed.status).toBe('failed');
+    expect(uploadDisplayState(failed, { driveConnected: true, paused: null, uploadingId: null, now: ctx.now() })).toBe('failed');
+    expect(ctx.onDevice.has('file:///m1.jpg')).toBe(true);
+    // Free up space never removes a photo that is not in Drive.
+    const removed: string[] = [];
+    await freeDeviceCopies(ME, { uploads: ctx.photoUploads, exists: () => true, remove: (u) => removed.push(u), removable: () => true });
+    expect(removed).toEqual([]);
+    ctx.drive.client.upload = upload;
+    await ctx.photoUploads.retryAll(ME);
+    expect(await runUploads(ME, ctx.deps)).toMatchObject({ uploaded: 1 });
+  });
+
+  it('derives every state from the stored row and the current run', () => {
+    const base = { id: 'u1', status: 'pending' as const, attempts: 0, nextAttemptAt: '2026-12-20T10:00:00Z' };
+    const run = { driveConnected: true, paused: null, uploadingId: null, now: new Date('2026-12-20T10:00:00Z') };
+    expect(uploadDisplayState(base, run)).toBe('queued');
+    expect(uploadDisplayState(base, { ...run, uploadingId: 'u1' })).toBe('uploading');
+    expect(uploadDisplayState(base, { ...run, driveConnected: false })).toBe('waiting_drive');
+    expect(uploadDisplayState(base, { ...run, paused: 'storage_full' })).toBe('waiting_drive');
+    expect(uploadDisplayState({ ...base, status: 'uploaded' }, { ...run, paused: 'offline' })).toBe('uploaded');
+  });
+
+  it('a queue never crosses accounts: B’s run never uploads A’s pending photos', async () => {
+    const ctx = await setup();
+    await ctx.select('memory', ctx.munnar.id, 'file:///a.jpg', ME);
+    expect(await runUploads(OTHER, ctx.deps)).toMatchObject({ uploaded: 0 });
+    expect(ctx.drive.calls.uploads).toBe(0);
+    expect((await row(ctx, 'file:///a.jpg')).status).toBe('pending');
+    expect(await runUploads(ME, ctx.deps)).toMatchObject({ uploaded: 1 });
   });
 });

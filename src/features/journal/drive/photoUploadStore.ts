@@ -29,6 +29,8 @@ interface PhotoUploadState {
   running: boolean;
   progress: { done: number; total: number } | null;
   paused: PauseReason | null;
+  /** The queue row being uploaded right now. */
+  uploadingId: string | null;
   error: string | null;
   /** Bumped after every change so photo badges refresh. */
   version: number;
@@ -77,6 +79,7 @@ export const usePhotoUploadStore = accountScoped(create<PhotoUploadState>()((set
     running: false,
     progress: null,
     paused: null,
+    uploadingId: null,
     error: null,
     version: 0,
 
@@ -118,12 +121,16 @@ export const usePhotoUploadStore = accountScoped(create<PhotoUploadState>()((set
               set({ progress: { done, total } });
               bump();
             },
+            onItem: (uploadingId) => {
+              set({ uploadingId });
+              bump();
+            },
           });
-          set({ paused: result.paused, error: result.paused ? DRIVE_ERROR_MESSAGES[result.paused] : null });
+          set({ paused: result.paused, error: result.paused ? (result.paused === 'offline' ? null : DRIVE_ERROR_MESSAGES[result.paused]) : null });
         } catch (error) {
           set({ error: toErrorMessage(error, 'Photo upload stopped.') });
         } finally {
-          set({ running: false, progress: null });
+          set({ running: false, progress: null, uploadingId: null });
           await refreshCounts().catch(() => undefined);
           bump();
         }
