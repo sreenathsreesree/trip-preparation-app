@@ -24,7 +24,7 @@ describe('Google Drive backup', () => {
 
     expect(await backupTrip(ctx.trip, deps)).toEqual({ photosUploaded: 1, photosSkipped: 0, journalUploaded: true, photosMissing: 0 });
     const names = [...drive.files.values()].map((f) => f.name).sort();
-    expect(names).toEqual(['Kerala (2026-12-20)', 'Trip Prep', 'journal.json', `photo-${(await ctx.journal.get(ctx.a.id))?.photos[0]?.id}.jpg`].sort());
+    expect(names).toEqual(['Kerala', 'Trip Prep', 'journal.json', `photo-${(await ctx.journal.get(ctx.a.id))?.photos[0]?.id}.jpg`].sort());
 
     // Nothing changed: no uploads, no new folders.
     const before = { ...drive.calls };

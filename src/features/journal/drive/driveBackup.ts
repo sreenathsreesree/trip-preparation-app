@@ -61,14 +61,31 @@ async function uploadOrRecreate(client: DriveClient, input: Parameters<DriveClie
   }
 }
 
-/** The trip's folder in Drive ("Trip Prep" / "<trip> (<start>)"), created once and remembered. */
+/** Drive folder names cannot be empty; keep them readable. */
+const folderName = (name: string) => name.replace(/[\\/]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120) || 'Trip';
+
+/**
+ * The trip's folder in Drive ("Trip Prep" / "<trip name>"), created once and
+ * remembered by id. Folders are found again by their app properties (never by
+ * name), so a reconnect or reinstall reuses them; folders made by earlier
+ * versions ("<trip> (<start>)") are reused as they are, never renamed or moved.
+ */
 export async function ensureTripFolder(trip: { id: string; name: string; startDate: string }, deps: Pick<BackupDeps, 'client' | 'repo'>): Promise<string> {
   const root = await folder(deps, 'root', ROOT_FOLDER_NAME, null, { kind: 'root' });
-  return folder(deps, trip.id, `${trip.name} (${trip.startDate})`, root, { kind: 'trip', tripId: trip.id, tripName: short(trip.name) });
+  return folder(deps, trip.id, folderName(trip.name), root, { kind: 'trip', tripId: trip.id, tripName: short(trip.name) });
 }
 
-/** Forgets remembered folders (after the user deleted them in Drive). */
+export const MEMORIES_FOLDER_NAME = 'Memories';
+
+/** "Trip Prep" / "<trip name>" / "Memories": where photos go. Created once per trip and remembered. */
+export async function ensureMemoriesFolder(trip: { id: string; name: string; startDate: string }, deps: Pick<BackupDeps, 'client' | 'repo'>): Promise<string> {
+  const tripFolder = await ensureTripFolder(trip, deps);
+  return folder(deps, `${trip.id}:memories`, MEMORIES_FOLDER_NAME, tripFolder, { kind: 'memories', tripId: trip.id });
+}
+
+/** Forgets remembered folders (after the user deleted them in Drive). Nothing in Drive is touched. */
 export async function forgetFolders(repo: JournalRepository, tripId: string): Promise<void> {
+  await repo.forgetDriveRecord('folder', `${tripId}:memories`);
   await repo.forgetDriveRecord('folder', tripId);
   await repo.forgetDriveRecord('folder', 'root');
 }

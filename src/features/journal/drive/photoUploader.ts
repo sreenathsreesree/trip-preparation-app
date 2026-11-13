@@ -1,12 +1,16 @@
 import type { JournalRepository } from '../journalRepository';
-import { DriveError, type DriveClient } from './driveClient';
-import { ensureTripFolder, forgetFolders } from './driveBackup';
+import { DriveError, FOLDER_MIME, type DriveClient } from './driveClient';
+import { ensureMemoriesFolder, forgetFolders } from './driveBackup';
 import type { PhotoUpload, PhotoUploadRepository, UploadSource } from './photoUploadRepository';
 
 /**
  * Uploads queued photos to the user's own Google Drive, one at a time, oldest
- * first. Photos go into the trip's "Trip Prep" folder; the queue keeps the
- * Drive file id as the photo's reference. Nothing is sent anywhere else.
+ * first. Photos go into "Trip Prep" / "<trip>" / "Memories"; the queue keeps
+ * the Drive file id as the photo's reference. Nothing is sent anywhere else.
+ * Photos uploaded by earlier versions stay where they are (never moved).
+ *
+ * - No duplicates after an interrupted run: every upload is tagged with the
+ *   queue item's id, and Drive is asked for that tag before uploading again.
  *
  * - Offline / busy / server errors: the photo stays queued and is retried with
  *   growing gaps (1, 2, 5, 15, 30, 60 minutes); after 8 tries it waits for the
@@ -58,14 +62,18 @@ async function uploadOne(item: PhotoUpload, deps: UploaderDeps): Promise<string>
   }
   const trip = await deps.uploads.tripInfo(item.tripId);
   if (!trip) throw new Error('The trip no longer exists.');
+  const properties = { kind: item.source === 'journal' ? 'photo' : 'memory-photo', tripId: item.tripId, localId: item.source === 'journal' ? item.sourceId : item.id, sourceId: item.sourceId };
+  // An earlier run may have uploaded it and been interrupted before recording the id.
+  const already = (await deps.client.list(properties)).find((f) => f.mimeType !== FOLDER_MIME);
+  if (already) return already.id;
   const content = await deps.readPhoto(item.localUri).catch(() => null);
   if (!content) throw new LocalPhotoMissing();
   const upload = async () =>
     deps.client.upload({
       name: item.fileName,
       mimeType: content.mimeType,
-      parentId: await ensureTripFolder(trip, { client: deps.client, repo: deps.journal }),
-      properties: { kind: item.source === 'journal' ? 'photo' : 'memory-photo', tripId: item.tripId, localId: item.source === 'journal' ? item.sourceId : item.id, sourceId: item.sourceId },
+      parentId: await ensureMemoriesFolder(trip, { client: deps.client, repo: deps.journal }),
+      properties,
       body: content.bytes,
     });
   try {

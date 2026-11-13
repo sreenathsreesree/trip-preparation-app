@@ -34,7 +34,7 @@ async function setup() {
 }
 
 describe('automatic photo upload to the user’s Google Drive', () => {
-  it('uploads a selected Memories photo and a journal photo into the trip folder, keeping only the Drive reference', async () => {
+  it('uploads a selected Memories photo and a journal photo into Trip Prep / <trip> / Memories, keeping only the Drive reference', async () => {
     const ctx = await setup();
     const photo = await ctx.journal.addPhoto(ctx.entry.id, 'file:///j1.jpg');
     await ctx.select('journal', photo.id, 'file:///j1.jpg');
@@ -42,8 +42,10 @@ describe('automatic photo upload to the user’s Google Drive', () => {
 
     expect(await runUploads(ME, ctx.deps)).toEqual({ uploaded: 2, retrying: 0, failed: 0, paused: null });
     const files = [...ctx.drive.files.values()];
-    const trip = files.find((f) => f.name === 'Kerala (2026-12-20)');
-    const photos = files.filter((f) => f.parents.includes(trip?.id as string));
+    const root = files.find((f) => f.name === 'Trip Prep');
+    const trip = files.find((f) => f.name === 'Kerala' && f.parents.includes(root?.id as string));
+    const memories = files.find((f) => f.name === 'Memories' && f.parents.includes(trip?.id as string));
+    const photos = files.filter((f) => f.parents.includes(memories?.id as string));
     expect(photos.map((f) => f.appProperties.kind).sort()).toEqual(['memory-photo', 'photo']);
 
     const rows = await ctx.photoUploads.byUris(ME, ['file:///j1.jpg', 'file:///m1.jpg']);
@@ -138,7 +140,7 @@ describe('automatic photo upload to the user’s Google Drive', () => {
     await ctx.select('memory', ctx.munnar.id, 'file:///m2.jpg');
     await ctx.select('memory', ctx.munnar.id, 'file:///m3.jpg');
     await runUploads(ME, ctx.deps);
-    const tripFolder = [...ctx.drive.files.values()].find((f) => f.name === 'Kerala (2026-12-20)')?.id as string;
+    const tripFolder = [...ctx.drive.files.values()].find((f) => f.name === 'Memories')?.id as string;
     // Uploading into a folder that no longer exists fails like Drive does.
     const upload = ctx.drive.client.upload;
     ctx.drive.files.delete(tripFolder);
@@ -148,7 +150,7 @@ describe('automatic photo upload to the user’s Google Drive', () => {
     });
     await ctx.select('memory', ctx.munnar.id, 'file:///m4.jpg');
     expect(await runUploads(ME, ctx.deps)).toMatchObject({ uploaded: 1 });
-    expect([...ctx.drive.files.values()].filter((f) => f.name === 'Kerala (2026-12-20)')).toHaveLength(1);
+    expect([...ctx.drive.files.values()].filter((f) => f.name === 'Memories')).toHaveLength(1);
   });
 
   it('removing a photo from Trip Prep forgets it but leaves the original in Drive', async () => {
@@ -223,5 +225,81 @@ describe('automatic photo upload to the user’s Google Drive', () => {
     expect(await ctx.photoUploads.autoUpload()).toBe(true);
     await ctx.photoUploads.setAutoUpload(false);
     expect(await ctx.photoUploads.autoUpload()).toBe(false);
+  });
+});
+
+describe('Drive folders: Trip Prep / <trip> / Memories', () => {
+  const folders = (ctx: Awaited<ReturnType<typeof setup>>) => [...ctx.drive.files.values()].filter((f) => f.mimeType === 'application/vnd.google-apps.folder');
+
+  it('creates the root, trip and Memories folders once each, however many photos and runs', async () => {
+    const ctx = await setup();
+    for (let i = 0; i < 5; i++) await ctx.select('memory', ctx.munnar.id, `file:///m${i}.jpg`);
+    await runUploads(ME, ctx.deps);
+    await ctx.select('memory', ctx.munnar.id, 'file:///m9.jpg');
+    await runUploads(ME, ctx.deps);
+    expect(folders(ctx).map((f) => f.name).sort()).toEqual(['Kerala', 'Memories', 'Trip Prep']);
+    expect(ctx.drive.calls.folders).toBe(3);
+    expect(ctx.drive.calls.uploads).toBe(6);
+    // Folder ids are remembered on this device (in this account's own database).
+    const memories = folders(ctx).find((f) => f.name === 'Memories')!;
+    expect((await ctx.journal.driveRecord('folder', `${ctx.trip.id}:memories`))?.driveFileId).toBe(memories.id);
+  });
+
+  it('a second trip gets its own folders under the same root', async () => {
+    const ctx = await setup();
+    const goa = await ctx.trips.create(tripInput({ name: 'Goa', destinations: [], startDate: '2027-01-02', endDate: '2027-01-05' }), { sections: [] });
+    await ctx.select('memory', ctx.munnar.id, 'file:///m1.jpg');
+    ctx.onDevice.add('file:///g1.jpg');
+    await ctx.photoUploads.enqueue({ accountId: ME, tripId: goa.id, source: 'memory', sourceId: 'x', localUri: 'file:///g1.jpg', fileName: 'g1.jpg' });
+    await runUploads(ME, ctx.deps);
+    expect(folders(ctx).map((f) => f.name).sort()).toEqual(['Goa', 'Kerala', 'Memories', 'Memories', 'Trip Prep']);
+  });
+
+  it('after a reconnect or reinstall (no remembered ids), finds the same folders by their tags, not by name', async () => {
+    const ctx = await setup();
+    await ctx.select('memory', ctx.munnar.id, 'file:///m1.jpg');
+    await runUploads(ME, ctx.deps);
+    await ctx.journal.forgetDriveRecord('folder', `${ctx.trip.id}:memories`);
+    await ctx.journal.forgetDriveRecord('folder', ctx.trip.id);
+    await ctx.journal.forgetDriveRecord('folder', 'root');
+    // A user folder that merely has the same name is never used.
+    await ctx.drive.client.createFolder('Memories', null, { kind: 'something-else' });
+    await ctx.select('memory', ctx.munnar.id, 'file:///m2.jpg');
+    await runUploads(ME, ctx.deps);
+    const tagged = folders(ctx).filter((f) => f.appProperties.kind === 'memories');
+    expect(tagged).toHaveLength(1);
+    expect([...ctx.drive.files.values()].filter((f) => f.parents.includes(tagged[0]!.id))).toHaveLength(2);
+  });
+
+  it('an upload interrupted after Drive saved it is not uploaded twice', async () => {
+    const ctx = await setup();
+    await ctx.select('memory', ctx.munnar.id, 'file:///m1.jpg');
+    // Drive stores the file, then the app dies before recording the id.
+    const markUploaded = ctx.photoUploads.markUploaded;
+    ctx.photoUploads.markUploaded = jest.fn(async () => {
+      throw new Error('app killed');
+    });
+    await runUploads(ME, ctx.deps).catch(() => undefined);
+    ctx.photoUploads.markUploaded = markUploaded;
+    expect(ctx.drive.calls.uploads).toBe(1);
+    ctx.advance(120);
+    expect(await runUploads(ME, ctx.deps)).toMatchObject({ uploaded: 1 });
+    expect(ctx.drive.calls.uploads).toBe(1); // found by its tag, reused
+    const row = (await ctx.photoUploads.byUris(ME, ['file:///m1.jpg'])).get('file:///m1.jpg');
+    expect(row?.status).toBe('uploaded');
+  });
+
+  it('reuses a trip folder made by an earlier version as it is, and leaves photos already there untouched', async () => {
+    const ctx = await setup();
+    const root = await ctx.drive.client.createFolder('Trip Prep', null, { kind: 'root' });
+    const old = await ctx.drive.client.createFolder('Kerala (2026-12-20)', root, { kind: 'trip', tripId: ctx.trip.id, tripName: 'Kerala' });
+    const oldPhoto = await ctx.drive.client.upload({ name: 'memory-old.jpg', mimeType: 'image/jpeg', parentId: old, properties: { kind: 'memory-photo', localId: 'old' }, body: new Uint8Array([1]) });
+    await ctx.select('memory', ctx.munnar.id, 'file:///m1.jpg');
+    await runUploads(ME, ctx.deps);
+    expect(ctx.drive.files.get(old)?.name).toBe('Kerala (2026-12-20)');
+    expect(ctx.drive.files.get(oldPhoto)?.parents).toEqual([old]);
+    const memories = folders(ctx).find((f) => f.name === 'Memories');
+    expect(memories?.parents).toEqual([old]);
+    expect(folders(ctx).filter((f) => f.appProperties.kind === 'trip')).toHaveLength(1);
   });
 });
