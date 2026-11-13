@@ -182,6 +182,11 @@ function DashboardBody({ trip, justCreated }: { trip: TripSummary; justCreated: 
 
       {actionError ? <Notice tone="danger" title="Something went wrong" message={actionError} /> : null}
 
+      <View style={styles.spaces}>
+        <Button label="Group Trip" icon="account-group-outline" variant="secondary" onPress={() => router.push({ pathname: '/trips/[tripId]/group', params: { tripId: trip.id } })} style={styles.space} testID="trip-group" />
+        <Button label="My Trip" icon="lock-outline" variant="secondary" onPress={() => router.push({ pathname: '/trips/[tripId]/mine', params: { tripId: trip.id } })} style={styles.space} testID="trip-mine" />
+      </View>
+
       <PlanSummaryCard trip={trip} />
 
       <TripWeatherCard trip={trip} />
@@ -308,6 +313,8 @@ export function TripDashboard({ tripId, justCreated = false }: { tripId: string 
 }
 
 const styles = StyleSheet.create({
+  spaces: { flexDirection: 'row', gap: spacing.sm },
+  space: { flex: 1 },
   hero: {
     borderRadius: radii.xl,
     borderWidth: 1,
