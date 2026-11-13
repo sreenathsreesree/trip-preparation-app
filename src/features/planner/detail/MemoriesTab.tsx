@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { AppText, Button, IconButton, Notice, TextField } from '@/components/ui';
 import { toErrorMessage } from '@/lib/errors';
-import { deleteStoredImage, pickAndStoreImage } from '@/lib/imageStore';
+import { deleteStoredImage, pickAndStoreImages } from '@/lib/imageStore';
 import { colors, radii, spacing } from '@/theme';
 
 import { DrivePhoto } from '../../journal/components/DrivePhoto';
@@ -26,11 +26,12 @@ export function MemoriesTab({ ctx }: { ctx: DetailContext }) {
 
   async function addPhoto() {
     try {
-      const uri = await pickAndStoreImage('library');
-      if (!uri) return;
-      const saved = await act((c) => c.saveMemory(ctx.node.id, { photos: [...photos, uri] }), 'Could not save the photo.');
+      // Originals: no crop editor, no resizing; several at once.
+      const uris = await pickAndStoreImages('library', { mode: 'original', multiple: true, limit: COMPANION_LIMITS.photosMax - photos.length });
+      if (uris.length === 0) return;
+      const saved = await act((c) => c.saveMemory(ctx.node.id, { photos: [...photos, ...uris] }), 'Could not save the photos.');
       // Uploads to the user's own Google Drive right away when Drive is connected.
-      if (saved) await usePhotoUploadStore.getState().photoSelected({ tripId: ctx.tripId, source: 'memory', sourceId: ctx.node.id, uri });
+      if (saved) for (const uri of uris) await usePhotoUploadStore.getState().photoSelected({ tripId: ctx.tripId, source: 'memory', sourceId: ctx.node.id, uri });
     } catch (err) {
       setError(toErrorMessage(err, 'Could not add the photo.'));
     }

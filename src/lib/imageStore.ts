@@ -21,47 +21,83 @@ export class ImagePickError extends Error {
 }
 
 /**
- * Lets the user take or choose a photo and stores a private copy.
- * Returns a persistent URI, or null if the user cancelled.
- * - Android/iOS: copied into the app's document directory (survives restarts).
- * - Web: stored as a data URI (blob URLs do not survive a reload).
+ * How a photo is picked.
+ * - `square` (inventory items): square crop editor and a compressed copy, as before.
+ * - `original` (memories, journal, covers): no crop editor, no resizing and no
+ *   re-encoding. On Android `quality: 1` makes expo-image-picker copy the file
+ *   byte for byte (RawImageExporter), so dimensions, orientation and EXIF are
+ *   kept; on iOS the current representation is kept (no HEIC→JPEG conversion).
  */
-export async function pickAndStoreImage(source: PickSource): Promise<string | null> {
+export type PickMode = 'square' | 'original';
+
+/** Picker options for a mode (exported for tests). */
+export function pickerOptions(mode: PickMode, web: boolean, multiple: boolean, limit = 0): ImagePicker.ImagePickerOptions {
+  if (mode === 'original') {
+    return {
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 1,
+      exif: false,
+      base64: web,
+      allowsMultipleSelection: multiple,
+      selectionLimit: multiple ? Math.max(0, limit) : 1,
+      orderedSelection: multiple,
+      preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
+    };
+  }
+  return { mediaTypes: ['images'], allowsEditing: !web, aspect: [1, 1], quality: web ? 0.5 : 0.7, base64: web };
+}
+
+/** File extension for a stored copy, from the picked file (keeps HEIC/PNG/WebP originals as they are). */
+export function storedExtension(uri: string, mimeType?: string | null): string {
+  const fromName = uri.split('?')[0]?.split('.').pop()?.toLowerCase();
+  if (fromName && /^(jpe?g|png|webp|heic|heif|gif)$/.test(fromName)) return fromName;
+  const fromType = mimeType?.split('/')[1]?.toLowerCase();
+  if (fromType && /^(jpe?g|png|webp|heic|heif|gif)$/.test(fromType)) return fromType;
+  return 'jpg';
+}
+
+async function storeAsset(asset: ImagePicker.ImagePickerAsset, web: boolean): Promise<string> {
+  if (web) {
+    if (asset.base64) return `data:${asset.mimeType ?? 'image/jpeg'};base64,${asset.base64}`;
+    if (asset.uri.startsWith('data:')) return asset.uri;
+    throw new ImagePickError('This browser did not return image data.');
+  }
+  const directory = new Directory(Paths.document, IMAGE_DIR);
+  if (!directory.exists) directory.create({ intermediates: true, idempotent: true });
+  const destination = new File(directory, `${createId()}.${storedExtension(asset.uri, asset.mimeType)}`);
+  // A plain file copy: the bytes the picker returned are kept exactly.
+  await new File(asset.uri).copy(destination);
+  return destination.uri;
+}
+
+/**
+ * Lets the user take or choose photos and stores private copies. Returns
+ * persistent URIs in the order chosen (empty if cancelled).
+ * - Android/iOS: copied into the app's document directory (survives restarts).
+ * - Web: stored as data URIs (blob URLs do not survive a reload).
+ */
+export async function pickAndStoreImages(source: PickSource, options: { mode?: PickMode; multiple?: boolean; limit?: number } = {}): Promise<string[]> {
   const web = Platform.OS === 'web';
+  const mode = options.mode ?? 'square';
   if (source === 'camera' && !web) {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
       throw new ImagePickError('Camera access was not allowed. You can enable it in system settings.');
     }
   }
-  const options: ImagePicker.ImagePickerOptions = {
-    mediaTypes: ['images'],
-    allowsEditing: !web,
-    aspect: [1, 1],
-    quality: web ? 0.5 : 0.7,
-    base64: web,
-  };
-  const result =
-    source === 'camera'
-      ? await ImagePicker.launchCameraAsync(options)
-      : await ImagePicker.launchImageLibraryAsync(options);
-  if (result.canceled) return null;
-  const asset = result.assets[0];
-  if (!asset) return null;
+  const pickerOpts = pickerOptions(mode, web, source === 'library' && Boolean(options.multiple), options.limit);
+  const result = source === 'camera' ? await ImagePicker.launchCameraAsync(pickerOpts) : await ImagePicker.launchImageLibraryAsync(pickerOpts);
+  if (result.canceled) return [];
+  const assets = options.limit ? result.assets.slice(0, options.limit) : result.assets;
+  const stored: string[] = [];
+  for (const asset of assets) stored.push(await storeAsset(asset, web));
+  return stored;
+}
 
-  if (web) {
-    if (asset.base64) return `data:${asset.mimeType ?? 'image/jpeg'};base64,${asset.base64}`;
-    if (asset.uri.startsWith('data:')) return asset.uri;
-    throw new ImagePickError('This browser did not return image data.');
-  }
-
-  const directory = new Directory(Paths.document, IMAGE_DIR);
-  if (!directory.exists) directory.create({ intermediates: true, idempotent: true });
-  const extension = asset.uri.split('.').pop()?.toLowerCase();
-  const safeExtension = extension && /^(jpe?g|png|webp|heic)$/.test(extension) ? extension : 'jpg';
-  const destination = new File(directory, `${createId()}.${safeExtension}`);
-  await new File(asset.uri).copy(destination);
-  return destination.uri;
+/** One photo (inventory items use the square mode). Returns null if cancelled. */
+export async function pickAndStoreImage(source: PickSource, mode: PickMode = 'square'): Promise<string | null> {
+  return (await pickAndStoreImages(source, { mode }))[0] ?? null;
 }
 
 /** Deletes a stored photo. Only files inside the app's own image folder are ever touched. */

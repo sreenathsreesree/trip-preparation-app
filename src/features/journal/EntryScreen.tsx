@@ -8,7 +8,7 @@ import { AppText, Button, IconButton, LoadingState, Notice, OptionTile, TextFiel
 import { confirmAction } from '@/lib/confirm';
 import { toErrorMessage } from '@/lib/errors';
 import { successFeedback } from '@/lib/haptics';
-import { deleteStoredImage, pickAndStoreImage, type PickSource } from '@/lib/imageStore';
+import { deleteStoredImage, pickAndStoreImages, type PickSource } from '@/lib/imageStore';
 import { colors, radii, spacing } from '@/theme';
 
 import { trailOf } from '../planner/compare';
@@ -73,10 +73,12 @@ function Editor({ trip, entry }: { trip: TripSummary; entry: JournalEntry | null
   async function addPhoto(source: PickSource) {
     setError(null);
     try {
-      const uri = await pickAndStoreImage(source);
-      if (!uri) return;
-      if (entry) await useJournalStore.getState().addPhoto(trip.id, entry.id, uri);
-      else setPending((p) => [...p, uri]);
+      // Originals: no crop editor, no resizing; several at once from the library.
+      const uris = await pickAndStoreImages(source, { mode: 'original', multiple: true, limit: JOURNAL_LIMITS.photosMax - photos.length });
+      for (const uri of uris) {
+        if (entry) await useJournalStore.getState().addPhoto(trip.id, entry.id, uri);
+        else setPending((p) => [...p, uri]);
+      }
     } catch (err) {
       setError(toErrorMessage(err, 'Could not add the photo.'));
     }

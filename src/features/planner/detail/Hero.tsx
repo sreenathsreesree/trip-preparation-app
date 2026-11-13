@@ -23,7 +23,7 @@ export function Hero({ ctx, trail }: { ctx: DetailContext; trail: string[] }) {
 
   async function pickCover() {
     try {
-      const uri = await pickAndStoreImage('library');
+      const uri = await pickAndStoreImage('library', 'original');
       if (!uri) return;
       const previous = profile.coverImageUri;
       if (await act((c) => c.updateProfile(node.id, { coverImageUri: uri }), 'Could not save the photo.')) {
