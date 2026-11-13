@@ -16,6 +16,7 @@ import { createId } from '@/lib/id';
 
 import { getDatabase, getPartitionDatabase } from './client';
 import type { Partition } from './partitions';
+import { createGalleryRepository } from '@/features/journal/galleryRepository';
 import { getSchemaVersion } from './migrate';
 
 /**
@@ -39,6 +40,7 @@ export async function getRepositories(partition?: Partition) {
     expenses: createExpenseRepository(db, { createId }),
     sharing: createSharingRepository(db, {}),
     photoUploads: createPhotoUploadRepository(db, { createId }),
+    gallery: createGalleryRepository(db),
     schemaVersion: () => getSchemaVersion(db),
     countTasks: async () => {
       const row = await db.getFirstAsync<{ count: number }>(

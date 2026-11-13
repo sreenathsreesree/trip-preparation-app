@@ -1,11 +1,11 @@
 import Constants from 'expo-constants';
 import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 
 import { Screen } from '@/components/layout/Screen';
 import { ScreenHeader } from '@/components/layout/ScreenHeader';
-import { AppText, Card } from '@/components/ui';
+import { AppText, Button, Card } from '@/components/ui';
 import { getRepositories } from '@/db/repositories';
 import { AccountCard } from '@/features/auth/components/AccountCard';
 import { BackupCard } from '@/features/sync/BackupCard';
@@ -72,6 +72,7 @@ export function ProfileScreen() {
 
       <AccountCard />
       <BackupCard />
+      <Button label="Memories gallery" icon="image-multiple-outline" variant="secondary" onPress={() => router.push('/gallery')} fullWidth testID="profile-gallery" />
 
       <View style={styles.group}>
         <AppText variant="label" tone="textMuted">

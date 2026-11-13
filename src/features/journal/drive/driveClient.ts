@@ -59,6 +59,12 @@ export interface DriveClient {
   }): Promise<string>;
   downloadText(fileId: string): Promise<string>;
   downloadBytes(fileId: string): Promise<{ bytes: Uint8Array; mimeType: string }>;
+  /**
+   * A small preview Drive makes for an image (about `size` px on the long
+   * side), so a gallery never downloads full originals. Null when Drive has
+   * none (yet).
+   */
+  thumbnailBytes(fileId: string, size: number): Promise<{ bytes: Uint8Array; mimeType: string } | null>;
 }
 
 async function toError(response: Response): Promise<DriveError> {
@@ -144,6 +150,14 @@ export function createDriveClient(getToken: () => Promise<string>, fetchImpl: ty
 
     async downloadBytes(fileId) {
       const response = await call(`${API}/files/${encodeURIComponent(fileId)}?alt=media`);
+      return { bytes: new Uint8Array(await response.arrayBuffer()), mimeType: response.headers.get('Content-Type') ?? 'image/jpeg' };
+    },
+    async thumbnailBytes(fileId, size) {
+      const meta = (await (await call(`${API}/files/${encodeURIComponent(fileId)}?fields=thumbnailLink`)).json()) as { thumbnailLink?: string };
+      if (!meta.thumbnailLink) return null;
+      // The link ends in "=s220"; ask for the size the grid needs.
+      const link = meta.thumbnailLink.replace(/=s\d+$/, `=s${Math.round(size)}`);
+      const response = await call(link);
       return { bytes: new Uint8Array(await response.arrayBuffer()), mimeType: response.headers.get('Content-Type') ?? 'image/jpeg' };
     },
   };

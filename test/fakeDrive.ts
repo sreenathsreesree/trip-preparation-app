@@ -4,7 +4,7 @@ import { DriveError, FOLDER_MIME, type DriveClient, type DriveFile } from '@/fea
 export function fakeDrive() {
   const files = new Map<string, DriveFile & { parents: string[]; content: string | Uint8Array }>();
   let next = 1;
-  const calls = { uploads: 0, folders: 0 };
+  const calls = { uploads: 0, folders: 0, thumbnails: 0, downloads: 0 };
   const client: DriveClient = {
     async list(properties) {
       const want = { tripprep: '1', ...properties };
@@ -29,9 +29,16 @@ export function fakeDrive() {
       return f.content as string;
     },
     async downloadBytes(fileId) {
+      calls.downloads += 1;
       const f = files.get(fileId);
       if (!f) throw new DriveError('not_found');
       return { bytes: f.content as Uint8Array, mimeType: f.mimeType };
+    },
+    async thumbnailBytes(fileId, size) {
+      calls.thumbnails += 1;
+      const f = files.get(fileId);
+      if (!f) throw new DriveError('not_found');
+      return { bytes: new Uint8Array([0x7a, size % 256]), mimeType: 'image/jpeg' };
     },
   };
   return { client, files, calls };

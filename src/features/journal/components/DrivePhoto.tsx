@@ -3,15 +3,11 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { AppText, Icon } from '@/components/ui';
-import { getDatabase } from '@/db/client';
-import { getRepositories } from '@/db/repositories';
 import { useAuthStore } from '@/features/auth/authStore';
-import { imageExists, saveImageBytes } from '@/lib/imageStore';
 import { colors, radii, spacing, withAlpha } from '@/theme';
 import type { IconName } from '@/theme/icons';
 
-import { driveToken } from '../drive/driveAuth';
-import { createDriveClient } from '../drive/driveClient';
+import { photoDisplayDeps } from '../drive/photoDisplay';
 import type { PhotoUpload } from '../drive/photoUploadRepository';
 import { resolvePhoto, uploadDisplayState, UPLOAD_STATE_LABELS, type UploadDisplayState } from '../drive/photoUploader';
 import { usePhotoUploadStore } from '../drive/photoUploadStore';
@@ -43,24 +39,9 @@ export function DrivePhoto({ uri, style, label, testID }: { uri: string; style: 
   useEffect(() => {
     let live = true;
     void (async () => {
-      const { photoUploads } = await getRepositories();
-      const db = await getDatabase();
-      const row = accountId ? (await photoUploads.byUris(accountId, [uri])).get(uri) : undefined;
-      const resolved = await resolvePhoto(uri, {
-        uploads: photoUploads,
-        exists: imageExists,
-        savePhoto: saveImageBytes,
-        client: accountId ? createDriveClient(() => driveToken(accountId)) : null,
-        driveCache: {
-          get: async (fileId) => (await db.getFirstAsync<{ local_uri: string }>('SELECT local_uri FROM drive_cache WHERE drive_file_id = ?', [fileId]))?.local_uri ?? null,
-          set: async (fileId, local) => {
-            await db.runAsync(
-              'INSERT INTO drive_cache (drive_file_id, local_uri, cached_at) VALUES (?, ?, ?) ON CONFLICT (drive_file_id) DO UPDATE SET local_uri = excluded.local_uri, cached_at = excluded.cached_at',
-              [fileId, local, new Date().toISOString()],
-            );
-          },
-        },
-      });
+      const deps = await photoDisplayDeps(accountId);
+      const row = accountId ? (await deps.uploads.byUris(accountId, [uri])).get(uri) : undefined;
+      const resolved = await resolvePhoto(uri, deps);
       if (live) setState({ key, shown: resolved.uri, row: row ?? null, missing: resolved.uri === null });
     })();
     return () => {

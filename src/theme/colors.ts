@@ -54,6 +54,10 @@ export const colors = {
   dangerSoft: withAlpha('#F28B7D', 0.14),
 
   overlay: withAlpha('#0E1318', 0.72),
+  /** Full-screen photo viewer: near-black backdrop, translucent chrome and small badges over photos. */
+  photoBackdrop: '#05080B',
+  photoChrome: withAlpha('#0E1318', 0.55),
+  photoBadge: withAlpha('#0E1318', 0.6),
 
   // Supporting status hues for inventory and shopping states.
   violet: '#B8A6F2',

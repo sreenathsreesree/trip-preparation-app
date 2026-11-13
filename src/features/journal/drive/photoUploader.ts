@@ -240,3 +240,49 @@ export function uploadDisplayState(
   if (item.attempts > 0 && item.nextAttemptAt && new Date(item.nextAttemptAt) > run.now) return 'retry_scheduled';
   return 'queued';
 }
+
+/** Where a photo's original is, from this device's point of view. */
+export type OriginalAvailability = 'on_device' | 'in_drive' | 'missing_in_drive' | 'not_uploaded';
+
+export interface ThumbnailResult {
+  /** Image for the grid (device copy, cached original, or a cached Drive preview), or null. */
+  uri: string | null;
+  /** Whether the full original can be shown without internet. */
+  offline: boolean;
+  original: OriginalAvailability;
+}
+
+export const THUMBNAIL_SIZE = 480;
+
+/**
+ * The image for a gallery thumbnail, without downloading originals: the device
+ * copy or an already cached original when there is one, else Drive's own
+ * preview (downloaded once and cached under "thumb:<id>").
+ */
+export async function resolveThumbnail(uri: string, deps: DisplayDeps & { client: Pick<DriveClient, 'thumbnailBytes' | 'downloadBytes'> | null }): Promise<ThumbnailResult> {
+  let fileId: string | null = null;
+  if (uri.startsWith('drive:')) fileId = uri.slice('drive:'.length);
+  else {
+    if (deps.exists(uri)) return { uri, offline: true, original: 'on_device' };
+    const upload = await deps.uploads.findUploaded(uri);
+    if (upload?.cacheUri && deps.exists(upload.cacheUri)) return { uri: upload.cacheUri, offline: true, original: 'on_device' };
+    fileId = upload?.driveFileId ?? null;
+  }
+  if (!fileId) return { uri: null, offline: false, original: 'not_uploaded' };
+  const cache = deps.driveCache;
+  const full = cache ? await cache.get(fileId) : null;
+  if (full && deps.exists(full)) return { uri: full, offline: true, original: 'on_device' };
+  const thumb = cache ? await cache.get(`thumb:${fileId}`) : null;
+  if (thumb && deps.exists(thumb)) return { uri: thumb, offline: false, original: 'in_drive' };
+  if (!deps.client) return { uri: null, offline: false, original: 'in_drive' };
+  try {
+    const preview = await deps.client.thumbnailBytes(fileId, THUMBNAIL_SIZE);
+    if (!preview) return { uri: null, offline: false, original: 'in_drive' };
+    const saved = await deps.savePhoto(preview.bytes, preview.mimeType);
+    await cache?.set(`thumb:${fileId}`, saved);
+    return { uri: saved, offline: false, original: 'in_drive' };
+  } catch (error) {
+    if (error instanceof DriveError && error.kind === 'not_found') return { uri: null, offline: false, original: 'missing_in_drive' };
+    return { uri: null, offline: false, original: 'in_drive' };
+  }
+}

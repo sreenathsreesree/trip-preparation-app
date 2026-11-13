@@ -137,6 +137,14 @@ function Journal({ trip }: { trip: TripSummary }) {
     <Screen testID="journal-screen" bottomInset onRefresh={() => void useJournalStore.getState().load(trip.id)}>
       <ScreenHeader showBack eyebrow={trip.name} title="Journey journal" subtitle={count === 0 ? 'Your story of this trip' : `${count} ${count === 1 ? 'entry' : 'entries'}`} />
       <Button label="New entry" icon="pencil-plus-outline" onPress={newEntry} fullWidth testID="journal-new" />
+      <Button
+        label="Photo gallery"
+        icon="image-multiple-outline"
+        variant="secondary"
+        onPress={() => router.push({ pathname: '/trips/[tripId]/gallery', params: { tripId: trip.id } })}
+        fullWidth
+        testID="journal-gallery"
+      />
       <DriveCard trip={trip} />
       {journal.status === 'error' ? (
         <ErrorState message={journal.error ?? 'Could not load the journal.'} onRetry={() => void useJournalStore.getState().load(trip.id)} />
