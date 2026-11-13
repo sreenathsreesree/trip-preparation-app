@@ -1,5 +1,5 @@
-import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
@@ -116,6 +116,12 @@ export function InventoryScreen() {
   const filters = useInventoryStore((state) => state.filters);
   const sort = useInventoryStore((state) => state.sort);
   const { load, setView } = useInventoryStore.getState();
+  // Reload whenever the tab is shown: a backup restore or another screen may have changed the inventory.
+  useFocusEffect(
+    useCallback(() => {
+      if (useInventoryStore.getState().status === 'ready') void useInventoryStore.getState().load();
+    }, []),
+  );
   const visible = useVisibleItems(filters, sort);
   const maps = useCategoryMaps();
 

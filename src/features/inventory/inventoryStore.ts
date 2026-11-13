@@ -45,6 +45,19 @@ interface InventoryState {
   deleteCategory: (id: string) => Promise<void>;
 }
 
+/**
+ * A category id the database no longer has means the list on screen is stale
+ * (e.g. backup gave starter categories the cloud's ids): reload it so the form
+ * shows the current categories, and ask the user to pick again.
+ */
+async function reloadOnStaleCategory(error: unknown): Promise<never> {
+  if (error instanceof Error && /valid category|subcategory of the selected/.test(error.message)) {
+    await useInventoryStore.getState().load();
+    throw new Error('The category list was out of date and has been refreshed. Choose the category again.');
+  }
+  throw error;
+}
+
 export const useInventoryStore = accountScoped(create<InventoryState>()((set, get) => {
   /** Item usage (reserved/packed) depends on trips, so reload the whole list after writes. */
   async function refresh() {
@@ -77,14 +90,14 @@ export const useInventoryStore = accountScoped(create<InventoryState>()((set, ge
 
     async createItem(input) {
       const { inventory } = await getRepositories();
-      const item = await inventory.createItem(input);
+      const item = await inventory.createItem(input).catch(reloadOnStaleCategory);
       await refresh();
       return item;
     },
 
     async updateItem(id, input) {
       const { inventory } = await getRepositories();
-      const { item, orphanedImageUri } = await inventory.updateItem(id, input);
+      const { item, orphanedImageUri } = await inventory.updateItem(id, input).catch(reloadOnStaleCategory);
       deleteStoredImage(orphanedImageUri);
       await refresh();
       return item;

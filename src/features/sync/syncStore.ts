@@ -8,6 +8,7 @@ import { getSupabase, isCloudConfigured } from '@/features/auth/supabase';
 import { toErrorMessage } from '@/lib/errors';
 import { createId } from '@/lib/id';
 
+import { useInventoryStore } from '../inventory/inventoryStore';
 import { useTripsStore } from '../trips/tripsStore';
 import { createSupabaseSyncApi } from './syncApi';
 import { backupStatus, deviceDataSummary, isSyncAccountError, linkAccount, linkedAccount, resolveConflicts, runSync, type SyncResult } from './syncEngine';
@@ -106,7 +107,11 @@ export const useSyncStore = accountScoped(create<SyncState>()((set, get) => {
           const db = await getPartitionDatabase(partitionFor(user.id));
           const result = await runSync(db, client, { accountId: user.id, createId });
           set({ lastResult: result, lastSyncAt: new Date().toISOString(), pending: result.pending, conflicts: result.conflicts, photosNotInDrive: result.photosNotInDrive });
-          if (result.downloaded > 0 && activePartition() === partitionFor(user.id)) await useTripsStore.getState().load();
+          if (result.downloaded > 0 && activePartition() === partitionFor(user.id)) {
+            // Restored rows must appear without a manual refresh (inventory was loaded once and stayed empty).
+            await useTripsStore.getState().load();
+            if (useInventoryStore.getState().status !== 'idle') await useInventoryStore.getState().load();
+          }
         } catch (error) {
           set({ error: isSyncAccountError(error) ? error.message : toErrorMessage(error, 'Backup didn’t finish. It will try again.') });
         } finally {
