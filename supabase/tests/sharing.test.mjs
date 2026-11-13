@@ -111,7 +111,8 @@ describe('shared trips: separation from G1', () => {
 
   it('deploys after the G1 and G3 migrations, shared trips before shared expenses', () => {
     const deploy = readdirSync(join(ROOT, 'migrations')).filter((f) => f.endsWith('.sql')).sort();
-    assert.deepEqual(deploy.slice(-2), ['20261113090000_shared_trips.sql', '20261114090000_shared_expenses.sql']);
+    const trips = deploy.indexOf('20261113090000_shared_trips.sql');
+    assert.ok(trips >= 0 && deploy[trips + 1] === '20261114090000_shared_expenses.sql');
     assert.ok(deploy.indexOf('20261112090000_personal_backup.sql') < deploy.indexOf('20261113090000_shared_trips.sql'));
   });
 });

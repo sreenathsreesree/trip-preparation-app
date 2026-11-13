@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
 
 const ROOT = join(import.meta.dirname, '..');
-const HARDENING = join(ROOT, 'pending', '20261115090000_revoke_table_maintenance_privileges.sql');
+const HARDENING = join(ROOT, 'migrations', '20261115090000_revoke_table_maintenance_privileges.sql');
 const ROLLBACK = join(ROOT, 'pending', 'rollback', '20261115090000_revoke_table_maintenance_privileges.down.sql');
 const ALICE = '11111111-1111-4111-8111-111111111111';
 const BOB = '22222222-2222-4222-8222-222222222222';
@@ -36,7 +36,7 @@ const STUB = `
 async function deployed() {
   const db = new PGlite();
   await db.exec(STUB);
-  for (const f of readdirSync(join(ROOT, 'migrations')).filter((f) => f.endsWith('.sql')).sort()) await db.exec(readFileSync(join(ROOT, 'migrations', f), 'utf8'));
+  for (const f of readdirSync(join(ROOT, 'migrations')).filter((f) => f.endsWith('.sql') && !f.includes('revoke_table_maintenance')).sort()) await db.exec(readFileSync(join(ROOT, 'migrations', f), 'utf8'));
   // Prove the PUBLIC path is closed as well (the live project has none, a future grant must not reopen it).
   await db.exec(`grant truncate on public.trips to public`);
   return db;
@@ -174,7 +174,8 @@ describe('table maintenance privileges', () => {
     assert.deepEqual((await privileges(fresh)).filter((p) => !p.startsWith('trips:anon')), original);
   });
 
-  it('is in pending/, not the deploy folder', () => {
-    assert.ok(!readdirSync(join(ROOT, 'migrations')).some((f) => f.includes('revoke_table_maintenance')));
+  it('deploys last, after the shared-expenses migration', () => {
+    const files = readdirSync(join(ROOT, 'migrations')).filter((f) => f.endsWith('.sql')).sort();
+    assert.equal(files.at(-1), '20261115090000_revoke_table_maintenance_privileges.sql');
   });
 });
