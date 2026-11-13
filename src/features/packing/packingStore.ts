@@ -1,3 +1,4 @@
+import { accountScoped } from '@/lib/accountScopedStores';
 import { create } from 'zustand';
 
 import { getRepositories } from '@/db/repositories';
@@ -91,7 +92,7 @@ interface PackingStoreState {
   loadAllPurchases: () => Promise<void>;
 }
 
-export const usePackingStore = create<PackingStoreState>()((set, get) => {
+export const usePackingStore = accountScoped(create<PackingStoreState>()((set, get) => {
   const entryOf = (tripId: string) => get().byTrip[tripId] ?? EMPTY;
   const put = (tripId: string, patch: Partial<TripPacking>) =>
     set((state) => ({ byTrip: { ...state.byTrip, [tripId]: { ...(state.byTrip[tripId] ?? EMPTY), ...patch } } }));
@@ -337,7 +338,7 @@ export const usePackingStore = create<PackingStoreState>()((set, get) => {
       set({ allPurchases: await purchases.list() });
     },
   };
-});
+}));
 
 export function useTripPacking(tripId: string | undefined): TripPacking {
   return usePackingStore((state) => (tripId ? state.byTrip[tripId] : undefined) ?? EMPTY);

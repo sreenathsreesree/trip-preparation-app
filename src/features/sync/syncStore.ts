@@ -1,6 +1,8 @@
+import { accountScoped } from '@/lib/accountScopedStores';
 import { create } from 'zustand';
 
-import { getDatabase } from '@/db/client';
+import { activePartition, getPartitionDatabase } from '@/db/client';
+import { partitionFor } from '@/db/partitions';
 import { useAuthStore } from '@/features/auth/authStore';
 import { getSupabase, isCloudConfigured } from '@/features/auth/supabase';
 import { toErrorMessage } from '@/lib/errors';
@@ -40,14 +42,15 @@ const api = () => {
   return client ? createSupabaseSyncApi(client) : null;
 };
 
-export const useSyncStore = create<SyncState>()((set, get) => {
+export const useSyncStore = accountScoped(create<SyncState>()((set, get) => {
   async function refreshStatus() {
-    const db = await getDatabase();
     const user = useAuthStore.getState().user;
-    if (!api() || !user) {
+    // Only the signed-in account's own partition is ever backed up.
+    if (!api() || !user || activePartition() !== partitionFor(user.id)) {
       set({ phase: 'unavailable' });
       return;
     }
+    const db = await getPartitionDatabase(partitionFor(user.id));
     const linked = await linkedAccount(db);
     if (linked && linked !== user.id) {
       set({ phase: 'other_account' });
@@ -84,7 +87,7 @@ export const useSyncStore = create<SyncState>()((set, get) => {
     async adoptDeviceData() {
       const user = useAuthStore.getState().user;
       if (!user) return;
-      await linkAccount(await getDatabase(), user.id);
+      await linkAccount(await getPartitionDatabase(partitionFor(user.id)), user.id);
       set({ phase: 'ready', deviceSummary: null });
       await get().syncNow();
     },
@@ -99,10 +102,11 @@ export const useSyncStore = create<SyncState>()((set, get) => {
         if (get().phase !== 'ready') return;
         set({ running: true, error: null });
         try {
-          const db = await getDatabase();
+          // Bound to this user's own database even if the account switches mid-run.
+          const db = await getPartitionDatabase(partitionFor(user.id));
           const result = await runSync(db, client, { accountId: user.id, createId });
           set({ lastResult: result, lastSyncAt: new Date().toISOString(), pending: result.pending, conflicts: result.conflicts, photosNotInDrive: result.photosNotInDrive });
-          if (result.downloaded > 0) await useTripsStore.getState().load();
+          if (result.downloaded > 0 && activePartition() === partitionFor(user.id)) await useTripsStore.getState().load();
         } catch (error) {
           set({ error: isSyncAccountError(error) ? error.message : toErrorMessage(error, 'Backup didn’t finish. It will try again.') });
         } finally {
@@ -115,10 +119,12 @@ export const useSyncStore = create<SyncState>()((set, get) => {
     },
 
     async resolve(choice) {
-      await resolveConflicts(await getDatabase(), choice);
+      const user = useAuthStore.getState().user;
+      if (!user || activePartition() !== partitionFor(user.id)) return;
+      await resolveConflicts(await getPartitionDatabase(partitionFor(user.id)), choice);
       set({ conflicts: 0 });
       await get().syncNow();
       await useTripsStore.getState().load();
     },
   };
-});
+}));

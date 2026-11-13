@@ -1,3 +1,4 @@
+import { accountScoped } from '@/lib/accountScopedStores';
 import { create } from 'zustand';
 
 import { getRepositories } from '@/db/repositories';
@@ -56,7 +57,7 @@ interface ChecklistState {
 
 export const EMPTY_CHECKLIST: ChecklistEntry = { status: 'idle', sections: [], tasks: [], error: null };
 
-export const useChecklistStore = create<ChecklistState>()((set, get) => {
+export const useChecklistStore = accountScoped(create<ChecklistState>()((set, get) => {
   const entryOf = (owner: ChecklistOwner) => get().byOwner[ownerKey(owner)] ?? EMPTY_CHECKLIST;
 
   function setEntry(owner: ChecklistOwner, entry: ChecklistEntry) {
@@ -185,7 +186,7 @@ export const useChecklistStore = create<ChecklistState>()((set, get) => {
       });
     },
   };
-});
+}));
 
 export function useChecklist(owner: ChecklistOwner | null): ChecklistEntry {
   return useChecklistStore((state) => (owner ? state.byOwner[ownerKey(owner)] : undefined) ?? EMPTY_CHECKLIST);

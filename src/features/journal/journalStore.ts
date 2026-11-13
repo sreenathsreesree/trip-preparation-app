@@ -1,3 +1,4 @@
+import { accountScoped } from '@/lib/accountScopedStores';
 import { create } from 'zustand';
 
 import { getRepositories } from '@/db/repositories';
@@ -29,7 +30,7 @@ interface JournalState {
   setVisibility: (tripId: string, id: string, visibility: Visibility) => Promise<void>;
 }
 
-export const useJournalStore = create<JournalState>()((set, get) => {
+export const useJournalStore = accountScoped(create<JournalState>()((set, get) => {
   const put = (tripId: string, patch: Partial<TripJournal>) =>
     set((s) => ({ byTrip: { ...s.byTrip, [tripId]: { ...(s.byTrip[tripId] ?? EMPTY), ...patch } } }));
 
@@ -93,7 +94,7 @@ export const useJournalStore = create<JournalState>()((set, get) => {
         if (uri) await usePhotoUploadStore.getState().photoRemoved([uri]);
       }),
   };
-});
+}));
 
 export function useTripJournal(tripId: string | undefined): TripJournal {
   return useJournalStore((s) => (tripId ? s.byTrip[tripId] : undefined) ?? EMPTY);

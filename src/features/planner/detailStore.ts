@@ -1,3 +1,4 @@
+import { accountScoped } from '@/lib/accountScopedStores';
 import { create } from 'zustand';
 
 import { getRepositories } from '@/db/repositories';
@@ -20,7 +21,7 @@ interface DetailState {
   run: <T>(tripId: string, nodeId: string, fn: (companion: CompanionRepository) => Promise<T>) => Promise<T>;
 }
 
-export const useDetailStore = create<DetailState>()((set) => {
+export const useDetailStore = accountScoped(create<DetailState>()((set) => {
   async function reload(nodeId: string) {
     const { companion } = await getRepositories();
     const details = await companion.node(nodeId);
@@ -46,7 +47,7 @@ export const useDetailStore = create<DetailState>()((set) => {
       }
     },
   };
-});
+}));
 
 export function useNodeDetails(nodeId: string | undefined) {
   const details = useDetailStore((s) => (nodeId ? s.byNode[nodeId] : undefined));

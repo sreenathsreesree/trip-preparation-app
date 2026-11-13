@@ -1,7 +1,10 @@
+import { accountScoped } from '@/lib/accountScopedStores';
 import { Platform } from 'react-native';
 import { create } from 'zustand';
 
 import { useAuthStore } from '@/features/auth/authStore';
+import { activePartition } from '@/db/client';
+import { partitionFor } from '@/db/partitions';
 import { getRepositories } from '@/db/repositories';
 import { toErrorMessage } from '@/lib/errors';
 import { deleteStoredImage, imageExists, isManagedImageUri, readImageBytes } from '@/lib/imageStore';
@@ -49,11 +52,12 @@ let running: Promise<void> | null = null;
 /** Drive is set up, the user is signed in and has connected Drive (even if the token needs renewing). */
 async function connectedAccount(): Promise<string | null> {
   const id = accountId();
-  if (!isDriveConfigured() || !id) return null;
+  // Photos are only queued and uploaded from the signed-in account's own data.
+  if (!isDriveConfigured() || !id || activePartition() !== partitionFor(id)) return null;
   return (await driveConnection(id)) ? id : null;
 }
 
-export const usePhotoUploadStore = create<PhotoUploadState>()((set, get) => {
+export const usePhotoUploadStore = accountScoped(create<PhotoUploadState>()((set, get) => {
   const bump = () => set((s) => ({ version: s.version + 1 }));
 
   async function refreshCounts() {
@@ -104,7 +108,7 @@ export const usePhotoUploadStore = create<PhotoUploadState>()((set, get) => {
         if (!id) return;
         set({ running: true, error: null });
         try {
-          const { photoUploads, journal } = await getRepositories();
+          const { photoUploads, journal } = await getRepositories(partitionFor(id));
           const result = await runUploads(id, {
             client: createDriveClient(() => driveToken(id)),
             uploads: photoUploads,
@@ -167,4 +171,4 @@ export const usePhotoUploadStore = create<PhotoUploadState>()((set, get) => {
       return removed;
     },
   };
-});
+}));

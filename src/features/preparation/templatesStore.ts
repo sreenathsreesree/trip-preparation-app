@@ -1,3 +1,4 @@
+import { accountScoped } from '@/lib/accountScopedStores';
 import { create } from 'zustand';
 
 import { getRepositories } from '@/db/repositories';
@@ -24,7 +25,7 @@ function sortTemplates(templates: TemplateSummary[]) {
   );
 }
 
-export const useTemplatesStore = create<TemplatesState>()((set, get) => {
+export const useTemplatesStore = accountScoped(create<TemplatesState>()((set, get) => {
   const upsert = (template: TemplateSummary) =>
     set((state) => ({
       templates: sortTemplates([...state.templates.filter((t) => t.id !== template.id), template]),
@@ -79,4 +80,4 @@ export const useTemplatesStore = create<TemplatesState>()((set, get) => {
       return created;
     },
   };
-});
+}));

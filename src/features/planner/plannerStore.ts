@@ -1,3 +1,4 @@
+import { accountScoped } from '@/lib/accountScopedStores';
 import { create } from 'zustand';
 
 import { getRepositories } from '@/db/repositories';
@@ -45,7 +46,7 @@ interface PlannerStoreState {
   loadLastOpened: () => Promise<void>;
 }
 
-export const usePlannerStore = create<PlannerStoreState>()((set, get) => {
+export const usePlannerStore = accountScoped(create<PlannerStoreState>()((set, get) => {
   const put = (tripId: string, patch: Partial<TripPlanState>) =>
     set((state) => ({ byTrip: { ...state.byTrip, [tripId]: { ...(state.byTrip[tripId] ?? EMPTY), ...patch } } }));
 
@@ -130,7 +131,7 @@ export const usePlannerStore = create<PlannerStoreState>()((set, get) => {
       set({ lastOpenedTripId: await planner.lastOpenedTripId() });
     },
   };
-});
+}));
 
 export function useTripPlan(tripId: string | undefined): TripPlanState {
   return usePlannerStore((state) => (tripId ? state.byTrip[tripId] : undefined) ?? EMPTY);

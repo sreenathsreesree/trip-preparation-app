@@ -50,8 +50,8 @@ export function AccountScreen() {
       <Notice
         tone="info"
         icon="cloud-lock-outline"
-        title="Cloud backup is not on yet"
-        message="Signing in does not upload, copy or change anything. Your data stays on this device until cloud backup arrives in a later update."
+        title="Your trips belong to this account"
+        message="Each Google account has its own trips on this phone, and the guest has separate ones. Signing out keeps this account’s trips on the phone, hidden until you sign in again. Backup status is on the Profile tab."
       />
 
       <Button

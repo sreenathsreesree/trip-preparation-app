@@ -12,18 +12,20 @@ import { useFonts } from 'expo-font';
 import { Stack, ThemeProvider, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ErrorState } from '@/components/ui';
-import { getDatabase } from '@/db/client';
+import { activePartition, getDatabase, onPartitionChange, setActiveAccount } from '@/db/client';
+import { partitionFor, partitionUserId, type Partition } from '@/db/partitions';
 import { useAuthStore } from '@/features/auth/authStore';
 import { PhotoUploadWatcher } from '@/features/journal/components/PhotoUploadWatcher';
 import { SharedTripsWatcher } from '@/features/sharing/SharedTripsWatcher';
 import { SyncWatcher } from '@/features/sync/SyncWatcher';
 import { ArrivalWatcher } from '@/features/planner/components/ArrivalWatcher';
+import { resetAccountScopedStores } from '@/lib/accountScopedStores';
 import { colors } from '@/theme';
 import { navigationTheme } from '@/theme/navigation';
 
@@ -53,38 +55,59 @@ export default function RootLayout() {
   });
   const [databaseSettled, setDatabaseSettled] = useState(false);
 
-  // Open + migrate the database while the splash screen is up. Screens load
-  // their data through the stores, which surface any failure with a retry.
-  useEffect(() => {
-    getDatabase()
-      .catch(() => undefined)
-      .finally(() => setDatabaseSettled(true));
-  }, []);
-
-  // Restore the account session in the background; it never blocks the app and
-  // never touches local data. Guests are unaffected.
+  // Restore the account session (from the saved session, so it works offline).
   const initializeAuth = useAuthStore((state) => state.initialize);
   const signedIn = useAuthStore((state) => state.status === 'signedIn');
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const authSettled = useAuthStore((state) => state.status !== 'initializing');
   useEffect(() => {
     void initializeAuth();
   }, [initializeAuth]);
 
+  // Every account (and the guest) has its own local database. Data is shown only
+  // once we know whose it is; a slow session check falls back to the guest's.
+  const [authTimedOut, setAuthTimedOut] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setAuthTimedOut(true), 5000);
+    return () => clearTimeout(timer);
+  }, []);
+  const wanted: Partition | null = authSettled ? partitionFor(userId) : authTimedOut ? 'guest' : null;
+  const active = useSyncExternalStore(onPartitionChange, activePartition);
+  useEffect(() => {
+    if (!wanted || wanted === activePartition()) return;
+    resetAccountScopedStores();
+    setActiveAccount(partitionUserId(wanted));
+  }, [wanted]);
+  // Screens render only once the active database is the wanted one.
+  const partition = wanted && active === wanted ? wanted : null;
+
+  // Open + migrate the partition's database while the splash screen is up.
+  // Screens load their data through the stores, which surface failures with a retry.
+  useEffect(() => {
+    if (!partition) return;
+    getDatabase()
+      .catch(() => undefined)
+      .finally(() => setDatabaseSettled(true));
+  }, [partition]);
+
   const fontsReady = fontsLoaded || Boolean(fontError);
-  const ready = fontsReady && databaseSettled;
+  const ready = fontsReady && databaseSettled && partition !== null;
 
   useEffect(() => {
     if (ready) SplashScreen.hideAsync().catch(() => undefined);
   }, [ready]);
 
   // Fall back to system fonts rather than blocking if font loading fails.
-  if (!fontsReady) return null;
+  if (!fontsReady || !partition) return null;
 
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <ThemeProvider value={navigationTheme}>
           <StatusBar style="light" />
+          {/* Keyed by account: switching remounts every screen and watcher, so nothing of the previous account survives. */}
           <Stack
+            key={partition}
             screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: colors.background },
@@ -128,10 +151,10 @@ export default function RootLayout() {
               <Stack.Screen name="account/index" />
             </Stack.Protected>
           </Stack>
-          <ArrivalWatcher />
-          <PhotoUploadWatcher />
-          <SharedTripsWatcher />
-          <SyncWatcher />
+          <ArrivalWatcher key={`arrival-${partition}`} />
+          <PhotoUploadWatcher key={`photos-${partition}`} />
+          <SharedTripsWatcher key={`shared-${partition}`} />
+          <SyncWatcher key={`sync-${partition}`} />
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

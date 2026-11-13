@@ -1,3 +1,4 @@
+import { accountScoped } from '@/lib/accountScopedStores';
 import { create } from 'zustand';
 
 import { getRepositories } from '@/db/repositories';
@@ -32,7 +33,7 @@ interface ExpenseState {
   removeCategory: (tripId: string, id: string) => Promise<void>;
 }
 
-export const useExpenseStore = create<ExpenseState>()((set, get) => {
+export const useExpenseStore = accountScoped(create<ExpenseState>()((set, get) => {
   const put = (tripId: string, patch: Partial<TripLedger>) =>
     set((s) => ({ byTrip: { ...s.byTrip, [tripId]: { ...(s.byTrip[tripId] ?? EMPTY), ...patch } } }));
 
@@ -143,7 +144,7 @@ export const useExpenseStore = create<ExpenseState>()((set, get) => {
 
     removeCategory: (tripId, id) => write(tripId, (repo) => repo.removeCategory(id)),
   };
-});
+}));
 
 export function useTripLedger(tripId: string | undefined): TripLedger {
   return useExpenseStore((s) => (tripId ? s.byTrip[tripId] : undefined) ?? EMPTY);

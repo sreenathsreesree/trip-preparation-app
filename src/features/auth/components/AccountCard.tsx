@@ -75,7 +75,7 @@ export function AccountCard() {
           <AppText variant="body" tone="textSecondary">
             {offline
               ? 'Signed in. You are offline; your account reconnects automatically when you are back online.'
-              : 'Signed in with Google. Cloud backup is not switched on yet, so your trips stay on this device for now.'}
+              : 'Signed in with Google. You are seeing this account’s own trips; backup status is shown below.'}
           </AppText>
           <Button
             label="Account"
@@ -94,8 +94,8 @@ export function AccountCard() {
             <View style={styles.flex}>
               <AppText variant="h3">{status === 'initializing' ? 'Checking your account…' : 'Using Trip Prep as a guest'}</AppText>
               <AppText variant="body" tone="textSecondary">
-                Everything you plan is stored on this device and works offline. Signing in does not upload or change
-                your trips.
+                Everything you plan as a guest is stored on this device and works offline. Signing in opens your
+                account’s own trips; guest trips stay separate and are never uploaded.
               </AppText>
             </View>
           </View>

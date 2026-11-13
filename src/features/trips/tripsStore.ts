@@ -1,3 +1,4 @@
+import { accountScoped } from '@/lib/accountScopedStores';
 import { create } from 'zustand';
 
 import { getRepositories } from '@/db/repositories';
@@ -41,7 +42,7 @@ function sortTrips(trips: TripSummary[]): TripSummary[] {
   );
 }
 
-export const useTripsStore = create<TripsState>()((set, get) => {
+export const useTripsStore = accountScoped(create<TripsState>()((set, get) => {
   const upsert = (trip: TripSummary) =>
     set((state) => ({
       trips: sortTrips([...state.trips.filter((existing) => existing.id !== trip.id), trip]),
@@ -115,7 +116,7 @@ export const useTripsStore = create<TripsState>()((set, get) => {
       }));
     },
   };
-});
+}));
 
 export const selectTripById = (id: string | undefined) => (state: TripsState) =>
   id ? state.trips.find((trip) => trip.id === id) : undefined;

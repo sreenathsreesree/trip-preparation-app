@@ -1,3 +1,4 @@
+import { accountScoped } from '@/lib/accountScopedStores';
 import { create } from 'zustand';
 
 import { getRepositories } from '@/db/repositories';
@@ -44,7 +45,7 @@ interface InventoryState {
   deleteCategory: (id: string) => Promise<void>;
 }
 
-export const useInventoryStore = create<InventoryState>()((set, get) => {
+export const useInventoryStore = accountScoped(create<InventoryState>()((set, get) => {
   /** Item usage (reserved/packed) depends on trips, so reload the whole list after writes. */
   async function refresh() {
     const { inventory } = await getRepositories();
@@ -155,7 +156,7 @@ export const useInventoryStore = create<InventoryState>()((set, get) => {
       await refresh();
     },
   };
-});
+}));
 
 /** Category name lookup (categories and subcategories). */
 export function categoryNameMap(categories: readonly InventoryCategory[]): Map<string, string> {

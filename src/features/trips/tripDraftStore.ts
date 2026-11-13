@@ -1,3 +1,4 @@
+import { accountScoped } from '@/lib/accountScopedStores';
 import { create } from 'zustand';
 
 import type { ISODate } from '@/lib/dates';
@@ -84,7 +85,7 @@ interface TripDraftState {
   goTo: (step: number) => void;
 }
 
-export const useTripDraftStore = create<TripDraftState>()((set) => {
+export const useTripDraftStore = accountScoped(create<TripDraftState>()((set) => {
   const patchDraft = (fn: (draft: TripDraft) => Partial<TripDraft>) =>
     set((state) => ({ draft: { ...state.draft, ...fn(state.draft) } }));
 
@@ -182,4 +183,4 @@ export const useTripDraftStore = create<TripDraftState>()((set) => {
       set({ step: Math.max(0, Math.min(CREATE_TRIP_STEPS.length - 1, step)) });
     },
   };
-});
+}));

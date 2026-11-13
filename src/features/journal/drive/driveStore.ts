@@ -1,3 +1,4 @@
+import { accountScoped } from '@/lib/accountScopedStores';
 import { create } from 'zustand';
 
 import { useAuthStore } from '@/features/auth/authStore';
@@ -46,7 +47,7 @@ function client() {
   return createDriveClient(() => driveToken(user?.id ?? null));
 }
 
-export const useDriveStore = create<DriveState>()((set, get) => {
+export const useDriveStore = accountScoped(create<DriveState>()((set, get) => {
   /** Runs a Drive task; a Drive auth error flips the card to "Reconnect". */
   async function task(kind: NonNullable<DriveState['busy']>, fn: () => Promise<void>) {
     if (get().busy) return;
@@ -120,7 +121,7 @@ export const useDriveStore = create<DriveState>()((set, get) => {
 
     clearMessages: () => set({ error: null }),
   };
-});
+}));
 
 /** What the Drive card should show. */
 export function useDriveStatus(): DriveStatus {

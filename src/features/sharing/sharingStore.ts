@@ -1,3 +1,4 @@
+import { accountScoped } from '@/lib/accountScopedStores';
 import * as Crypto from 'expo-crypto';
 import * as Linking from 'expo-linking';
 import { create } from 'zustand';
@@ -68,7 +69,7 @@ const tokens = {
   sha256Hex: (text: string) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, text),
 };
 
-export const useSharingStore = create<SharingState>()((set, get) => {
+export const useSharingStore = accountScoped(create<SharingState>()((set, get) => {
   const put = (tripId: string, patch: Partial<TripSharing>) =>
     set((s) => ({ byTrip: { ...s.byTrip, [tripId]: { ...(s.byTrip[tripId] ?? EMPTY), ...patch } } }));
 
@@ -199,7 +200,7 @@ export const useSharingStore = create<SharingState>()((set, get) => {
       }
     },
   };
-});
+}));
 
 export function useTripSharing(tripId: string | undefined): TripSharing {
   return useSharingStore((s) => (tripId ? s.byTrip[tripId] : undefined) ?? EMPTY);

@@ -14,15 +14,16 @@ import { createTemplateRepository } from '@/features/preparation/templateReposit
 import { createTripRepository } from '@/features/trips/tripRepository';
 import { createId } from '@/lib/id';
 
-import { getDatabase } from './client';
+import { getDatabase, getPartitionDatabase } from './client';
+import type { Partition } from './partitions';
 import { getSchemaVersion } from './migrate';
 
 /**
  * Resolves repositories bound to the shared app database. Stores depend on
  * this module; screens never touch SQL directly.
  */
-export async function getRepositories() {
-  const db = await getDatabase();
+export async function getRepositories(partition?: Partition) {
+  const db = partition ? await getPartitionDatabase(partition) : await getDatabase();
   return {
     trips: createTripRepository(db, { createId }),
     checklists: createChecklistRepository(db, { createId }),
