@@ -11,6 +11,7 @@ import { sharedTrips } from './0009_shared_trips';
 import { tripExpenses } from './0010_trip_expenses';
 import { cloudSync } from './0011_cloud_sync';
 import { travelExperience } from './0012_travel_experience';
+import { groupWorkspace } from './0013_group_workspace';
 
 /**
  * Ordered list of schema migrations.
@@ -32,4 +33,5 @@ export const migrations: readonly Migration[] = [
   tripExpenses,
   cloudSync,
   travelExperience,
+  groupWorkspace,
 ];

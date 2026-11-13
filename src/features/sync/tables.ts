@@ -144,6 +144,10 @@ export const SYNC_TABLES: readonly SyncTable[] = [
 
 /** Local tables that never sync, with the reason. */
 export const LOCAL_ONLY_TABLES: Readonly<Record<string, string>> = {
+  // Group Trip / My Trip (local schema v13).
+  group_items: 'Cache of the shared trip’s group workspace; synced through shared trips (shared_trip_items), not the personal backup.',
+  my_documents: 'Private trip documents on this device; personal backup needs a later cloud migration.',
+  route_undo: 'The route order before the last optimisation (device convenience).',
   // Travel experience (local schema v12): caches and drafts, rebuilt or re-chosen on another device.
   remote_cache: 'Public provider responses (OpenStreetMap, Open-Meteo), re-fetched on each device.',
   auto_covers: 'Automatically chosen cover images (Wikimedia Commons), re-chosen on each device; own covers sync as before.',
