@@ -146,13 +146,22 @@ function providerFixture(url, body) {
     };
   }
   if (u.host === 'upload.wikimedia.org') return { png: true };
+  if (u.host === 'router.project-osrm.org') {
+    const n = u.pathname.split('/driving/')[1].split(';').length;
+    if (u.pathname.startsWith('/trip/')) {
+      // Keeps first and last, reverses the middle (a different, "shorter" order).
+      const idx = Array.from({ length: n }, (_, i) => (i === 0 || i === n - 1 ? i : n - 1 - i));
+      return { json: { code: 'Ok', waypoints: idx.map((w) => ({ waypoint_index: w })) } };
+    }
+    return { json: { code: 'Ok', routes: [{ legs: Array.from({ length: n - 1 }, (_, i) => ({ distance: 12000 + i * 1000, duration: 1500 + i * 60 })) }] } };
+  }
   return null;
 }
 
 export async function launch() {
   const context = await chromium.launchPersistentContext(profile, { viewport });
   session.context = context;
-  await context.route(/^https:\/\/(photon\.komoot\.io|overpass-api\.de|api\.open-meteo\.com|en\.wikipedia\.org|commons\.wikimedia\.org|upload\.wikimedia\.org)\//, async (route) => {
+  await context.route(/^https:\/\/(photon\.komoot\.io|overpass-api\.de|api\.open-meteo\.com|en\.wikipedia\.org|commons\.wikimedia\.org|upload\.wikimedia\.org|router\.project-osrm\.org)\//, async (route) => {
     const request = route.request();
     providers.calls.push(new URL(request.url()).host);
     if (providers.offline) return route.abort('internetdisconnected');

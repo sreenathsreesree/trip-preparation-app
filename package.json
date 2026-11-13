@@ -81,7 +81,8 @@
     "build:android:dev": "npx eas-cli@latest build --platform android --profile development",
     "build:android:preview": "npx eas-cli@latest build --platform android --profile preview",
     "e2e:gallery": "node e2e/web-gallery.mjs",
-    "e2e:travel": "node e2e/web-travel.mjs"
+    "e2e:travel": "node e2e/web-travel.mjs",
+    "e2e:journey": "node e2e/web-journey.mjs"
   },
   "private": true,
   "jest": {

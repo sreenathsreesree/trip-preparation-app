@@ -11,6 +11,9 @@ import { createPhotoUploadRepository } from '../../features/journal/drive/photoU
 import { createGalleryRepository } from '../../features/journal/galleryRepository';
 import { createJournalRepository } from '../../features/journal/journalRepository';
 import { createCoverRepository } from '../../features/covers/coverRepository';
+import { createGroupRepository } from '../../features/group/groupRepository';
+import { createMyDocumentsRepository } from '../../features/group/myDocumentsRepository';
+import { createRouteUndoRepository } from '../../features/route/routeUndoRepository';
 import { createPdfImportRepository } from '../../features/pdfImport/pdfImportRepository';
 import { createDayPlanRepository } from '../../features/planner/dayPlanRepository';
 import { createRemoteCacheRepository } from '../../features/remote/remoteCacheRepository';
@@ -219,6 +222,30 @@ describe('account partitions', () => {
     const again = await client.getDatabase();
     expect((await createPdfImportRepository(again, deps()).get(rec.id))?.fileName).toBe('a-private-itinerary.pdf');
     expect((await createCoverRepository(again).get('trip', tripId))?.localUri).toBe('file:///a/cover.jpg');
+  });
+
+  it('Group Trip cache, queued group changes, private documents and route undo stay with their account', async () => {
+    await legacyPhone('A’s trip', A);
+    const client = await freshClient();
+    const a = await client.getPartitionDatabase(partitionFor(A));
+    const tripId = (await tripsIn(a).list())[0]!.id;
+    await createGroupRepository(a, deps()).save(tripId, { id: 'n1', kind: 'note', data: { title: 'A’s group note' } }, { id: A });
+    await createMyDocumentsRepository(a, deps()).save(tripId, { title: 'A’s passport', type: 'passport', date: null, reference: 'P1', link: '', expiry: null, placeName: '', notes: '' });
+    await createRouteUndoRepository(a).save(tripId, ['x'], '2026-11-13T00:00:00Z');
+
+    client.setActiveAccount(null);
+    client.setActiveAccount(B);
+    const b = await client.getDatabase();
+    for (const table of ['group_items', 'my_documents', 'route_undo']) {
+      expect([table, (await b.getFirstAsync<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`, []))!.n]).toEqual([table, 0]);
+    }
+    // B's sync can never pick up A's queued group change: it is not in B's database.
+    expect(await createGroupRepository(b, deps()).pending(tripId)).toEqual([]);
+
+    client.setActiveAccount(A);
+    const again = await client.getDatabase();
+    expect((await createGroupRepository(again, deps()).pending(tripId)).map((i) => i.data.title)).toEqual(['A’s group note']);
+    expect((await createMyDocumentsRepository(again, deps()).list(tripId)).map((d) => d.title)).toEqual(['A’s passport']);
   });
 
   it('names one file per account and never reuses the old shared file', () => {
