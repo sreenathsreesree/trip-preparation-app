@@ -70,6 +70,7 @@ interface PackingStoreState {
     entryIds: readonly string[],
   ) => Promise<void>;
   removeLuggage: (tripId: string, id: string) => Promise<void>;
+  removeLuggageMoving: (tripId: string, id: string, moveTo: string | null) => Promise<void>;
   checkConflicts: (tripId: string) => Promise<ReservationConflict[]>;
   confirm: (tripId: string) => Promise<ReservationConflict[]>;
   unconfirm: (tripId: string) => Promise<void>;
@@ -218,6 +219,12 @@ export const usePackingStore = accountScoped(create<PackingStoreState>()((set, g
     async removeLuggage(tripId, id) {
       const { packing } = await getRepositories();
       await packing.removeLuggage(id);
+      await after(tripId);
+    },
+
+    async removeLuggageMoving(tripId, id, moveTo) {
+      const { packing } = await getRepositories();
+      await packing.removeLuggageMoving(id, moveTo);
       await after(tripId);
     },
 

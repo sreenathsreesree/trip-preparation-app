@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Screen } from '@/components/layout/Screen';
 import { goBackOrHome, ScreenHeader } from '@/components/layout/ScreenHeader';
 import {
+  ActionSheet,
   AppText,
   Button,
   EmptyState,
@@ -57,22 +58,35 @@ function Form({ trip, bag }: { trip: TripSummary; bag: Luggage }) {
     }
   }
 
-  async function remove() {
-    const ok = await confirmAction({
-      title: `Delete "${bag.name}"?`,
-      message: 'Everything in it stays on the packing list, just without a bag.',
-      confirmLabel: 'Delete bag',
-      destructive: true,
-    });
-    if (!ok) return;
+  const inBag = packing.entries.filter((e) => e.luggageId === bag.id);
+  const otherBags = packing.luggage.filter((l) => l.id !== bag.id);
+  const [choosingMove, setChoosingMove] = useState(false);
+
+  async function removeMoving(moveTo: string | null) {
+    setChoosingMove(false);
     setSaving(true);
     try {
-      await usePackingStore.getState().removeLuggage(trip.id, bag.id);
+      await usePackingStore.getState().removeLuggageMoving(trip.id, bag.id, moveTo);
       goBackOrHome();
     } catch (err) {
       setError(toErrorMessage(err, 'Could not delete the bag.'));
       setSaving(false);
     }
+  }
+
+  async function remove() {
+    // A bag with things in it: ask where they go first. Nothing is ever dropped.
+    if (inBag.length > 0) {
+      setChoosingMove(true);
+      return;
+    }
+    const ok = await confirmAction({
+      title: `Delete "${bag.name}"?`,
+      message: 'The bag is empty.',
+      confirmLabel: 'Delete bag',
+      destructive: true,
+    });
+    if (ok) await removeMoving(null);
   }
 
   return (
@@ -160,6 +174,17 @@ function Form({ trip, bag }: { trip: TripSummary; bag: Luggage }) {
 
       {error ? <Notice tone="danger" title="Not saved" message={error} /> : null}
       <Button label="Delete bag" icon="trash-can-outline" variant="danger" onPress={() => void remove()} disabled={saving} testID="bag-delete" />
+      <ActionSheet
+        visible={choosingMove}
+        title={`Delete "${bag.name}"?`}
+        subtitle={`It holds ${inBag.length} ${inBag.length === 1 ? 'item' : 'items'}. Where should ${inBag.length === 1 ? 'it' : 'they'} go? Nothing is removed from the packing list.`}
+        actions={[
+          ...otherBags.map((b) => ({ key: b.id, label: `Move to ${b.name}`, icon: 'bag-suitcase-outline' as const, onPress: () => void removeMoving(b.id) })),
+          { key: 'none', label: 'Keep on the list without a bag', icon: 'playlist-check' as const, onPress: () => void removeMoving(null), destructive: true },
+        ]}
+        onClose={() => setChoosingMove(false)}
+        testID="bag-delete-move"
+      />
     </Screen>
   );
 }

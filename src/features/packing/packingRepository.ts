@@ -460,6 +460,11 @@ export interface PackingRepository {
   setLuggageContents(id: string, entryIds: readonly string[]): Promise<void>;
   /** Deletes the bag; its entries stay on the list, unassigned. */
   removeLuggage(id: string): Promise<void>;
+  /**
+   * Moves everything in a bag to another bag of the same trip (or out of any
+   * bag with null), then deletes it — in one transaction, so nothing is lost.
+   */
+  removeLuggageMoving(id: string, moveTo: string | null): Promise<void>;
   /** Dry run: what would block confirmation right now. */
   checkConflicts(tripId: string): Promise<ReservationConflict[]>;
   /** Reserves inventory for the list, or returns the conflicts and changes nothing. */
@@ -644,6 +649,19 @@ export function createPackingRepository(
 
     async removeLuggage(id) {
       await db.runAsync('DELETE FROM trip_luggage WHERE id = ?', [id]);
+    },
+
+    async removeLuggageMoving(id, moveTo) {
+      await db.withTransactionAsync(async () => {
+        const bag = await db.getFirstAsync<{ trip_id: string }>('SELECT trip_id FROM trip_luggage WHERE id = ?', [id]);
+        if (!bag) return;
+        if (moveTo) {
+          const target = await db.getFirstAsync<{ id: string }>('SELECT id FROM trip_luggage WHERE id = ? AND trip_id = ?', [moveTo, bag.trip_id]);
+          if (!target || moveTo === id) throw new PackingError('Choose another bag of this trip.');
+        }
+        await db.runAsync('UPDATE packing_entries SET luggage_id = ?, updated_at = ? WHERE luggage_id = ?', [moveTo, new Date().toISOString(), id]);
+        await db.runAsync('DELETE FROM trip_luggage WHERE id = ?', [id]);
+      });
     },
 
     checkConflicts: (tripId) => tripConflicts(db, tripId),
