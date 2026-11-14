@@ -9,6 +9,7 @@ import { routeIndexForUpcoming } from '../companion';
 import { siblingMap } from '../dragDrop';
 import { ancestorIds, buildTree, routeNodes, visibleRows, type PlanNode, type TripPlan } from '../model';
 import { usePlannerStore } from '../plannerStore';
+import { DestinationThumb } from '../../covers/DestinationThumb';
 import { legText, RouteOverview, useRouteLegs } from '../../route/RouteOverview';
 import { DraggableList, type DraggableItem, type ScrollBinding } from './DraggableList';
 
@@ -22,10 +23,12 @@ const trail = (plan: TripPlan, node: PlanNode) =>
 type StopRow = DraggableItem & { node: PlanNode; number: number };
 
 /**
- * The route: an explicit, ordered list of stops chosen from the plan, reordered
- * by dragging. Stops renumber after every move and the order is saved on the
- * device. It is never derived from — and never changes — how places are nested
- * or the Navigation list.
+ * The route: the order in which the traveller visits the main destinations.
+ * Only main destinations are listed and dragged here; places inside a
+ * destination stay with it (shown on its card), even if an older version put
+ * them on the route — nothing is removed. Road distance and driving time are
+ * shown between consecutive stops, never estimated when unavailable. The
+ * order is saved on the device and is separate from how places are nested.
  */
 export function RouteTab({
   tripId,
@@ -44,7 +47,13 @@ export function RouteTab({
   const [undo, setUndo] = useState<{ id: string; name: string } | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
   const store = usePlannerStore.getState;
-  const stops = useMemo(() => routeNodes(plan), [plan]);
+  const allStops = useMemo(() => routeNodes(plan), [plan]);
+  // Main destinations only; places inside one are shown on their destination's card.
+  const stops = useMemo(() => allStops.filter((n) => n.parentId === null), [allStops]);
+  const insideStops = useMemo(() => allStops.filter((n) => n.parentId !== null), [allStops]);
+  const insideOf = (mainId: string) => insideStops.filter((c) => ancestorIds(plan.nodes, c.id).includes(mainId));
+  const strays = insideStops.filter((c) => !stops.some((m) => ancestorIds(plan.nodes, c.id).includes(m.id)));
+  const childCount = (id: string) => plan.nodes.filter((n) => n.parentId === id).length;
   const numbered = useMemo(() => stops.map((node, index) => ({ node, number: index + 1 })), [stops]);
   // Upcoming stops are dragged into order; visited ones wait in "Completed stops" and keep their places.
   const rows = useMemo<StopRow[]>(
@@ -67,9 +76,11 @@ export function RouteTab({
   const upcoming = useMemo(() => rows.map((r) => r.node), [rows]);
   const legs = useRouteLegs(upcoming);
   const legFor = (index: number) => (legs.status === 'ready' ? legs.result.legs[index] : undefined);
-  const order = stops.map((n) => n.id);
+  // The full saved order (including any places inside destinations, which keep their positions).
+  const order = allStops.map((n) => n.id);
+  const hidden = useMemo(() => new Set([...visited, ...insideStops.map((n) => n.id)]), [visited, insideStops]);
   const moveTo = (id: string, upcomingIndex: number) =>
-    run(() => store().moveRouteStop(tripId, id, routeIndexForUpcoming(order, visited, id, upcomingIndex)));
+    run(() => store().moveRouteStop(tripId, id, routeIndexForUpcoming(order, hidden, id, upcomingIndex)));
   const setVisited = (node: PlanNode, value: boolean) =>
     run(async () => {
       await store().setVisited(tripId, node.id, value);
@@ -77,9 +88,7 @@ export function RouteTab({
     });
   const siblings = useMemo(() => siblingMap(rows), [rows]);
   const onRoute = new Set(stops.map((n) => n.id));
-  const candidates = visibleRows(buildTree(plan.nodes), new Set(plan.nodes.map((n) => n.id))).filter(
-    (row) => !onRoute.has(row.node.id),
-  );
+  const candidates = visibleRows(buildTree(plan.nodes), new Set<string>()).filter((row) => row.depth === 0 && !onRoute.has(row.node.id));
 
   function run(fn: () => Promise<unknown>) {
     setError(null);
@@ -91,10 +100,9 @@ export function RouteTab({
   return (
     <View style={styles.container} testID="plan-route">
       <AppText variant="caption" tone="textMuted">
-        Plan the journey: the travel order, road distances and driving times between stops. Drag stops to change the
-        order — it is separate from how places are organised.
+        The order you’ll visit your main destinations. Drag to reorder — places inside a destination travel with it.
       </AppText>
-      {stops.length > 0 ? <RouteOverview tripId={tripId} order={order} upcoming={upcoming} visited={visited} legs={legs} /> : null}
+      {stops.length > 0 ? <RouteOverview tripId={tripId} order={order} upcoming={upcoming} visited={hidden} legs={legs} /> : null}
       {error ? <Notice tone="danger" title="Not changed" message={error} /> : null}
       {undo ? (
         <Notice
@@ -117,7 +125,7 @@ export function RouteTab({
         <EmptyState
           icon="map-marker-path"
           title="No route stops"
-          message={plan.nodes.length === 0 ? 'Add destinations to your plan first.' : 'Add stops from your plan below.'}
+          message={plan.nodes.length === 0 ? 'Add destinations to your plan first.' : 'Add your main destinations to the route below.'}
           testID="route-empty"
         />
       ) : (
@@ -139,33 +147,33 @@ export function RouteTab({
           testID="route-stops"
           renderItem={(row, context) => {
             const done = visited.has(row.node.id);
+            const i = rows.findIndex((r) => r.id === row.id);
+            const next = rows[i + 1];
+            const leg = next ? legText(legFor(i), next.node.name) : null;
+            const inside = insideOf(row.node.id);
+            const region = [row.node.place?.district, row.node.place?.state].filter(Boolean).join(', ');
+            const children = childCount(row.node.id);
             return (
+              <View style={styles.stopWrap}>
               <View style={[styles.stop, done && styles.stopDone]} testID={`route-stop-${row.node.name}`}>
                 <View style={[styles.number, done && styles.numberDone]}>
-                  <AppText variant="captionStrong" tone={done ? 'textOnAccent' : 'textOnAccent'} testID={`route-number-${row.node.name}`}>
+                  <AppText variant="captionStrong" tone="textOnAccent" testID={`route-number-${row.node.name}`}>
                     {row.number}
                   </AppText>
                 </View>
+                <DestinationThumb tripId={tripId} node={row.node} size={48} />
                 <View style={styles.flex}>
                   <AppText variant="bodyStrong" tone={done ? 'textSecondary' : 'textPrimary'} numberOfLines={1}>
                     {row.node.name}
                   </AppText>
-                  {row.node.parentId || done || !row.node.place?.location ? (
+                  <AppText variant="caption" tone={row.node.place?.location ? 'textMuted' : 'warning'} numberOfLines={1}>
+                    {[row.node.place?.location ? region : 'No location — set one to measure roads', children ? `${children} ${children === 1 ? 'place' : 'places'} inside` : ''].filter(Boolean).join(' · ') || ' '}
+                  </AppText>
+                  {inside.length ? (
                     <AppText variant="caption" tone="textMuted" numberOfLines={1}>
-                      {[done ? 'Visited' : '', row.node.parentId ? `In ${trail(plan, row.node)}` : '', row.node.place?.location ? '' : 'No location'].filter(Boolean).join(' · ')}
+                      Also visiting: {inside.map((c) => c.name).join(', ')}
                     </AppText>
                   ) : null}
-                  {(() => {
-                    const i = rows.findIndex((r) => r.id === row.id);
-                    const next = rows[i + 1];
-                    if (!next) return null;
-                    const t = legText(legFor(i), next.node.name);
-                    return (
-                      <AppText variant="caption" tone={t.tone} numberOfLines={2} testID={`route-leg-${row.node.name}`}>
-                        {t.text}
-                      </AppText>
-                    );
-                  })()}
                 </View>
                 <IconButton
                   icon="check-circle-outline"
@@ -186,10 +194,26 @@ export function RouteTab({
                 />
                 {context.handle}
               </View>
+              {leg ? (
+                <View style={styles.leg}>
+                  <View style={styles.legLine} />
+                  <Icon name={leg.tone === 'textSecondary' ? 'car-outline' : 'help-circle-outline'} size={16} tone={leg.tone === 'textSecondary' ? 'accent' : leg.tone} />
+                  <AppText variant="caption" tone={leg.tone} numberOfLines={2} style={styles.flex} testID={`route-leg-${row.node.name}`}>
+                    {leg.text}
+                  </AppText>
+                </View>
+              ) : null}
+              </View>
             );
           }}
         />
       )}
+
+      {strays.length > 0 ? (
+        <AppText variant="caption" tone="textMuted" testID="route-inside-strays">
+          Also on your route from inside other destinations: {strays.map((c) => `${c.name} (in ${trail(plan, c)})`).join(', ')}. Add their destination to the route to see them in order.
+        </AppText>
+      ) : null}
 
       {completed.length > 0 ? (
         <View style={styles.list} testID="route-completed">
@@ -238,11 +262,12 @@ export function RouteTab({
       {candidates.length > 0 ? (
         <View style={styles.list}>
           <AppText variant="label" tone="textMuted">
-            Add stops from your plan
+            Main destinations not on the route
           </AppText>
           {candidates.map((row) => (
-            <View key={row.node.id} style={[styles.candidate, { marginLeft: Math.min(row.depth, 5) * 16 }]}>
-              <AppText variant={row.depth === 0 ? 'bodyStrong' : 'body'} style={styles.flex} numberOfLines={1}>
+            <View key={row.node.id} style={styles.candidate}>
+              <DestinationThumb tripId={tripId} node={row.node} size={36} />
+              <AppText variant="bodyStrong" style={styles.flex} numberOfLines={1}>
                 {row.node.name}
               </AppText>
               <Button
@@ -268,11 +293,27 @@ const styles = StyleSheet.create({
   list: {
     gap: spacing.sm,
   },
+  stopWrap: {
+    gap: spacing.xs,
+  },
+  leg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingLeft: spacing.md + 6,
+  },
+  legLine: {
+    width: 2,
+    height: 22,
+    borderRadius: 1,
+    backgroundColor: colors.accentBorder,
+  },
   stop: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    minHeight: 56,
+    minHeight: 64,
+    paddingVertical: spacing.sm,
     paddingLeft: spacing.md,
     borderRadius: radii.md,
     borderWidth: 1,

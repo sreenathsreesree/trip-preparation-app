@@ -44,3 +44,19 @@ export function restorableOrder(saved: readonly string[], current: readonly stri
   const kept = saved.filter((id) => now.has(id));
   return [...kept, ...current.filter((id) => !kept.includes(id))];
 }
+
+/**
+ * Applies a new order to some stops only (the upcoming main destinations):
+ * they take each other's places in the route, and every other stop (visited
+ * ones, places inside a destination) keeps its position. Null when nothing changes.
+ */
+export function reorderSubset(current: readonly string[], subsetOrder: readonly string[]): string[] | null {
+  const subset = new Set(subsetOrder);
+  const slots = current.map((id, i) => (subset.has(id) ? i : -1)).filter((i) => i >= 0);
+  if (slots.length !== subsetOrder.length) return null;
+  const next = [...current];
+  slots.forEach((slot, k) => {
+    next[slot] = subsetOrder[k] as string;
+  });
+  return next.every((id, i) => id === current[i]) ? null : next;
+}

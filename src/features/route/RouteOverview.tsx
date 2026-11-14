@@ -11,7 +11,7 @@ import { canTargetMapsApp } from '../places/openMaps';
 import type { PlanNode } from '../planner/model';
 import { usePlannerStore } from '../planner/plannerStore';
 import { timeAgo } from '../remote/timeAgo';
-import { optimisedOrder, restorableOrder } from './routeUndoRepository';
+import { reorderSubset, restorableOrder } from './routeUndoRepository';
 import { formatDuration, formatKm, osrmBase, ROUTING_ATTRIBUTION, routeLegs, suggestOrder, type RouteLeg, type RouteResult } from './routing';
 
 const BASE = osrmBase(process.env.EXPO_PUBLIC_ROUTING_URL);
@@ -85,7 +85,7 @@ export function RouteOverview({ tripId, order, upcoming, visited, legs }: { trip
         upcoming.map((s) => ({ id: s.id, name: s.name, location: s.place?.location ?? null })),
         { base: BASE },
       );
-      const next = suggested ? optimisedOrder(order, visited, suggested) : null;
+      const next = suggested ? reorderSubset(order, suggested) : null;
       if (!suggested) setMessage({ tone: 'info', text: missing.length ? 'Every upcoming stop needs a location to suggest an order.' : 'A shorter order could not be worked out right now (needs internet and 4–25 stops).' });
       else if (!next) setMessage({ tone: 'success', text: 'Your order is already the shortest the router found. Nothing changed.' });
       else setProposal({ order: next, names: next.filter((id) => !visited.has(id)).map((id) => upcoming.find((s) => s.id === id)?.name ?? '') });
@@ -135,14 +135,20 @@ export function RouteOverview({ tripId, order, upcoming, visited, legs }: { trip
             Measuring road distances…
           </AppText>
         ) : result && result.covered > 0 ? (
-          <AppText variant="h3" testID="route-total">
-            {formatKm(result.totalMeters)} · about {formatDuration(result.totalSeconds)} driving
-          </AppText>
+          <View style={styles.stats}>
+            <Stat label="Road distance" value={formatKm(result.totalMeters)} />
+            <Stat label="Driving time" value={`about ${formatDuration(result.totalSeconds)}`} />
+            <Stat label="Stops" value={String(upcoming.length)} />
+            <AppText variant="caption" tone="textMuted" style={styles.hidden} testID="route-total">
+              {formatKm(result.totalMeters)} · about {formatDuration(result.totalSeconds)} driving
+            </AppText>
+          </View>
         ) : (
           <AppText variant="caption" tone="warning" testID="route-total-unavailable">
             Road distances unavailable{missing.length ? ' — some stops have no location' : ' right now (offline or the routing service is busy)'}.
           </AppText>
         )}
+        {result && totalLegs > 0 ? <SourceTag from={result.from} age={legs.status === 'ready' ? legs.age : null} covered={result.covered} total={totalLegs} /> : null}
         {result && totalLegs > 0 ? (
           <AppText variant="caption" tone="textMuted" testID="route-coverage">
             {result.covered} of {totalLegs} legs measured by road
@@ -181,8 +187,47 @@ export function RouteOverview({ tripId, order, upcoming, visited, legs }: { trip
   );
 }
 
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.stat}>
+      <AppText variant="h3">{value}</AppText>
+      <AppText variant="caption" tone="textMuted">
+        {label}
+      </AppText>
+    </View>
+  );
+}
+
+/** Where the numbers come from: measured now, saved earlier (with age), or partly unavailable. Never estimated. */
+export function SourceTag({ from, age, covered, total }: { from: RouteResult['from']; age: string | null; covered: number; total: number }) {
+  const partial = covered < total;
+  const label =
+    covered === 0 ? 'Unavailable' : from === 'live' ? 'Live' : from === 'stale_cache' ? `Saved ${age ?? ''} · may be out of date` : from === 'none' ? 'Unavailable' : `Saved ${age ?? ''}`;
+  const tone = covered === 0 ? colors.warning : from === 'live' ? colors.accent : colors.info;
+  return (
+    <View style={styles.tagRow} testID="route-source">
+      <View style={[styles.tag, { borderColor: tone }]}>
+        <Icon name={covered === 0 ? 'cloud-off-outline' : from === 'live' ? 'access-point' : 'content-save-outline'} size={14} color={tone} />
+        <AppText variant="captionStrong" style={{ color: tone }}>
+          {label.trim()}
+        </AppText>
+      </View>
+      {partial && covered > 0 ? (
+        <AppText variant="caption" tone="warning">
+          {total - covered} {total - covered === 1 ? 'leg' : 'legs'} not measured — totals cover the rest only
+        </AppText>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   group: { gap: spacing.sm },
+  stats: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.lg },
+  stat: { gap: spacing.xxs },
+  hidden: { width: '100%' },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
+  tag: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs, paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radii.pill, borderWidth: 1 },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   flex: { flex: 1, minWidth: 0 },
   proposal: { gap: spacing.xs, padding: spacing.sm, borderRadius: radii.md, borderWidth: 1, borderColor: colors.accentBorder },
