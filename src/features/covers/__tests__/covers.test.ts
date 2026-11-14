@@ -45,7 +45,7 @@ describe('choosing a representative image (Wikipedia / Wikimedia Commons)', () =
   });
 
   it('keeps licence and author; refuses non-free images', () => {
-    expect(parseImageInfo(info('A.jpg'), 'Munnar')).toEqual({ imageUrl: 'https://upload.wikimedia.org/thumb/A.jpg', title: 'Munnar', credit: 'Jane Doe', license: 'CC BY-SA 4.0', sourceUrl: 'https://commons.wikimedia.org/wiki/File:A.jpg' });
+    expect(parseImageInfo(info('A.jpg'), 'Munnar')).toEqual({ imageUrl: 'https://upload.wikimedia.org/thumb/A.jpg', thumbUrl: 'https://upload.wikimedia.org/thumb/A.jpg', title: 'Munnar', credit: 'Jane Doe', license: 'CC BY-SA 4.0', sourceUrl: 'https://commons.wikimedia.org/wiki/File:A.jpg' });
     expect(parseImageInfo(info('A.jpg', 'Non-free media'), 'Munnar')).toBeNull();
   });
 
@@ -53,7 +53,10 @@ describe('choosing a representative image (Wikipedia / Wikimedia Commons)', () =
     const wiki = fakeWiki({ nonFree: ['Munnar_tea_hills.jpg'] });
     expect((await findCover({ name: 'Munnar', context: '', location: MUNNAR }, { fetchImpl: wiki.fetchImpl }))?.title).toBe('Munnar Tea Museum');
     expect(wiki.calls.every((u) => u.startsWith(WIKIPEDIA_API) || u.startsWith(COMMONS_API))).toBe(true);
-    expect(await findCover({ name: 'Nowhere Falls', context: '', location: MUNNAR }, { fetchImpl: fakeWiki().fetchImpl })).toBeNull();
+    expect(await findCover({ name: 'Nowhere Falls', context: '', location: null }, { fetchImpl: fakeWiki().fetchImpl })).toBeNull();
+    // With coordinates, an article about a place within a few km stands in.
+    expect((await findCover({ name: 'Nowhere Falls', context: '', location: MUNNAR }, { fetchImpl: fakeWiki().fetchImpl }))?.title).toBe('Munnar');
+    expect(await findCover({ name: 'Nowhere Falls', context: '', location: { latitude: 30, longitude: 30 } }, { fetchImpl: fakeWiki().fetchImpl })).toBeNull();
   });
 });
 
@@ -89,10 +92,10 @@ describe('automatic covers', () => {
 
   it('no suitable image: placeholder state, retried only after a week', async () => {
     const { deps, wiki } = await setup();
-    const none = await ensureAutoCover({ type: 'node', id: 'n2' }, { ...q, name: 'Nowhere Falls' }, deps);
+    const none = await ensureAutoCover({ type: 'node', id: 'n2' }, { ...q, name: 'Nowhere Falls', location: null }, deps);
     expect(none).toMatchObject({ status: 'none', imageUrl: null });
     const calls = wiki.calls.length;
-    await ensureAutoCover({ type: 'node', id: 'n2' }, { ...q, name: 'Nowhere Falls' }, { ...deps, now: new Date(deps.now.getTime() + 1000) });
+    await ensureAutoCover({ type: 'node', id: 'n2' }, { ...q, name: 'Nowhere Falls', location: null }, { ...deps, now: new Date(deps.now.getTime() + 1000) });
     expect(wiki.calls).toHaveLength(calls);
     await ensureAutoCover({ type: 'node', id: 'n2' }, { ...q, name: 'Nowhere Falls' }, { ...deps, now: new Date(deps.now.getTime() + NONE_RETRY_MS + 1) });
     expect(wiki.calls.length).toBeGreaterThan(calls);

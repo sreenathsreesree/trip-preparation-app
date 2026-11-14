@@ -144,6 +144,13 @@ export const SYNC_TABLES: readonly SyncTable[] = [
 
 /** Local tables that never sync, with the reason. */
 export const LOCAL_ONLY_TABLES: Readonly<Record<string, string>> = {
+  // Memories gallery and Clothing organizer (local schema v14). Personal; never part of a shared trip.
+  auto_cover_thumbs: 'Small variants of automatic covers (local v14), re-chosen on each device.',
+  memory_albums: 'The user’s Memories albums (local v14); the photos themselves sync and upload to Drive as before.',
+  memory_album_photos: 'Which photos are in which album (local v14); removing one never deletes the photo.',
+  memory_photo_notes: 'Captions and favourite marks on Memories photos (local v14).',
+  clothing_categories: 'Trip clothing categories (local v14); the clothing items are packing entries and sync as before.',
+  clothing_items: 'Which packing entries are clothing, and their category (local v14).',
   // Group Trip / My Trip (local schema v13).
   group_items: 'Cache of the shared trip’s group workspace; synced through shared trips (shared_trip_items), not the personal backup.',
   my_documents: 'Private trip documents on this device; personal backup needs a later cloud migration.',

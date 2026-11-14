@@ -30,6 +30,7 @@ describe('migrate', () => {
         'cloud_sync',
         'travel_experience',
         'group_workspace',
+        'memories_clothing_covers',
       ],
     });
     expect(await getSchemaVersion(db)).toBe(migrations.length);
@@ -39,11 +40,14 @@ describe('migrate', () => {
       [],
     );
     expect(tables.map((t) => t.name)).toEqual([
-      'auto_covers',
+      'auto_cover_thumbs',
+        'auto_covers',
       'checklist_sections',
       'checklist_tasks',
       'checklist_templates',
-      'drive_cache',
+      'clothing_categories',
+        'clothing_items',
+        'drive_cache',
       'drive_files',
       'drive_photo_uploads',
       'expense_budgets',
@@ -60,7 +64,10 @@ describe('migrate', () => {
       'inventory_reservations',
       'journal_entries',
       'journal_photos',
-      'my_documents',
+      'memory_album_photos',
+        'memory_albums',
+        'memory_photo_notes',
+        'my_documents',
       'packing_entries',
       'packing_recommendations',
       'pdf_imports',

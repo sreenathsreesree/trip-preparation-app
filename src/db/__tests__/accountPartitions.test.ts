@@ -204,7 +204,7 @@ describe('account partitions', () => {
     const rec = await imports.create(tripId, 'a-private-itinerary.pdf', 'file:///a/x.pdf');
     await imports.update(rec.id, { status: 'draft', text: 'Day 1 - Munnar' });
     if (node) await createDayPlanRepository(a).set(tripId, node, { dayNumber: 1 });
-    await createCoverRepository(a).save({ subjectType: 'trip', subjectId: tripId, query: 'Munnar', status: 'found', imageUrl: 'https://upload.wikimedia.org/x.jpg', localUri: 'file:///a/cover.jpg', title: 'Munnar', credit: 'c', license: 'CC BY-SA 4.0', sourceUrl: 'https://commons.wikimedia.org/wiki/File:x.jpg', skipped: [], fetchedAt: '2026-11-13T00:00:00Z' });
+    await createCoverRepository(a).save({ subjectType: 'trip', subjectId: tripId, query: 'Munnar', status: 'found', imageUrl: 'https://upload.wikimedia.org/x.jpg', localUri: 'file:///a/cover.jpg', thumbUrl: null, thumbLocalUri: null, title: 'Munnar', credit: 'c', license: 'CC BY-SA 4.0', sourceUrl: 'https://commons.wikimedia.org/wiki/File:x.jpg', skipped: [], fetchedAt: '2026-11-13T00:00:00Z' });
     await createRemoteCacheRepository(a).set('weather:10.09,77.06', 'weather', 'Open-Meteo', { daily: [] }, '2026-11-13T00:00:00Z');
     await createRemoteCacheRepository(a).set('places:OpenStreetMap:waterfalls:10.089,77.060:10', 'places', 'OpenStreetMap', [], '2026-11-13T00:00:00Z');
 

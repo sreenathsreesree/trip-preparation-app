@@ -12,6 +12,9 @@ export const WIKIPEDIA_API = 'https://en.wikipedia.org/w/api.php';
 export const COMMONS_API = 'https://commons.wikimedia.org/w/api.php';
 export const COVER_WIDTH = 1280;
 export const MAX_MATCH_KM = 60;
+export const THUMB_WIDTH = 330;
+/** How close a nearby page or photo must be when its title doesn't name the place. */
+export const NEAR_KM = 3;
 
 export interface CoverCandidate {
   pageTitle: string;
@@ -22,6 +25,8 @@ export interface CoverCandidate {
 
 export interface CoverImage {
   imageUrl: string;
+  /** A small variant (THUMB_WIDTH px) for cards and lists; never the original file. */
+  thumbUrl: string;
   title: string;
   credit: string;
   license: string;
@@ -37,7 +42,7 @@ export interface CoverQuery {
   wikipedia?: string | null;
 }
 
-export function searchUrl(q: CoverQuery): string {
+export function searchUrl(q: CoverQuery, strategy: 'context' | 'name' | 'title' = 'context'): string {
   const params = new URLSearchParams({
     action: 'query',
     format: 'json',
@@ -50,13 +55,54 @@ export function searchUrl(q: CoverQuery): string {
     colimit: '10',
   });
   const exact = q.wikipedia?.startsWith('en:') ? q.wikipedia.slice(3) : null;
+  params.set('redirects', '1');
   if (exact) params.set('titles', exact);
+  else if (strategy === 'title') params.set('titles', q.name);
   else {
     params.set('generator', 'search');
-    params.set('gsrsearch', [q.name, q.context].filter(Boolean).join(' '));
+    params.set('gsrsearch', strategy === 'name' ? q.name : [q.name, q.context].filter(Boolean).join(' '));
     params.set('gsrlimit', '8');
   }
   return `${WIKIPEDIA_API}?${params.toString()}`;
+}
+
+/** Wikipedia articles around a point (with a free lead image). */
+export function geoSearchUrl(location: GeoPoint): string {
+  const params = new URLSearchParams({
+    action: 'query',
+    format: 'json',
+    formatversion: '2',
+    origin: '*',
+    generator: 'geosearch',
+    ggscoord: `${location.latitude.toFixed(5)}|${location.longitude.toFixed(5)}`,
+    ggsradius: '10000',
+    ggslimit: '15',
+    prop: 'pageimages|coordinates|description',
+    piprop: 'name',
+    pilicense: 'free',
+    pilimit: '15',
+    colimit: '15',
+  });
+  return `${WIKIPEDIA_API}?${params.toString()}`;
+}
+
+/** Photos on Wikimedia Commons taken around a point (every Commons file is freely licensed). */
+export function commonsGeoUrl(location: GeoPoint): string {
+  const params = new URLSearchParams({
+    action: 'query',
+    format: 'json',
+    formatversion: '2',
+    origin: '*',
+    generator: 'geosearch',
+    ggsnamespace: '6',
+    ggscoord: `${location.latitude.toFixed(5)}|${location.longitude.toFixed(5)}`,
+    ggsradius: '2000',
+    ggslimit: '20',
+    prop: 'imageinfo',
+    iiprop: 'url|extmetadata|mime|size',
+    iiurlwidth: String(COVER_WIDTH),
+  });
+  return `${COMMONS_API}?${params.toString()}`;
 }
 
 const km = (a: GeoPoint, b: GeoPoint) => {
@@ -73,7 +119,7 @@ const norm = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]
  * are dropped (a search for "Echo Point, Kerala" must not give Echo Point in
  * Australia). Already-rejected images (`skip`) are left out.
  */
-export function pickCandidates(body: unknown, q: CoverQuery, skip: readonly string[] = []): CoverCandidate[] {
+export function pickCandidates(body: unknown, q: CoverQuery, skip: readonly string[] = [], mode: 'named' | 'nearby' = 'named'): CoverCandidate[] {
   const pages = ((body as { query?: { pages?: unknown[] } })?.query?.pages ?? []) as {
     title?: string;
     pageimage?: string;
@@ -92,8 +138,14 @@ export function pickCandidates(body: unknown, q: CoverQuery, skip: readonly stri
     }))
     .filter(({ p, location }) => {
       if (q.wikipedia) return true;
-      const title = norm(p.title as string);
-      const named = title.includes(name) || words.every((w) => title.includes(w));
+      const title = norm((p.title as string).replace(/\s*\([^)]*\)\s*/g, ' '));
+      const named = title.includes(name) || name.includes(title) || (words.length > 0 && words.every((w) => title.includes(w)));
+      if (mode === 'nearby') {
+        // Pages found around the coordinates: close by, and named like the place unless very close.
+        if (!q.location || !location) return false;
+        const d = km(q.location, location);
+        return d <= NEAR_KM || (d <= 15 && (named || words.some((w) => title.split(' ').includes(w))));
+      }
       if (!named) return false;
       if (q.location && location) return km(q.location, location) <= MAX_MATCH_KM;
       return true;
@@ -116,6 +168,16 @@ export function imageInfoUrl(file: string): string {
   return `${COMMONS_API}?${params.toString()}`;
 }
 
+/** Only https images on Wikimedia's upload server in a format the app can show (no SVG maps, PDFs or TIFF originals). */
+export function isUsableImageUrl(url: string): boolean {
+  return /^https:\/\/upload\.wikimedia\.org\/.+\.(?:jpe?g|png|webp|gif)$/i.test(url);
+}
+
+/** The same Commons thumbnail at another width ("…/1280px-X.jpg" → "…/330px-X.jpg"); the original URL when it isn't a thumbnail. */
+export function thumbVariant(url: string, width: number): string {
+  return /\/thumb\/.+\/\d+px-[^/]+$/.test(url) ? url.replace(/\/(\d+)px-([^/]+)$/, `/${width}px-$2`) : url;
+}
+
 const stripHtml = (s: string) => s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
 
 /** Image URL, licence and author from Commons; null without a free licence. */
@@ -128,10 +190,11 @@ export function parseImageInfo(body: unknown, pageTitle: string): CoverImage | n
   const meta = info?.extmetadata ?? {};
   const license = stripHtml(meta.LicenseShortName?.value ?? '');
   const url = info?.thumburl ?? info?.url;
-  if (!url || !license || /non-?free|fair use/i.test(license) || meta.NonFree?.value === 'true') return null;
+  if (!url || !isUsableImageUrl(url) || !license || /non-?free|fair use/i.test(license) || meta.NonFree?.value === 'true') return null;
   const artist = stripHtml(meta.Artist?.value ?? meta.Credit?.value ?? '');
   return {
     imageUrl: url,
+    thumbUrl: thumbVariant(url, THUMB_WIDTH),
     title: pageTitle,
     credit: artist || 'Wikimedia Commons contributor',
     license,
@@ -139,17 +202,72 @@ export function parseImageInfo(body: unknown, pageTitle: string): CoverImage | n
   };
 }
 
-/** Finds a cover: candidates from Wikipedia, licence from Commons, first one that is freely licensed. */
+const PHOTO_FILE = /\.(?:jpe?g|png|webp)$/i;
+const NOT_A_PHOTO = /\b(?:map|locator|logo|flag|seal|emblem|coat of arms|diagram|plan|sign|icon)\b/i;
+
+/** Alternative spellings of a place name to try: as typed, without brackets, before a comma. */
+export function nameVariants(name: string): string[] {
+  const out = [name.trim(), name.replace(/\s*\([^)]*\)/g, '').trim(), name.split(',')[0]?.trim() ?? ''];
+  return [...new Set(out.filter((n) => n.length > 1))];
+}
+
+/**
+ * Finds a cover, trying in order: the exact Wikipedia article (OSM tag), the
+ * article titled like the place, a search with region context, a search by
+ * name alone, articles around the coordinates, and finally photos taken
+ * around the coordinates on Commons. The first freely licensed, valid image wins.
+ */
 export async function findCover(q: CoverQuery, deps: { fetchImpl: typeof fetch; skip?: readonly string[] }): Promise<(CoverImage & { imageFile: string }) | null> {
   const json = async (url: string) => {
     const r = await deps.fetchImpl(url, { headers: { Accept: 'application/json' } });
     if (!r.ok) throw new Error(`Image search failed (${r.status}).`);
     return r.json();
   };
-  const candidates = pickCandidates(await json(searchUrl(q)), q, deps.skip);
-  for (const c of candidates.slice(0, 4)) {
-    const image = parseImageInfo(await json(imageInfoUrl(c.imageFile)), c.pageTitle);
-    if (image) return { ...image, imageFile: c.imageFile };
+  const skip = deps.skip ?? [];
+  const tried = new Set<string>();
+  const firstFree = async (candidates: CoverCandidate[]) => {
+    for (const c of candidates.filter((c) => !tried.has(c.imageFile)).slice(0, 3)) {
+      tried.add(c.imageFile);
+      const image = parseImageInfo(await json(imageInfoUrl(c.imageFile)), c.pageTitle);
+      if (image) return { ...image, imageFile: c.imageFile };
+    }
+    return null;
+  };
+
+  if (q.wikipedia) {
+    const found = await firstFree(pickCandidates(await json(searchUrl(q)), q, skip));
+    if (found) return found;
+  }
+  const plain = { ...q, wikipedia: null };
+  for (const name of nameVariants(q.name)) {
+    const variant = { ...plain, name };
+    for (const strategy of ['title', 'context', 'name'] as const) {
+      if (strategy === 'name' && !variant.context) continue;
+      const found = await firstFree(pickCandidates(await json(searchUrl(variant, strategy)), variant, skip));
+      if (found) return found;
+    }
+  }
+  if (!q.location) return null;
+  const nearby = await firstFree(pickCandidates(await json(geoSearchUrl(q.location)), plain, skip, 'nearby'));
+  if (nearby) return nearby;
+  return pickCommonsPhoto(await json(commonsGeoUrl(q.location)), q, skip);
+}
+
+/** The best photo from a Commons geosearch: a real photo (not a map or logo), landscape-ish, freely licensed. */
+export function pickCommonsPhoto(body: unknown, q: CoverQuery, skip: readonly string[] = []): (CoverImage & { imageFile: string }) | null {
+  const pages = ((body as { query?: { pages?: unknown[] } })?.query?.pages ?? []) as { title?: string; index?: number; imageinfo?: { width?: number; height?: number; mime?: string }[] }[];
+  const name = norm(q.name);
+  const ranked = pages
+    .filter((p) => p.title && PHOTO_FILE.test(p.title) && !NOT_A_PHOTO.test(p.title))
+    .filter((p) => !skip.includes((p.title as string).replace(/^File:/, '')))
+    .filter((p) => {
+      const i = p.imageinfo?.[0];
+      return !i?.width || !i.height || (i.width >= 640 && i.width / i.height >= 0.9);
+    })
+    .sort((a, b) => Number(norm(b.title as string).includes(name)) - Number(norm(a.title as string).includes(name)) || (a.index ?? 0) - (b.index ?? 0));
+  for (const p of ranked) {
+    const image = parseImageInfo({ query: { pages: [p] } }, q.name);
+    if (image) return { ...image, imageFile: (p.title as string).replace(/^File:/, '') };
   }
   return null;
 }

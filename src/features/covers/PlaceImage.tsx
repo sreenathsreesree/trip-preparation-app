@@ -8,14 +8,15 @@ import { colors, spacing } from '@/theme';
 
 import type { GeoPoint } from '../planner/model';
 import { cachedFetch } from '../remote/remoteCacheRepository';
-import { findCover, type CoverImage } from './wikimedia';
+import { findCover, thumbVariant, type CoverImage } from './wikimedia';
 
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * A photo for a recommended place, only when OpenStreetMap links it to its
  * exact Wikipedia article (so it is the right place), with credit and licence.
- * Cached for a month; nothing is shown when there is no free photo.
+ * Cached for a month; a 500 px variant is shown (never the original); nothing
+ * is shown when there is no free photo.
  */
 export function PlaceImage({ wikipedia, name, location }: { wikipedia: string; name: string; location: GeoPoint | null }) {
   const [image, setImage] = useState<{ key: string; value: CoverImage | null } | null>(null);
@@ -37,7 +38,7 @@ export function PlaceImage({ wikipedia, name, location }: { wikipedia: string; n
   if (!value) return null;
   return (
     <View>
-      <Image source={{ uri: value.imageUrl }} style={styles.photo} contentFit="cover" accessibilityLabel={`Photo of ${name}`} cachePolicy="memory-disk" />
+      <Image source={{ uri: thumbVariant(value.imageUrl, 500) }} style={styles.photo} contentFit="cover" accessibilityLabel={`Photo of ${name}`} cachePolicy="memory-disk" />
       <AppText variant="caption" tone="textMuted" style={styles.credit} numberOfLines={1}>
         Photo: {value.credit} · {value.license} · Wikimedia Commons
       </AppText>

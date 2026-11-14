@@ -187,7 +187,7 @@ export function pinnedPlace(location: GeoPoint, name: string | null, nearby: Pla
   const label = name ?? near?.name ?? `Pinned location ${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`;
   return {
     provider: 'manual',
-    providerPlaceId: near && (!name || name === near.name) ? near.providerPlaceId : null,
+    providerPlaceId: near && (!name || name === near.name) ? near.providerPlaceId : `pin:${location.latitude.toFixed(5)},${location.longitude.toFixed(5)}`,
     name: label,
     location,
     formattedAddress: nearby?.formattedAddress ?? '',
@@ -202,7 +202,7 @@ export function pinnedPlace(location: GeoPoint, name: string | null, nearby: Pla
     photos: [],
     mapsUri: null,
     attributions: nearby ? [OSM_ATTRIBUTION] : [],
-  } as PlaceDetails;
+  };
 }
 
 /** Turns pasted/shared text into a place to preview, following short links and searching by name when needed. */
@@ -240,7 +240,7 @@ export async function resolveShare(input: string, deps: ResolveDeps, subject?: s
 /** A node already in the plan that is the same place: same provider id, or within 120 m, or (unlocated) the same name. */
 export function findSamePlace<N extends { id: string; name: string; place: { providerPlaceId: string | null; location: GeoPoint | null } | null }>(
   nodes: readonly N[],
-  candidate: Pick<PlaceDetails, 'providerPlaceId' | 'name' | 'location'>,
+  candidate: { providerPlaceId: string | null; name: string; location?: GeoPoint | null },
 ): N | null {
   const name = candidate.name.trim().toLowerCase();
   for (const n of nodes) {

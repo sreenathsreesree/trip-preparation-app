@@ -7,6 +7,9 @@ export interface AutoCover {
   status: 'found' | 'none';
   imageUrl: string | null;
   localUri: string | null;
+  /** Small variant for cards (null for covers stored before thumbnails existed). */
+  thumbUrl: string | null;
+  thumbLocalUri: string | null;
   title: string;
   credit: string;
   license: string;
@@ -23,6 +26,8 @@ interface Row {
   status: 'found' | 'none';
   image_url: string | null;
   local_uri: string | null;
+  thumb_url: string | null;
+  thumb_local_uri: string | null;
   title: string;
   credit: string;
   license: string;
@@ -39,14 +44,19 @@ const toCover = (r: Row): AutoCover => {
   } catch {
     skipped = [];
   }
-  return { subjectType: r.subject_type, subjectId: r.subject_id, query: r.query, status: r.status, imageUrl: r.image_url, localUri: r.local_uri, title: r.title, credit: r.credit, license: r.license, sourceUrl: r.source_url, skipped, fetchedAt: r.fetched_at };
+  return { subjectType: r.subject_type, subjectId: r.subject_id, query: r.query, status: r.status, imageUrl: r.image_url, localUri: r.local_uri, thumbUrl: r.thumb_url ?? null, thumbLocalUri: r.thumb_local_uri ?? null, title: r.title, credit: r.credit, license: r.license, sourceUrl: r.source_url, skipped, fetchedAt: r.fetched_at };
 };
 
 /** Automatically chosen covers, in the account's own database. Own cover photos are stored elsewhere and never touched here. */
 export function createCoverRepository(db: Database) {
   return {
     async get(subjectType: 'trip' | 'node', subjectId: string): Promise<AutoCover | null> {
-      const row = await db.getFirstAsync<Row>('SELECT * FROM auto_covers WHERE subject_type = ? AND subject_id = ?', [subjectType, subjectId]);
+      const row = await db.getFirstAsync<Row>(
+        `SELECT c.*, t.thumb_url, t.thumb_local_uri FROM auto_covers c
+         LEFT JOIN auto_cover_thumbs t ON t.subject_type = c.subject_type AND t.subject_id = c.subject_id
+         WHERE c.subject_type = ? AND c.subject_id = ?`,
+        [subjectType, subjectId],
+      );
       return row ? toCover(row) : null;
     },
     async save(c: AutoCover): Promise<void> {
@@ -57,6 +67,11 @@ export function createCoverRepository(db: Database) {
            local_uri = excluded.local_uri, title = excluded.title, credit = excluded.credit, license = excluded.license,
            source_url = excluded.source_url, skipped = excluded.skipped, fetched_at = excluded.fetched_at`,
         [c.subjectType, c.subjectId, c.query, c.status, c.imageUrl, c.localUri, c.title, c.credit, c.license, c.sourceUrl, JSON.stringify(c.skipped), c.fetchedAt],
+      );
+      await db.runAsync(
+        `INSERT INTO auto_cover_thumbs (subject_type, subject_id, thumb_url, thumb_local_uri) VALUES (?, ?, ?, ?)
+         ON CONFLICT (subject_type, subject_id) DO UPDATE SET thumb_url = excluded.thumb_url, thumb_local_uri = excluded.thumb_local_uri`,
+        [c.subjectType, c.subjectId, c.thumbUrl, c.thumbLocalUri],
       );
     },
   };
