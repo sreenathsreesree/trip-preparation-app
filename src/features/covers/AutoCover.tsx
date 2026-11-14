@@ -18,6 +18,7 @@ export function AutoCover({
   style,
   label,
   compact = false,
+  creditAtTop = false,
   testID,
 }: {
   subject: { type: 'trip' | 'node'; id: string };
@@ -25,6 +26,8 @@ export function AutoCover({
   style?: StyleProp<ViewStyle>;
   label: string;
   compact?: boolean;
+  /** Put the credit line at the top (when the bottom of the picture carries a title). */
+  creditAtTop?: boolean;
   testID?: string;
 }) {
   const { state, refresh, busy } = useAutoCover(subject, query);
@@ -35,7 +38,7 @@ export function AutoCover({
       {cover?.status === 'found' && uri ? (
         <>
           <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={`${label}: ${cover.title}`} cachePolicy="memory-disk" transition={150} />
-          <View style={styles.credit}>
+          <View style={[styles.credit, creditAtTop && styles.creditTop]}>
             <AppText variant="caption" style={styles.creditText} numberOfLines={1} onPress={() => void Linking.openURL(cover.sourceUrl)} testID={testID ? `${testID}-credit` : undefined}>
               {cover.title} · {cover.credit} · {cover.license} · Wikimedia Commons
             </AppText>
@@ -72,5 +75,6 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.sm,
     backgroundColor: colors.photoChrome,
   },
+  creditTop: { top: 0, bottom: undefined },
   creditText: { flex: 1, color: colors.textPrimary },
 });

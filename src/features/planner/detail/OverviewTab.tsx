@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
 
-import { AppText, Button, Card, Icon, IconButton, Notice, OptionTile, TextField, ToggleRow } from '@/components/ui';
+import { AppText, Button, Card, Collapsible, Icon, IconButton, Notice, OptionTile, TextField, ToggleRow } from '@/components/ui';
 import { toErrorMessage } from '@/lib/errors';
 import { successFeedback } from '@/lib/haptics';
 import { colors, spacing } from '@/theme';
@@ -94,9 +94,8 @@ function FactsForm({ ctx }: { ctx: DetailContext }) {
   };
 
   return (
-    <Card testID="detail-facts">
+    <View testID="detail-facts">
       <View style={styles.group}>
-        <AppText variant="title">About this place</AppText>
         <AppText variant="caption" tone="textMuted">
           Your own notes from official sites, guides or friends — nothing here is filled in for you.
         </AppText>
@@ -116,7 +115,7 @@ function FactsForm({ ctx }: { ctx: DetailContext }) {
         {saved && !dirty ? <Notice tone="success" title="Details saved." /> : null}
         {error ? <Notice tone="danger" title={error} /> : null}
       </View>
-    </Card>
+    </View>
   );
 }
 
@@ -130,9 +129,6 @@ function TagsEditor({ ctx }: { ctx: DetailContext }) {
 
   return (
     <View style={styles.group} testID="detail-tags">
-      <AppText variant="label" tone="textSecondary">
-        Tags
-      </AppText>
       <View style={styles.chips}>
         {[...PRESET_TAGS, ...custom_].map((tag) => (
           <OptionTile
@@ -246,12 +242,7 @@ function Alerts({ ctx }: { ctx: DetailContext }) {
   const alerts = (ctx.details?.alerts ?? []).filter((a) => a.status === 'saved');
   return (
     <View style={styles.group} testID="detail-alerts">
-      <View style={styles.inline}>
-        <AppText variant="title" style={styles.flex}>
-          Alerts and notices
-        </AppText>
-        {!adding ? <Button label="Add notice" icon="plus" variant="ghost" size="sm" onPress={() => setAdding(true)} testID="detail-alert-add" /> : null}
-      </View>
+      {!adding ? <Button label="Add notice" icon="plus" variant="ghost" size="sm" onPress={() => setAdding(true)} style={styles.left} testID="detail-alert-add" /> : null}
       <AppText variant="caption" tone="textMuted">
         Live alerts (road closures, weather warnings) aren’t connected. Save notices you’ve read, with where and when you saw them.
       </AppText>
@@ -276,39 +267,60 @@ function OfflinePack({ ctx }: { ctx: DetailContext }) {
     ctx.profile.coverImageUri ? 'cover photo' : null,
   ].filter((v): v is string => v !== null);
   return (
-    <Card testID="detail-offline">
-      <View style={styles.inline}>
-        <Icon name="cloud-off-outline" size={20} color={colors.accent} />
-        <AppText variant="title" style={styles.flex}>
-          Available offline
-        </AppText>
-      </View>
+    <View testID="detail-offline">
       <AppText variant="body" style={styles.offlineText}>
         Saved on this device: {stored.join(', ')}.
       </AppText>
       <AppText variant="caption" tone="textMuted">
         Recommendations, place search and opening Maps need a connection.
       </AppText>
-    </Card>
+    </View>
   );
 }
 
+const snippet = (text: string, max = 70) => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text);
+
+/**
+ * The destination's own information, in sections that open on tap: notes,
+ * description and facts, tags, weather and planned day, saved notices, and
+ * what is kept offline. Nothing is removed — only folded away.
+ */
 export function OverviewTab({ ctx }: { ctx: DetailContext }) {
+  const { node, profile, details } = ctx;
+  const notices = (details?.alerts ?? []).filter((a) => a.status === 'saved').length;
+  const facts = [profile.bestSeason && `Best: ${profile.bestSeason}`, profile.entryFee && `Entry: ${profile.entryFee}`].filter(Boolean).join(' · ');
   return (
     <View style={styles.root}>
-      <NameForm key={ctx.node.updatedAt} ctx={ctx} />
-      <FactsForm ctx={ctx} />
-      <TagsEditor ctx={ctx} />
-      <DestinationWeather ctx={ctx} />
-      <Alerts ctx={ctx} />
-      <OfflinePack ctx={ctx} />
+      {profile.about ? (
+        <AppText variant="body" testID="detail-about-text">
+          {profile.about}
+        </AppText>
+      ) : null}
+      <Collapsible title="Name & quick notes" icon="note-text-outline" summary={node.notes ? snippet(node.notes) : 'No notes yet'} testID="detail-section-notes">
+        <NameForm key={ctx.node.updatedAt} ctx={ctx} />
+      </Collapsible>
+      <Collapsible title="Description & facts" icon="information-outline" summary={facts || (profile.about ? snippet(profile.about) : 'Season, entry fee, getting there')} testID="detail-section-about">
+        <FactsForm ctx={ctx} />
+      </Collapsible>
+      <Collapsible title="Tags" icon="tag-outline" summary={profile.tags.length ? profile.tags.join(', ') : 'No tags yet'} testID="detail-section-tags">
+        <TagsEditor ctx={ctx} />
+      </Collapsible>
+      <Collapsible title="Weather & planned day" icon="weather-partly-cloudy" summary="Forecast for this place and the day you plan to be here" testID="detail-section-weather">
+        <DestinationWeather ctx={ctx} />
+      </Collapsible>
+      <Collapsible title="Alerts & notices" icon="alert-outline" summary={notices ? `${notices} saved ${notices === 1 ? 'notice' : 'notices'}` : 'None saved'} testID="detail-section-alerts">
+        <Alerts ctx={ctx} />
+      </Collapsible>
+      <Collapsible title="Available offline" icon="cloud-off-outline" summary="What this page keeps on your device" testID="detail-section-offline">
+        <OfflinePack ctx={ctx} />
+      </Collapsible>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
-    gap: spacing.xl,
+    gap: spacing.md,
   },
   group: {
     gap: spacing.md,

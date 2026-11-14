@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Share, StyleSheet, View } from 'react-native';
 
-import { Button, IconButton, Notice, Tag } from '@/components/ui';
+import { AppText, Button, Icon, IconButton, Notice } from '@/components/ui';
 import { toErrorMessage } from '@/lib/errors';
 import { deleteStoredImage, pickAndStoreImage } from '@/lib/imageStore';
 import { colors, radii, spacing } from '@/theme';
@@ -14,7 +14,11 @@ import { visitLength } from '../companion';
 import { destinationShareText } from '../share';
 import { useDetailAction, type DetailContext } from './shared';
 
-/** Cover photo (the user's own), status tags, favourite and share. */
+/**
+ * Scenic cover (the user's own photo first, else a credited free image) with
+ * the destination's name and location over it, a one-line status, and
+ * favourite / share / change-cover actions.
+ */
 export function Hero({ ctx, trail }: { ctx: DetailContext; trail: string[] }) {
   const { tripId, node, plan, profile } = ctx;
   const { act, error, busy } = useDetailAction(tripId, node.id);
@@ -24,6 +28,18 @@ export function Hero({ ctx, trail }: { ctx: DetailContext; trail: string[] }) {
   const visited = profile.visitStatus === 'visited';
   const located = contextLocation(plan.nodes, node.id);
   const wikipedia = typeof node.place?.metadata?.wikipedia === 'string' ? node.place.metadata.wikipedia : null;
+  const where = [...[...trail].reverse().slice(0, 2), node.place?.district, node.place?.state, node.place?.country]
+    .filter((v, i, all): v is string => !!v && all.indexOf(v) === i)
+    .join(', ');
+  const status = [
+    node.parentId ? 'Place inside a destination' : 'Main destination',
+    routeIndex >= 0 ? `Route stop ${routeIndex + 1}` : 'Not on the route',
+    visited ? 'Visited' : null,
+    profile.saved ? 'Saved for later' : null,
+    length ? length.label : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const coverQuery = profile.coverImageUri
     ? null
     : { name: node.name, context: [...[...trail].reverse(), node.place?.state, node.place?.country].filter(Boolean).join(', '), location: located?.location ?? null, wikipedia };
@@ -64,8 +80,19 @@ export function Hero({ ctx, trail }: { ctx: DetailContext; trail: string[] }) {
           <DrivePhoto uri={profile.coverImageUri} style={StyleSheet.absoluteFill} label={`Cover photo of ${node.name}`} testID="detail-cover" />
         ) : (
           // No own photo: a representative free image is chosen automatically (never replaces an own photo).
-          <AutoCover subject={{ type: 'node', id: node.id }} query={coverQuery} style={StyleSheet.absoluteFill} label={`Photo of ${node.name}`} testID="detail-auto-cover" />
+          <AutoCover subject={{ type: 'node', id: node.id }} query={coverQuery} style={StyleSheet.absoluteFill} label={`Photo of ${node.name}`} creditAtTop testID="detail-auto-cover" />
         )}
+        <View style={styles.titleBand} pointerEvents="none">
+          <View style={styles.whereRow}>
+            <Icon name="map-marker-outline" size={16} color={colors.textPrimary} />
+            <AppText variant="bodyStrong" numberOfLines={1} style={[styles.onPhoto, styles.flex]} testID="detail-hero-where">
+              {where || (node.place?.location ? 'Location set' : 'Location not set yet')}
+            </AppText>
+          </View>
+          <AppText variant="caption" numberOfLines={2} style={styles.onPhotoMuted} testID="detail-status-line">
+            {status}
+          </AppText>
+        </View>
         <View style={styles.coverActions}>
           <IconButton
             icon={profile.saved ? 'heart' : 'heart-outline'}
@@ -85,20 +112,6 @@ export function Hero({ ctx, trail }: { ctx: DetailContext; trail: string[] }) {
         </View>
       </View>
 
-      <View style={styles.tags}>
-        {node.parentId ? (
-          <Tag label="Place inside a destination" icon="subdirectory-arrow-right" color={colors.info} />
-        ) : (
-          <Tag label="Main destination" icon="map-marker-radius" color={colors.accent} />
-        )}
-        {routeIndex >= 0 ? <Tag label={`Route stop ${routeIndex + 1}`} icon="map-marker-path" color={colors.accent} /> : <Tag label="Not on the route" icon="map-marker-path" />}
-        {visited ? <Tag label="Visited" icon="check-circle" color={colors.accent} /> : null}
-        {profile.saved ? <Tag label="Saved for later" icon="heart" color={colors.danger} /> : null}
-        {length ? <Tag label={length.label} icon={length.icon} color={colors.info} /> : null}
-        {profile.tags.map((tag) => (
-          <Tag key={tag} label={tag} icon="tag-outline" />
-        ))}
-      </View>
       {profile.coverImageUri ? (
         <Button label="Remove cover photo" icon="image-remove" variant="ghost" size="sm" onPress={() => void removeCover()} style={styles.left} testID="detail-cover-remove" />
       ) : null}
@@ -112,7 +125,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   cover: {
-    height: 180,
+    height: 210,
     borderRadius: radii.lg,
     overflow: 'hidden',
     backgroundColor: colors.surfaceRaised,
@@ -125,16 +138,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.xs,
   },
+  titleBand: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    gap: spacing.xxs,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    backgroundColor: colors.photoChrome,
+  },
+  whereRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  flex: {
+    flex: 1,
+    minWidth: 0,
+  },
+  onPhoto: {
+    color: colors.textPrimary,
+  },
+  onPhotoMuted: {
+    color: colors.textSecondary,
+  },
   coverActions: {
     position: 'absolute',
-    top: spacing.sm,
+    top: spacing.xl,
     right: spacing.sm,
     flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  tags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   left: {

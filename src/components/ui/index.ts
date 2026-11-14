@@ -24,3 +24,4 @@ export { Notice } from './Notice';
 export { ReorderControls } from './ReorderControls';
 export { MiniStepper } from './MiniStepper';
 export { SearchField } from './SearchField';
+export { Collapsible } from './Collapsible';

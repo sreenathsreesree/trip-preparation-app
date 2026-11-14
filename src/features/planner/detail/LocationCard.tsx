@@ -40,34 +40,31 @@ export function LocationCard({ ctx }: { ctx: DetailContext }) {
   }
 
   return (
-    <Card testID="detail-location">
+    <Card testID="detail-location" padding="md">
       <View style={styles.head}>
         <Icon name="map-marker-outline" size={20} color={location ? colors.accent : colors.textMuted} />
-        <AppText variant="title" style={styles.flex}>
-          Location
-        </AppText>
-      </View>
-      {location ? (
-        <View style={styles.info}>
-          {node.place?.formattedAddress ? <AppText variant="body">{node.place.formattedAddress}</AppText> : null}
-          <AppText variant="caption" tone="textMuted" selectable testID="detail-coordinates">
-            {formatCoordinates(location)}
-          </AppText>
-          {refreshIn !== null && node.place?.provider === 'google' ? (
-            <AppText variant="caption" tone="textMuted">
-              From Google Maps · stored on this device for {refreshIn} more {refreshIn === 1 ? 'day' : 'days'}
+        <View style={[styles.flex, styles.info]}>
+          {location ? (
+            <>
+              <AppText variant="body" numberOfLines={2}>
+                {node.place?.formattedAddress || 'Location set'}
+              </AppText>
+              <AppText variant="caption" tone="textMuted" selectable testID="detail-coordinates">
+                {formatCoordinates(location)}
+                {refreshIn !== null && node.place?.provider === 'google' ? ` · Google Maps data kept ${refreshIn} more ${refreshIn === 1 ? 'day' : 'days'}` : ''}
+              </AppText>
+            </>
+          ) : node.place ? (
+            <AppText variant="caption" tone="warning">
+              Saved place whose map details have expired. Choose the location again to refresh it.
             </AppText>
-          ) : null}
+          ) : (
+            <AppText variant="caption" tone="textMuted">
+              Added by name — not linked to a map location yet.
+            </AppText>
+          )}
         </View>
-      ) : node.place ? (
-        <AppText variant="caption" tone="warning">
-          Saved place whose map details have expired. Choose the location again to refresh it.
-        </AppText>
-      ) : (
-        <AppText variant="caption" tone="textMuted">
-          Added by name — not linked to a map location yet.
-        </AppText>
-      )}
+      </View>
 
       <View style={styles.row}>
         <Button
@@ -145,12 +142,12 @@ export function LocationCard({ ctx }: { ctx: DetailContext }) {
 const styles = StyleSheet.create({
   head: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
-    marginBottom: spacing.sm,
   },
   flex: {
     flex: 1,
+    minWidth: 0,
   },
   info: {
     gap: spacing.xs,
@@ -159,7 +156,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   editor: {
     gap: spacing.md,
