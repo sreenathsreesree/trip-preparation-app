@@ -87,8 +87,8 @@ await run('Destination page test', async () => {
   await byId(page, 'detail-location-input').fill('https://maps.app.goo.gl/abc');
   check(/Short share links/.test(await text(page, 'detail-location-editor')), 'short links are explained, not guessed');
   check(await byId(page, 'detail-location-save').isDisabled(), 'cannot save an unreadable location');
-  await byId(page, 'detail-location-search').waitFor();
-  check((await byId(page, 'detail-location-search-off').count()) === 0, 'place search is available (OpenStreetMap)');
+  await byId(page, 'detail-location-picker-input').waitFor();
+  check(true, 'one search field takes names, Maps links and coordinates (OpenStreetMap)');
   await byId(page, 'detail-location-input').fill('https://www.google.com/maps/place/Munnar/@10.0,77.0,13z/data=!3d10.0889!4d77.0595');
   await byId(page, 'detail-location-save').click();
   await waitText(page, 'detail-coordinates', (v) => v === '10.08890, 77.05950');

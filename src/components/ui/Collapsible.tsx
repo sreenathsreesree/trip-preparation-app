@@ -30,6 +30,7 @@ export function Collapsible({ title, icon, summary, trailing, initiallyOpen = fa
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
+        aria-expanded={open}
         accessibilityLabel={`${title}${summary && !open ? `, ${summary}` : ''}`}
         onPress={() => setOpen((v) => !v)}
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}

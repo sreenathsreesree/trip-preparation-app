@@ -135,29 +135,37 @@ await run('Planner drag-and-drop test', async () => {
   await shot(page, 'dnd-02-after-moves');
 
   setStep('route is untouched by hierarchy changes');
-  check(JSON.stringify(await routeOrder(page, trip)) === JSON.stringify(routeBefore), `route stops and their order are unchanged (${routeBefore.join(', ')})`);
+  // The route lists main destinations only: Echo Point (a stop) is now one; Kochi (a stop) moved inside
+  // Athirappilly, so it is kept on the route and named under the list instead of being dropped.
+  const routeAfter = await routeOrder(page, trip);
+  check(
+    JSON.stringify(routeBefore) === JSON.stringify(['Kochi']) && JSON.stringify(routeAfter) === JSON.stringify(['Echo Point']) && /Kochi \(in Athirappilly\)/.test(await text(page, 'route-inside-strays')),
+    `route stops are kept through hierarchy changes (${routeBefore.join(', ')} → ${routeAfter.join(', ')} + Kochi inside Athirappilly)`,
+  );
 
   setStep('route: drag to reorder, stops renumber, hierarchy untouched');
   await page.goto(`${trip}/plan`);
   await byId(page, 'planner-tree').waitFor();
   const treeBeforeRoute = await treeOrder(page, 'planner-tree');
   await plannerTab(page, 'route');
-  for (const name of ['Munnar', 'Tea Museum']) await byId(page, `route-add-${name}`).click();
+  check((await byId(page, 'route-add-Tea Museum').count()) === 0, 'places inside a destination are not offered as route stops');
+  for (const name of ['Munnar', 'Athirappilly']) await byId(page, `route-add-${name}`).click();
   await page.waitForTimeout(300);
   const initialRoute = await routeOrder(page);
-  check(initialRoute.length === 4, `four stops (${initialRoute.join(', ')})`);
-  const last = initialRoute[3];
+  check(initialRoute.length === 3, `three main stops (${initialRoute.join(', ')})`);
+  check(/Also visiting: Kochi/.test(await text(page, 'route-stop-Athirappilly')), 'a stop inside a destination travels on its card');
+  const last = initialRoute[2];
   await dragRouteStop(page, last, initialRoute[0], 'before');
   const reordered = await routeOrder(page);
-  check(reordered[0] === last && reordered.length === 4, `dragged the last stop to the top (${reordered.join(', ')})`);
+  check(reordered[0] === last && reordered.length === 3, `dragged the last stop to the top (${reordered.join(', ')})`);
   check((await text(page, `route-number-${last}`)) === '1', 'stops renumber after a move');
   await dragRouteStop(page, reordered[0], reordered[2], 'after');
   const reordered2 = await routeOrder(page);
   check(reordered2[2] === last, `moved it back down (${reordered2.join(', ')})`);
-  await byId(page, `route-remove-${reordered2[3]}`).click();
+  await byId(page, `route-remove-${reordered2[1]}`).click();
   await page.waitForTimeout(300);
   const finalRoute = await routeOrder(page);
-  check(finalRoute.length === 3, 'a stop can still be removed');
+  check(finalRoute.length === 2, 'a stop can still be removed');
   await shot(page, 'dnd-03-route');
   await plannerTab(page, 'destinations');
   check(JSON.stringify(await treeOrder(page, 'planner-tree')) === JSON.stringify(treeBeforeRoute), 'reordering the route never changes the hierarchy');
@@ -251,17 +259,17 @@ await run('Planner drag-and-drop test', async () => {
   const firstStop = (await routeOrder(page))[0];
   await byId(page, `route-visit-${firstStop}`).click();
   await byId(page, 'route-undo-notice').waitFor();
-  await waitText(page, 'route-progress', (v) => v.startsWith('1 of 3'));
+  await waitText(page, 'route-progress', (v) => v.startsWith('1 of 2'));
   check((await byId(page, `route-stop-${firstStop}`).count()) === 0, 'a visited stop leaves the active list');
   await byId(page, 'route-completed-toggle').click();
   await byId(page, `route-done-${firstStop}`).waitFor();
   check(true, 'it appears under Completed stops (collapsible)');
   await byId(page, `route-undo-${firstStop}`).click();
   await byId(page, `route-stop-${firstStop}`).waitFor();
-  await waitText(page, 'route-progress', (v) => v.startsWith('0 of 3'));
+  await waitText(page, 'route-progress', (v) => v.startsWith('0 of 2'));
   check(true, 'undo makes it upcoming again');
   await byId(page, `route-visit-${firstStop}`).click();
-  await waitText(page, 'route-progress', (v) => v.startsWith('1 of 3'));
+  await waitText(page, 'route-progress', (v) => v.startsWith('1 of 2'));
   await plannerTab(page, 'navigation');
   await byId(page, `nav-unvisit-${firstStop}`).waitFor();
   check((await text(page, 'nav-progress')).startsWith('1 of 5'), 'Navigation shows the same place as visited');
