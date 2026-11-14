@@ -117,21 +117,59 @@ export function parseCMap(cmap: string): { map: Map<number, string>; bytes: numb
 
 type Font = { map: Map<number, string>; bytes: number } | null;
 
-function pageFonts(objects: Map<number, PdfObject>, pageDict: string): Map<string, Font> {
-  let resources = /\/Resources\s*(<<[\s\S]*)/.exec(pageDict)?.[1] ?? '';
-  const resRef = ref(pageDict, 'Resources');
-  if (resRef !== null) resources = objects.get(resRef)?.dict ?? '';
-  let fontDict = /\/Font\s*<<([\s\S]*?)>>/.exec(resources)?.[1] ?? '';
-  const fontRef = ref(resources, 'Font');
-  if (fontRef !== null && !fontDict) fontDict = objects.get(fontRef)?.dict ?? '';
+/** The /Resources dictionary of a page or form, following references and (for pages) inheritance from parent Pages nodes. */
+function resourcesOf(objects: Map<number, PdfObject>, dict: string, inherit = true): string {
+  let current: string | null = dict;
+  for (let depth = 0; current !== null && depth < 20; depth++) {
+    const resRef = ref(current, 'Resources');
+    if (resRef !== null) return objects.get(resRef)?.dict ?? '';
+    const inline = /\/Resources\s*(<<[\s\S]*)/.exec(current)?.[1];
+    if (inline) return inline;
+    if (!inherit) return '';
+    const parent = ref(current, 'Parent');
+    current = parent !== null ? (objects.get(parent)?.dict ?? null) : null;
+  }
+  return '';
+}
+
+/** A sub-dictionary of resources (/Font, /XObject) as name → object number. */
+function namedRefs(objects: Map<number, PdfObject>, resources: string, key: string): Map<string, number> {
+  let body = new RegExp(`/${key}\\s*<<([\\s\\S]*?)>>`).exec(resources)?.[1] ?? '';
+  const r = ref(resources, key);
+  if (r !== null && !body) body = objects.get(r)?.dict ?? '';
+  const out = new Map<string, number>();
+  for (const m of body.matchAll(/\/([^\s/<>[\]()]+)\s+(\d+)\s+\d+\s+R/g)) out.set(m[1] as string, Number(m[2]));
+  return out;
+}
+
+export interface FontReport {
+  /** Fonts using multi-byte codes without a ToUnicode map: their text can't be read. */
+  unreadable: number;
+}
+
+function fontsFrom(objects: Map<number, PdfObject>, resources: string, report: FontReport): Map<string, Font> {
   const fonts = new Map<string, Font>();
-  for (const m of fontDict.matchAll(/\/([^\s/<>[\]()]+)\s+(\d+)\s+\d+\s+R/g)) {
-    const fontObj = objects.get(Number(m[2]));
+  for (const [name, num] of namedRefs(objects, resources, 'Font')) {
+    const fontObj = objects.get(num);
     const tu = fontObj ? ref(fontObj.dict, 'ToUnicode') : null;
     const cmap = tu !== null ? objects.get(tu)?.stream : null;
-    fonts.set(m[1] as string, cmap ? parseCMap(latin1(cmap)) : null);
+    if (!cmap && fontObj && /\/Subtype\s*\/Type0/.test(fontObj.dict)) report.unreadable += 1;
+    fonts.set(name, cmap ? parseCMap(latin1(cmap)) : null);
   }
   return fonts;
+}
+
+/** Text drawn inside form XObjects (used by many design tools and exporters), one level of nesting deep each. */
+function xobjectText(objects: Map<number, PdfObject>, resources: string, report: FontReport, depth: number): (name: string) => string {
+  const forms = namedRefs(objects, resources, 'XObject');
+  return (name: string) => {
+    if (depth > 4) return '';
+    const num = forms.get(name);
+    const form = num !== undefined ? objects.get(num) : undefined;
+    if (!form?.stream || !/\/Subtype\s*\/Form/.test(form.dict)) return '';
+    const own = resourcesOf(objects, form.dict, false) || resources;
+    return contentText(latin1(form.stream), fontsFrom(objects, own, report), xobjectText(objects, own, report, depth + 1));
+  };
 }
 
 function pageList(objects: Map<number, PdfObject>): number[] {
@@ -188,7 +226,7 @@ function decodeString(raw: string, hex: boolean, font: Font): string {
 }
 
 /** Text of one content stream, with line breaks where the text moves to a new line. */
-export function contentText(content: string, fonts: Map<string, Font>): string {
+export function contentText(content: string, fonts: Map<string, Font>, xobject: (name: string) => string = () => ''): string {
   let out = '';
   let font: Font = null;
   let lastY: number | null = null;
@@ -259,6 +297,15 @@ export function contentText(content: string, fonts: Map<string, Font>): string {
         case 'T*':
           newline();
           break;
+        case 'Do': {
+          const inner = xobject((operands[operands.length - 1] ?? '').slice(1));
+          if (inner.trim()) {
+            newline();
+            out += inner;
+            newline();
+          }
+          break;
+        }
         case 'ET':
           break;
         case 'BT':
@@ -275,14 +322,34 @@ export interface PdfTextResult {
   text: string;
   /** Likely a scan (pictures of text): almost no readable letters. */
   looksScanned: boolean;
+  /** Fonts whose text can't be decoded (no ToUnicode map); explains missing text that isn't a scan. */
+  unreadableFonts: number;
+}
+
+export class PdfReadError extends Error {
+  constructor(
+    message: string,
+    readonly reason: 'not_pdf' | 'encrypted' | 'no_pages',
+  ) {
+    super(message);
+  }
 }
 
 export function extractPdfText(bytes: Uint8Array): PdfTextResult {
-  if (latin1(bytes, 0, Math.min(bytes.length, 1024)).indexOf('%PDF') < 0) throw new Error('This file is not a PDF.');
+  if (latin1(bytes, 0, Math.min(bytes.length, 1024)).indexOf('%PDF') < 0) throw new PdfReadError('This file is not a PDF.', 'not_pdf');
+  const tail = latin1(bytes, Math.max(0, bytes.length - 4096));
   const objects = readObjects(bytes);
-  const pages = pageList(objects).map((num) => {
+  if (/\/Encrypt\s+\d+\s+\d+\s+R/.test(tail) || [...objects.values()].some((o) => /\/Type\s*\/XRef/.test(o.dict) && /\/Encrypt\s/.test(o.dict))) {
+    throw new PdfReadError('This PDF is password-protected or encrypted, so its text can’t be read. Open it, copy the itinerary text and paste it below.', 'encrypted');
+  }
+  const list = pageList(objects);
+  if (list.length === 0) throw new PdfReadError('No pages were found in this PDF. It may be damaged — try exporting it again, or paste the text.', 'no_pages');
+  const report: FontReport = { unreadable: 0 };
+  const pages = list.map((num) => {
     const page = objects.get(num) as PdfObject;
-    const fonts = pageFonts(objects, page.dict);
+    const resources = resourcesOf(objects, page.dict);
+    const fonts = fontsFrom(objects, resources, report);
+    const forms = xobjectText(objects, resources, report, 0);
     const contents: number[] = [];
     const single = ref(page.dict, 'Contents');
     if (single !== null) {
@@ -297,7 +364,7 @@ export function extractPdfText(bytes: Uint8Array): PdfTextResult {
     return contents
       .map((c) => objects.get(c)?.stream)
       .filter((s): s is Uint8Array => !!s)
-      .map((s) => contentText(latin1(s), fonts))
+      .map((s) => contentText(latin1(s), fonts, forms))
       .join('\n')
       .replace(/[ \t]+\n/g, '\n')
       .replace(/\n{3,}/g, '\n\n')
@@ -305,5 +372,5 @@ export function extractPdfText(bytes: Uint8Array): PdfTextResult {
   });
   const text = pages.join('\n\n');
   const letters = (text.match(/[A-Za-z]/g) ?? []).length;
-  return { pages, text, looksScanned: letters < 20 * Math.max(1, pages.length) };
+  return { pages, text, looksScanned: letters < 20 * Math.max(1, pages.length), unreadableFonts: report.unreadable };
 }

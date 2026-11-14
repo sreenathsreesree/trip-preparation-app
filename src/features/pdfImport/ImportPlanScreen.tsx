@@ -77,6 +77,8 @@ export function ImportPlanScreen({ tripId }: { tripId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [paste, setPaste] = useState('');
   const [done, setDone] = useState<ImportSummary | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [showText, setShowText] = useState(false);
 
   const refresh = useCallback(async () => {
     const { pdfImports } = await getRepositories();
@@ -93,6 +95,7 @@ export function ImportPlanScreen({ tripId }: { tripId: string }) {
     setDraft(record.draft);
     setDone(null);
     setError(record.status === 'failed' || record.status === 'needs_text' ? record.error : null);
+    setInfo(record.status === 'draft' ? record.error : null);
   };
 
   const choose = async () => {
@@ -168,7 +171,7 @@ export function ImportPlanScreen({ tripId }: { tripId: string }) {
     }
     return [...days.entries()].map(([k, items]) => {
       const day = draft.days.find((d) => String(d.number) === k);
-      return { key: k, title: day ? `Day ${day.number}${day.date ? ` · ${formatDate(day.date)}` : ''}${day.title ? ` · ${day.title}` : ''}` : 'Other', items };
+      return { key: k, title: day ? `Day ${day.number}${day.date ? ` · ${formatDate(day.date)}` : ''}${day.title ? ` · ${day.title}` : ''}` : 'Not in a day (review these)', items };
     });
   }, [draft]);
   const included = draft?.items.filter((i) => i.include).length ?? 0;
@@ -192,7 +195,7 @@ export function ImportPlanScreen({ tripId }: { tripId: string }) {
         <>
           <Button label="Choose a PDF" icon="file-pdf-box" onPress={() => void choose()} fullWidth disabled={busy !== null} testID="import-choose" />
           <AppText variant="caption" tone="textMuted">
-            The PDF is read on this phone and kept with the trip. Text PDFs work best; for a scanned PDF, paste the text below (text recognition isn’t available in the app yet).
+            The PDF is read on this phone and kept with the trip. Itineraries with days (“Day 1 – Munnar”), dates (“21 Nov – Munnar”), “2 nights” sections or headings with bullet points all work. Scanned PDFs can’t be read on the phone yet: copy their text with Google Lens or “Select text” and paste it below.
           </AppText>
           <Card>
             <View style={styles.group}>
@@ -218,6 +221,17 @@ export function ImportPlanScreen({ tripId }: { tripId: string }) {
         </>
       ) : (
         <View style={styles.group} testID="import-draft">
+          {info ? <Notice tone="info" title="What was read" message={info} testID="import-info" /> : null}
+          {current?.text ? (
+            <Button label={showText ? 'Hide the extracted text' : 'Show the extracted text'} icon="text-box-search-outline" variant="ghost" size="sm" onPress={() => setShowText((v) => !v)} testID="import-show-text" />
+          ) : null}
+          {showText && current?.text ? (
+            <Card variant="outline" padding="md">
+              <AppText variant="caption" selectable numberOfLines={60} testID="import-text">
+                {current.text}
+              </AppText>
+            </Card>
+          ) : null}
           <AppText variant="caption" tone="textSecondary">
             {draft.tripName ? `“${draft.tripName}” · ` : ''}
             {draft.startDate ? `${formatDate(draft.startDate)}${draft.endDate && draft.endDate !== draft.startDate ? ` – ${formatDate(draft.endDate)}` : ''} · ` : ''}
@@ -231,7 +245,9 @@ export function ImportPlanScreen({ tripId }: { tripId: string }) {
               ))}
             </View>
           ))}
-          {draft.items.length === 0 ? <Notice tone="warning" title="No places found in this text" message="Paste the itinerary text or add places by hand." /> : null}
+          {draft.items.length === 0 ? (
+            <Notice tone="warning" title="Nothing recognised in this text" message="Check the extracted text above. You can paste a corrected version, or add places by hand from the plan." testID="import-nothing" />
+          ) : null}
           <Button label={`Add ${included} to the trip`} icon="check" onPress={() => void confirm()} disabled={included === 0 || busy !== null} loading={busy === 'importing'} fullWidth testID="import-confirm" />
           <Button
             label="Back (draft is saved)"

@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import { getRepositories } from '@/db/repositories';
 
 import { applyDraft, type ImportSummary } from './applyDraft';
+import { explainResult } from './explain';
 import { matchExisting, parseItinerary, type ItineraryDraft } from './itinerary';
 import type { PdfImport } from './pdfImportRepository';
 import { extractPdfText } from './pdfText';
@@ -59,10 +60,14 @@ export async function importPdf(tripId: string): Promise<PdfImport | null> {
       await pdfImports.update(record.id, {
         status: 'needs_text',
         text: result.text,
-        error: 'This PDF looks scanned (pictures of text). Text recognition (OCR) is not available in the app yet, so paste the itinerary text instead.',
+        error:
+          result.unreadableFonts > 0
+            ? 'This PDF’s text uses fonts that don’t include a text map, so it can’t be read on the phone. Paste the itinerary text instead.'
+            : 'This PDF looks scanned (pictures of text). Trip Prep can’t recognise text in images on the phone yet. Tip: open the PDF, use Google Lens or “Select text” to copy it, and paste it below.',
       });
     } else {
-      await pdfImports.update(record.id, { status: 'draft', text: result.text, draft: await draftFromText(tripId, result.text) });
+      const draft = await draftFromText(tripId, result.text);
+      await pdfImports.update(record.id, { status: 'draft', text: result.text, draft, error: explainResult(result, draft) });
     }
   } catch (e) {
     await pdfImports.update(record.id, { status: 'failed', error: e instanceof Error ? e.message : 'Could not read this PDF.' });
@@ -74,7 +79,8 @@ export async function importPdf(tripId: string): Promise<PdfImport | null> {
 export async function draftFromPastedText(tripId: string, importId: string | null, text: string): Promise<PdfImport> {
   const { pdfImports } = await getRepositories();
   const id = importId ?? (await pdfImports.create(tripId, 'Pasted itinerary', null)).id;
-  await pdfImports.update(id, { status: 'draft', text, error: null, draft: await draftFromText(tripId, text) });
+  const draft = await draftFromText(tripId, text);
+  await pdfImports.update(id, { status: 'draft', text, draft, error: explainResult({ pages: [text], unreadableFonts: 0 }, draft) });
   return (await pdfImports.get(id)) as PdfImport;
 }
 

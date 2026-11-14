@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { setupRepositories, tripInput } from '../../../../test/fixtures';
 import { createDayPlanRepository } from '../../planner/dayPlanRepository';
 import { applyDraft } from '../applyDraft';
+import { explainResult } from '../explain';
 import { classify, findDates, matchExisting, parseItinerary, placeName } from '../itinerary';
 import { createPdfImportRepository } from '../pdfImportRepository';
 import { extractPdfText, parseCMap } from '../pdfText';
@@ -160,5 +161,93 @@ describe('confirming an import', () => {
     expect(back).toMatchObject({ status: 'draft', fileUri: 'file:///docs/pdf-imports/x.pdf', error: null });
     expect(back?.draft?.items.map((i) => i.name)).toEqual(['Munnar', 'Echo Point']);
     expect((await repo.list(trip.id)).map((x) => x.id)).toEqual([rec.id]);
+  });
+});
+
+describe('more itinerary layouts', () => {
+  const places = (text: string) => parseItinerary(text).items.filter((i) => i.kind !== 'note');
+
+  it('reads date headings instead of “Day N”', () => {
+    const d = parseItinerary('Kerala\nMon, 21 Nov 2026 – Kochi to Munnar\n• Cheeyappara Waterfalls\n22 Nov 2026: Munnar\n- Eravikulam National Park\n- Mattupetty Dam');
+    expect(d.days.map((x) => [x.number, x.date, x.destination])).toEqual([
+      [1, '2026-11-21', 'Munnar'],
+      [2, '2026-11-22', 'Munnar'],
+    ]);
+    expect(places('Mon, 21 Nov 2026 – Kochi to Munnar\n• Cheeyappara Waterfalls').map((i) => [i.kind, i.name, i.day])).toEqual([
+      ['destination', 'Munnar', 1],
+      ['attraction', 'Cheeyappara Waterfalls', 1],
+    ]);
+  });
+
+  it('reads “N nights” sections and ordinal days', () => {
+    const d = parseItinerary('Munnar (2 Nights)\n• Tea Museum\n• Echo Point\nAlleppey – 1N\n• Houseboat cruise on the backwaters\n2nd Day | Thekkady\n• Periyar Lake boating');
+    expect(d.items.filter((i) => i.kind === 'destination').map((i) => i.name)).toEqual(['Munnar', 'Alleppey', 'Thekkady']);
+    expect(d.items.find((i) => i.name === 'Echo Point')?.day).toBe(d.items.find((i) => i.name === 'Munnar')?.day);
+  });
+
+  it('reads a plain bullet list: headings followed by bullets become destinations', () => {
+    const d = parseItinerary('Our Kerala plan\nMunnar\n- Top Station viewpoint\n- Kolukkumalai Tea Estate\nAlleppey\n- Marari Beach');
+    expect(d.items.filter((i) => i.kind === 'destination').map((i) => i.name)).toEqual(['Munnar', 'Alleppey']);
+    const beach = d.items.find((i) => i.name === 'Marari Beach');
+    expect(beach?.day).toBe(d.items.find((i) => i.name === 'Alleppey')?.day);
+  });
+
+  it('never silently drops lines: unrecognised text before the first day is kept as an unticked note', () => {
+    const d = parseItinerary('Kerala trip\nPrepared by Sunny Travels for the Nair family\nDay 1 – Munnar\nTea Museum');
+    expect(d.items.find((i) => i.kind === 'note' && /Sunny Travels/.test(i.name))).toMatchObject({ include: false, day: null });
+  });
+
+  it('offers place-like lines even when there are no sections at all', () => {
+    const d = parseItinerary('Things to see\nAthirappilly Falls, Thrissur\nFort Kochi beach walk\nbuy spices');
+    expect(d.items.filter((i) => i.kind !== 'note').map((i) => i.name)).toEqual(['Athirappilly Falls', 'Fort Kochi beach walk']);
+  });
+});
+
+describe('more PDF structures', () => {
+  const build = (objs: string[], trailer = '<< /Root 1 0 R >>') => {
+    let pdf = '%PDF-1.4\n';
+    objs.forEach((o, i) => (pdf += `${i + 1} 0 obj\n${o}\nendobj\n`));
+    return new Uint8Array(Buffer.from(`${pdf}trailer ${trailer}\n%%EOF`, 'latin1'));
+  };
+  const stream = (s: string, extra = '') => `<< /Length ${s.length}${extra} >>\nstream\n${s}\nendstream`;
+
+  it('reads text drawn inside form XObjects, with resources inherited from the page tree', () => {
+    const form = 'BT /F1 12 Tf 72 700 Td (Day 1 - Munnar) Tj 0 -16 Td (Tea Museum) Tj ET';
+    const pdf = build([
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources << /Font << /F1 5 0 R >> /XObject << /Fm1 6 0 R >> >> >>',
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>',
+      stream('q /Fm1 Do Q'),
+      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+      stream(form, ' /Type /XObject /Subtype /Form /BBox [0 0 612 792]'),
+    ]);
+    expect(extractPdfText(pdf).text).toBe('Day 1 - Munnar\nTea Museum');
+  });
+
+  it('explains encrypted PDFs instead of returning nothing', () => {
+    const pdf = build(['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [] /Count 0 >>', '<< /Filter /Standard /V 2 >>'], '<< /Root 1 0 R /Encrypt 3 0 R >>');
+    expect(() => extractPdfText(pdf)).toThrow(/password-protected or encrypted/);
+  });
+
+  it('counts fonts whose text cannot be decoded', () => {
+    const pdf = build([
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+      stream('BT /F1 12 Tf <00410042> Tj ET'),
+      '<< /Type /Font /Subtype /Type0 /BaseFont /X /Encoding /Identity-H >>',
+    ]);
+    expect(extractPdfText(pdf).unreadableFonts).toBe(1);
+  });
+});
+
+describe('explaining what was read', () => {
+  it('says which pages had no text, which fonts could not be read, and what was kept as notes', () => {
+    const draft = parseItinerary('Day 1 – Munnar\nTea Museum\nBring cash');
+    const message = explainResult({ pages: ['Day 1 – Munnar Tea Museum', ''], unreadableFonts: 1 }, draft);
+    expect(message).toMatch(/font without a text map/);
+    expect(message).toMatch(/1 of 2 pages have no readable text/);
+    expect(message).toMatch(/kept as unticked notes/);
+    expect(explainResult({ pages: ['x'.repeat(40)], unreadableFonts: 0 }, parseItinerary('Day 1 – Munnar\nTea Museum'))).toBeNull();
   });
 });

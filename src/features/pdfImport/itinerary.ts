@@ -56,7 +56,66 @@ export function findDates(line: string, fallbackYear: number | null = null): str
   return [...new Set(valid)].sort((a, b) => (positions.get(a) ?? 0) - (positions.get(b) ?? 0));
 }
 
-const DAY_HEADER = /^\s*(?:day|d)\s*[-–:.]?\s*(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\b\s*[-–—:.)]*\s*(.*)$/i;
+const DAY_HEADER = /^\s*(?:#+\s*)?(?:day|d)\s*[-–:.#]?\s*(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\b\s*[-–—:.)|]*\s*(.*)$/i;
+const ORDINAL_DAY = /^\s*(?:#+\s*)?(\d{1,2})(?:st|nd|rd|th)\s+day\b\s*[-–—:.)|]*\s*(.*)$/i;
+const WORD_ORDINAL_DAY = /^\s*(?:#+\s*)?(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s+day\b\s*[-–—:.)|]*\s*(.*)$/i;
+const ORDINALS: Record<string, number> = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10 };
+/** "Munnar (2 Nights)", "Munnar – 2N", "Alleppey: 1 night". */
+const NIGHTS_HEADER = /^\s*(?:#+\s*)?([A-Za-z][^:–—(-]{1,40}?)\s*(?:[-–—:(|]\s*)?(\d{1,2})\s*(?:n\b|nts?\b|nights?\b)\)?\s*$/i;
+const WEEKDAY = /^(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)[a-z]*\.?,?\s+/i;
+const BULLET = /^[\s•\-*–·◦○▪►➢✓✔→>]+/;
+
+export interface SectionHeader {
+  number: number | null;
+  title: string;
+  date: string | null;
+}
+
+/**
+ * A line that starts a day or a destination section: "Day 2 – Munnar",
+ * "DAY 02: Munnar", "2nd Day | Munnar", "Second day – Munnar",
+ * "Mon, 21 Nov 2026 – Kochi to Munnar", "21/11/2026: Munnar",
+ * "Munnar (2 Nights)". Null for anything else.
+ */
+export function sectionHeader(line: string, year: number | null): SectionHeader | null {
+  const day = DAY_HEADER.exec(line) ?? ORDINAL_DAY.exec(line);
+  if (day) {
+    const raw = (day[1] as string).toLowerCase();
+    const number = /^\d+$/.test(raw) ? Number(raw) : (WORD_NUMBERS[raw] ?? null);
+    const title = (day[2] ?? '').trim();
+    return { number, title, date: findDates(title, year)[0] ?? null };
+  }
+  const word = WORD_ORDINAL_DAY.exec(line);
+  if (word) {
+    const title = (word[2] ?? '').trim();
+    return { number: ORDINALS[(word[1] as string).toLowerCase()] ?? null, title, date: findDates(title, year)[0] ?? null };
+  }
+  // A heading that starts with a date: what follows is the day's title.
+  if (line.length <= 90 && !BULLET.test(line)) {
+    const plain = line.replace(WEEKDAY, '');
+    const date = findDates(plain, year)[0] ?? null;
+    if (date) {
+      const lead = /^(\d{4}-\d{2}-\d{2}|\d{1,2}[/.]\d{1,2}[/.]\d{4}|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]{3,9}\.?,?(?:\s*\d{4})?|[a-z]{3,9}\.?\s+\d{1,2}(?:st|nd|rd|th)?,?(?:\s*\d{4})?)/i.exec(plain);
+      if (lead) {
+        const title = plain.slice(lead[0].length).replace(/^\s*[-–—:|,)]*\s*/, '').trim();
+        // "20 Nov 2026 – 23 Nov 2026" is the trip's date range, not a day.
+        if (title.length <= 70 && !TIME.test(title) && findDates(title, year).length === 0 && !/^(to|until|till)\b/i.test(title)) return { number: null, title, date };
+      }
+    }
+  }
+  const nights = NIGHTS_HEADER.exec(line);
+  if (nights && classify(nights[1] as string) !== 'hotel') return { number: null, title: (nights[1] as string).trim(), date: null };
+  return null;
+}
+
+/** For lists without day headings: a short, title-like line followed by bullet points is a destination. */
+function looksLikeHeading(line: string, next: string | undefined): boolean {
+  if (!next || BULLET.test(line) || !BULLET.test(next)) return false;
+  const words = line.split(/\s+/);
+  if (words.length > 5 || /[.!?,;]$/.test(line) || /\d/.test(line)) return false;
+  const kind = classify(line);
+  return kind !== 'hotel' && kind !== 'restaurant' && kind !== 'transport';
+}
 const TIME = /\b(\d{1,2}[:.]\d{2}\s*(?:am|pm|hrs)?|\d{1,2}\s*(?:am|pm))\b/i;
 
 const KIND_RULES: [DraftKind, RegExp][] = [
@@ -76,7 +135,7 @@ const LEAD = /^(?:visit(?:ing)?|explore|proceed to|drive to|go to|head to|check[
 
 /** A place name from a line: without times, leading verbs, bullets and trailing remarks. */
 export function placeName(text: string): string {
-  let t = text.replace(TIME, ' ').replace(/^[\s•\-*–·\d.)]+/, '').trim();
+  let t = text.replace(TIME, ' ').replace(/^[\s•\-*–·◦○▪►➢✓✔→>\d.)]+/, '').trim();
   for (let i = 0; i < 3; i++) t = t.replace(LEAD, '').trim();
   t = t.replace(/\s*\((?:[^)]*)\)\s*$/, '').replace(/\s+(?:en route|on the way|optional)$/i, '').replace(/[.:;]+$/, '').trim();
   // "Tea County Resort, Munnar" → keep the place, not its town.
@@ -106,12 +165,24 @@ export function parseItinerary(text: string): ItineraryDraft {
   let day: ItineraryDraft['days'][number] | null = null;
   let destinationName: string | null = null;
 
+  // Sections: explicit day / date / "N nights" headings, or — for plain lists — headings followed by bullets.
+  const headers = new Map<number, SectionHeader>();
+  lines.forEach((line, i) => {
+    const h = sectionHeader(line, year);
+    if (h) headers.set(i, h);
+  });
+  if (headers.size === 0) {
+    lines.forEach((line, i) => {
+      if (i > 0 && looksLikeHeading(line, lines[i + 1])) headers.set(i, { number: null, title: line, date: null });
+    });
+  }
+
   for (const [index, line] of lines.entries()) {
-    const header = DAY_HEADER.exec(line);
+    const header = headers.get(index);
     if (header) {
-      const number = /^\d+$/.test(header[1] as string) ? Number(header[1]) : (WORD_NUMBERS[(header[1] as string).toLowerCase()] ?? draft.days.length + 1);
-      const title = (header[2] ?? '').trim();
-      const date = findDates(title, year)[0] ?? null;
+      const number: number = header.number ?? (day ? day.number + 1 : draft.days.length + 1);
+      const title = header.title;
+      const date = header.date;
       const dest = dayDestination(title);
       day = { number, date, destination: dest, title };
       draft.days.push(day);
@@ -124,12 +195,22 @@ export function parseItinerary(text: string): ItineraryDraft {
       continue;
     }
     if (!day) {
-      // Before the first day: trip name (first short line) and trip dates.
+      // Before the first day: trip name (first short line) and trip dates; anything else is kept as a note.
       const dates = findDates(line, year);
       if (dates.length >= 1 && !draft.startDate) {
         draft.startDate = dates[0] ?? null;
         draft.endDate = dates[dates.length - 1] ?? null;
       } else if (index < 3 && !draft.tripName && line.length <= 60 && !dates.length) draft.tripName = line;
+      else if (headers.size === 0 && classify(line) !== 'note') {
+        // No sections at all: still offer every place-like line, unassigned to a day.
+        const name = placeName(line);
+        if (name.length >= 3 && !draft.items.some((i) => i.kind !== 'note' && normalizePlaceName(i.name) === normalizePlaceName(name))) {
+          const kind = classify(line);
+          draft.items.push({ key: key(), day: null, date: null, kind, name, time: TIME.exec(line)?.[0]?.trim() ?? null, detail: line, include: kind === 'attraction', match: null, reuse: true });
+        }
+      } else if (line.length >= 3) {
+        draft.items.push({ key: key(), day: null, date: null, kind: 'note', name: line, time: null, detail: '', include: false, match: null, reuse: true });
+      }
       continue;
     }
     if (/^(time|plan|activity|schedule|details|description)( (time|plan|activity|schedule|details))*$/i.test(line)) continue;
@@ -150,7 +231,12 @@ export function parseItinerary(text: string): ItineraryDraft {
     for (const part of parts) {
       const kind = classify(part) === 'note' ? kindOfLine : classify(part);
       const name = kind === 'note' ? rest : placeName(part);
-      if (!name || name.length < 3) continue;
+      if (!name || name.length < 3) {
+        if (part === parts[0] && rest.length >= 3 && !draft.items.some((i) => i.kind === 'note' && i.name === rest)) {
+          draft.items.push({ key: key(), day: day.number, date: day.date, kind: 'note', name: rest, time, detail: line, include: false, match: null, reuse: true });
+        }
+        continue;
+      }
       if (kind === 'note' && parts.length > 1 && part !== parts[0]) continue;
       const dup = draft.items.find((i) => i.kind !== 'note' && normalizePlaceName(i.name) === normalizePlaceName(name));
       if (dup) continue;
