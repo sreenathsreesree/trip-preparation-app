@@ -105,6 +105,10 @@ export function MemoriesScreen({ tripId }: { tripId: string | undefined }) {
     return [];
   }, [photos, notes, mode, albumId, albumUris, byUri, albums, destinations]);
 
+  // The viewer swipes through everything shown, in the order shown.
+  const flat = groups.flatMap((g) => g.photos.map((p) => ({ ...p, key: `${g.key}:${p.key}` })));
+  const offsets = groups.reduce<number[]>((acc, g, i) => [...acc, i === 0 ? 0 : (acc[i - 1] ?? 0) + (groups[i - 1]?.photos.length ?? 0)], []);
+
   if (!tripId || !trip) {
     return (
       <Screen bottomInset>
@@ -394,8 +398,8 @@ export function MemoriesScreen({ tripId }: { tripId: string | undefined }) {
       ) : photos.length === 0 && !album ? (
         <EmptyState icon="image-multiple-outline" title="No photos yet" message="Add photos to a destination's folder, or to journal entries." testID="memories-empty" />
       ) : (
-        <View style={styles.group} onLayout={(e) => setWidth(e.nativeEvent.layout.width)} testID="memories-grid">
-          {groups.map((g) => (
+        <View style={styles.group} onLayout={(e) => setWidth(e.nativeEvent.layout.width)} testID="gallery-grid">
+          {groups.map((g, gi) => (
             <View key={g.key} style={styles.group}>
               <View>
                 <AppText variant="h3" numberOfLines={1}>
@@ -419,8 +423,8 @@ export function MemoriesScreen({ tripId }: { tripId: string | undefined }) {
                           accountId={accountId}
                           size={cell}
                           label={`${p.caption || p.place || 'Photo'}, ${p.date}${selected.has(p.uri) ? ', selected' : ''}`}
-                          onPress={() => (selecting ? toggle(p.uri) : setOpen({ list: g.photos, index: i }))}
-                          testID={`memories-photo-${g.key}-${i}`}
+                          onPress={() => (selecting ? toggle(p.uri) : setOpen({ list: flat, index: (offsets[gi] ?? 0) + i }))}
+                          testID={`gallery-photo-${(offsets[gi] ?? 0) + i}`}
                         />
                         {notes[p.uri]?.favourite ? (
                           <View style={styles.badge} pointerEvents="none">
