@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Icon } from '@/components/ui';
+import { AppText, Icon, ProgressBar } from '@/components/ui';
 import { colors, radii, spacing } from '@/theme';
 import type { IconName } from '@/theme/icons';
 
@@ -15,6 +15,8 @@ import {
   readinessPercent,
   type DepartureStatus,
 } from '../readiness';
+import type { PackingProgress } from '../../packing/model';
+import { combinedPreparation } from '../progress';
 import { TaskRow } from './TaskRow';
 
 const STATUS_ICON: Record<DepartureStatus, IconName> = {
@@ -24,7 +26,7 @@ const STATUS_ICON: Record<DepartureStatus, IconName> = {
   complete: 'check-decagram',
 };
 
-const ESSENTIALS_SHOWN = 5;
+const ESSENTIALS_SHOWN = 3;
 
 export interface ReadinessPanelProps {
   tripId: string;
@@ -32,19 +34,24 @@ export interface ReadinessPanelProps {
   tasks: ChecklistTask[];
   onToggle: (task: ChecklistTask) => void;
   onDelete: (task: ChecklistTask) => void;
+  /** Packing list progress, when loaded: folded into the one preparation number. */
+  packing?: PackingProgress | null;
 }
 
 /**
- * Departure readiness vs task completion, the per-priority breakdown, and the
+ * One combined preparation number (checklist readiness and packing, see
+ * progress.ts) with its parts underneath, the per-priority breakdown, and the
  * essential tasks still blocking departure (tickable in place).
  */
-export function ReadinessPanel({ tripId, sections, tasks, onToggle, onDelete }: ReadinessPanelProps) {
+export function ReadinessPanel({ tripId, sections, tasks, onToggle, onDelete, packing = null }: ReadinessPanelProps) {
   const stats = computeStats(tasks);
   const status = getDepartureStatus(stats);
   const color = DEPARTURE_COLORS[status];
   const { title, detail } = describeDeparture(stats);
   const sectionById = new Map(sections.map((s) => [s.id, s]));
   const openEssentials = tasks.filter((t) => t.priority === 'essential' && !t.isDone);
+  const combined = combinedPreparation(stats, packing ?? { units: 0, packedUnits: 0 });
+  const openPacking = () => router.push({ pathname: '/trips/[tripId]/packing', params: { tripId } });
 
   return (
     <View style={styles.container} testID="readiness-panel">
@@ -60,32 +67,47 @@ export function ReadinessPanel({ tripId, sections, tasks, onToggle, onDelete }: 
         </View>
       </View>
 
-      <View style={styles.metrics}>
-        <View style={styles.metric}>
-          <AppText variant="metric" style={{ color }} testID="readiness-percent">
+      <View style={styles.overall}>
+        <View style={styles.overallRow}>
+          <AppText variant="metric" style={{ color }} testID="preparation-percent">
+            {combined.percent}%
+          </AppText>
+          <AppText variant="label" tone="textMuted" style={styles.flex}>
+            Prepared overall
+          </AppText>
+        </View>
+        <ProgressBar value={combined.percent / 100} color={color} height={6} />
+      </View>
+      <View style={styles.parts}>
+        <View style={styles.part}>
+          <Icon name="clipboard-check-outline" size={18} tone="textSecondary" />
+          <AppText variant="body" style={styles.flex}>
+            Checklist
+          </AppText>
+          <AppText variant="bodyStrong" testID="readiness-percent">
             {readinessPercent(stats)}%
           </AppText>
-          <AppText variant="label" tone="textMuted">
-            Departure readiness
-          </AppText>
           <AppText variant="caption" tone="textMuted">
-            Essential + recommended
+            ready ·{' '}
           </AppText>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.metric}>
-          <AppText variant="metric" tone="textPrimary" testID="completion-percent">
+          <AppText variant="caption" tone="textMuted" testID="completion-percent">
             {completionPercent(stats)}%
           </AppText>
-          <AppText variant="label" tone="textMuted">
-            Tasks completed
-          </AppText>
           <AppText variant="caption" tone="textMuted">
-            {stats.done} of {stats.total}, optional included
+            {' '}done ({stats.done}/{stats.total})
           </AppText>
         </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open packing list" onPress={openPacking} style={styles.part} testID="packing-summary">
+          <Icon name="bag-personal-outline" size={18} tone="textSecondary" />
+          <AppText variant="body" style={styles.flex}>
+            Packing
+          </AppText>
+          <AppText variant="caption" tone="textMuted">
+            {packing === null ? 'Loading…' : packing.units === 0 ? 'Nothing to pack yet' : `${packing.packedUnits} of ${packing.units} packed`}
+          </AppText>
+          <Icon name="chevron-right" size={18} tone="textMuted" />
+        </Pressable>
       </View>
-
       <View style={styles.breakdown}>
         {PRIORITIES.map((priority) => (
           <View key={priority} style={styles.breakdownItem}>
@@ -142,21 +164,24 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  metrics: {
+  overall: {
+    gap: spacing.sm,
+  },
+  overallRow: {
     flexDirection: 'row',
-    alignItems: 'stretch',
-    padding: spacing.md,
+    alignItems: 'baseline',
+    gap: spacing.sm,
+  },
+  parts: {
     borderRadius: radii.md,
     backgroundColor: colors.overlay,
   },
-  metric: {
-    flex: 1,
-    gap: spacing.xxs,
-  },
-  divider: {
-    width: 1,
-    marginHorizontal: spacing.md,
-    backgroundColor: colors.border,
+  part: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
   },
   breakdown: {
     flexDirection: 'row',

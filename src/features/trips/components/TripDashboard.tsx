@@ -1,14 +1,14 @@
-import { router } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { Screen } from '@/components/layout/Screen';
 import { ScreenHeader } from '@/components/layout/ScreenHeader';
-import { TopoBackdrop } from '@/components/layout/TopoBackdrop';
 import {
   AppText,
   Button,
+  Collapsible,
   EmptyState,
   ErrorState,
   IconButton,
@@ -16,15 +16,14 @@ import {
   Notice,
   SectionHeader,
 } from '@/components/ui';
-import { formatDate, formatDateRange } from '@/lib/dates';
+import { formatDate } from '@/lib/dates';
 import { toErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing } from '@/theme';
 
-import { PackingSummaryCard } from '../../packing/components/PackingSummaryCard';
-import { JournalSummaryCard } from '../../journal/components/JournalSummaryCard';
+import { packingProgress } from '../../packing/model';
+import { usePackingStore, useTripPacking } from '../../packing/packingStore';
 import { PlanSummaryCard } from '../../planner/components/PlanSummaryCard';
 import { TripWeatherCard } from '../../weather/components/TripWeatherCard';
-import { TripCover } from '../../covers/TripCover';
 import { useChecklistStore } from '../../preparation/checklistStore';
 import { ReadinessPanel } from '../../preparation/components/ReadinessPanel';
 import { SectionCard } from '../../preparation/components/SectionCard';
@@ -34,7 +33,6 @@ import { buildStarterSection } from '../../preparation/starter';
 import { useToday, useTrip } from '../hooks';
 import {
   describeTripTiming,
-  formatRoute,
   getTripLifecycle,
   getTripPhase,
   TRANSPORT_MODE_META,
@@ -42,6 +40,9 @@ import {
 } from '../model';
 import { useTripsStore } from '../tripsStore';
 import { useTripActions } from './TripActions';
+import { JourneyButton } from './dashboard/JourneyButton';
+import { QuickLinks } from './dashboard/QuickLinks';
+import { TripHero } from './dashboard/TripHero';
 import { TripMetaTags } from './TripMetaTags';
 
 function LifecycleNotice({ trip, today }: { trip: TripSummary; today: string }) {
@@ -105,6 +106,13 @@ function DashboardBody({ trip, justCreated }: { trip: TripSummary; justCreated: 
   const { openActions, sheet, error: tripActionError } = useTripActions(trip, {
     onDeleted: () => router.replace('/trips'),
   });
+  const packing = useTripPacking(trip.id);
+  useFocusEffect(
+    useCallback(() => {
+      void usePackingStore.getState().load(trip.id);
+    }, [trip.id]),
+  );
+  const packed = packing.status === 'ready' ? packingProgress(packing.entries) : null;
 
   if (!owner) return null;
   const grouped = groupTasksBySection(checklist.tasks);
@@ -126,7 +134,6 @@ function DashboardBody({ trip, justCreated }: { trip: TripSummary; justCreated: 
         showBack
         eyebrow={describeTripTiming(trip, today)}
         title={trip.name}
-        subtitle={`${formatRoute(trip.destinations)} · ${formatDateRange(trip.startDate, trip.endDate)}`}
         trailing={
           <IconButton
             icon="dots-horizontal"
@@ -162,12 +169,14 @@ function DashboardBody({ trip, justCreated }: { trip: TripSummary; justCreated: 
       <LifecycleNotice trip={trip} today={today} />
       {tripActionError ? <Notice tone="danger" title="Action failed" message={tripActionError} /> : null}
 
-      <TripCover trip={trip} />
+      <TripHero trip={trip} />
+      <TripMetaTags trip={trip} />
+
+      <PlanSummaryCard trip={trip} />
+      <JourneyButton trip={trip} today={today} />
 
       <View style={styles.hero}>
-        <TopoBackdrop opacity={0.35} />
         <View style={styles.heroContent}>
-          <TripMetaTags trip={trip} />
           {checklist.status === 'ready' ? (
             <ReadinessPanel
               tripId={trip.id}
@@ -175,25 +184,21 @@ function DashboardBody({ trip, justCreated }: { trip: TripSummary; justCreated: 
               tasks={checklist.tasks}
               onToggle={onToggle}
               onDelete={onDelete}
+              packing={packed}
             />
-          ) : null}
+          ) : (
+            <LoadingState label="Loading preparation…" />
+          )}
         </View>
       </View>
 
       {actionError ? <Notice tone="danger" title="Something went wrong" message={actionError} /> : null}
 
-      <View style={styles.spaces}>
-        <Button label="Group Trip" icon="account-group-outline" variant="secondary" onPress={() => router.push({ pathname: '/trips/[tripId]/group', params: { tripId: trip.id } })} style={styles.space} testID="trip-group" />
-        <Button label="My Trip" icon="lock-outline" variant="secondary" onPress={() => router.push({ pathname: '/trips/[tripId]/mine', params: { tripId: trip.id } })} style={styles.space} testID="trip-mine" />
-      </View>
+      <QuickLinks tripId={trip.id} />
 
-      <PlanSummaryCard trip={trip} />
-
-      <TripWeatherCard trip={trip} />
-
-      <PackingSummaryCard tripId={trip.id} />
-
-      <JournalSummaryCard trip={trip} />
+      <Collapsible title="Weather" icon="weather-partly-cloudy" summary="Forecast along your destinations — tap to show" testID="trip-weather-section">
+        <TripWeatherCard trip={trip} />
+      </Collapsible>
 
       {needsVehicle ? (
         <Notice
