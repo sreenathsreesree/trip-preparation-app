@@ -18,6 +18,7 @@ import { getDatabase, getPartitionDatabase } from './client';
 import type { Partition } from './partitions';
 import { createClothingRepository } from '@/features/clothing/clothingRepository';
 import { createCoverRepository } from '@/features/covers/coverRepository';
+import { createMemoriesRepository } from '@/features/memories/memoriesRepository';
 import { createGalleryRepository } from '@/features/journal/galleryRepository';
 import { createGroupRepository } from '@/features/group/groupRepository';
 import { createMyDocumentsRepository } from '@/features/group/myDocumentsRepository';
@@ -39,6 +40,7 @@ export async function getRepositories(partition?: Partition) {
     templates: createTemplateRepository(db, { createId }),
     inventory: createInventoryRepository(db, { createId }),
     clothing: createClothingRepository(db, { createId }),
+    memories: createMemoriesRepository(db, { createId }),
     packing: createPackingRepository(db, { createId }),
     recommendations: createRecommendationRepository(db, { createId }),
     purchases: createPurchaseRepository(db, { createId }),

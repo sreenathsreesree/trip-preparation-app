@@ -18,7 +18,8 @@ import { useAutoCover } from './useAutoCover';
  */
 export function DestinationThumb({ tripId, node, size = 56, style, testID }: { tripId: string; node: PlanNode; size?: number; style?: StyleProp<ViewStyle>; testID?: string }) {
   const { plan, companion } = useTripPlan(tripId);
-  const own = companion?.profiles.find((p) => p.nodeId === node.id)?.coverImageUri ?? null;
+  // The user's own photos come first: their chosen cover, then their first Memories photo.
+  const own = companion?.profiles.find((p) => p.nodeId === node.id)?.coverImageUri ?? companion?.memoryPhotos?.[node.id] ?? null;
   const query = own ? null : nodeCoverQuery(plan?.nodes ?? [node], node);
   const { state } = useAutoCover({ type: 'node', id: node.id }, query);
   const box = [styles.frame, { width: size, height: size }, style];

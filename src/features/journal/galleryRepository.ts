@@ -54,6 +54,7 @@ export function createGalleryRepository(db: Database) {
             source: 'memory',
             caption: '',
             place: m.place,
+            nodeId: m.node_id,
           });
         });
       }

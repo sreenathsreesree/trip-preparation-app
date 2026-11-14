@@ -241,6 +241,8 @@ export interface TripCompanion {
   navigation: NavItem[];
   /** Preparation progress per place. */
   taskCounts: Record<string, { done: number; total: number }>;
+  /** The first Memories photo of each place that has one (the user's own photo, shown before automatic covers). */
+  memoryPhotos?: Record<string, string>;
 }
 
 export interface CompanionRepository {
@@ -336,18 +338,30 @@ export function createCompanionRepository(
 
   return {
     async trip(tripId) {
-      const [profiles, navigation, counts] = await Promise.all([
+      const [profiles, navigation, counts, memories] = await Promise.all([
         db.getAllAsync<ProfileRow>('SELECT * FROM plan_node_profiles WHERE trip_id = ?', [tripId]),
         navRows(tripId),
         db.getAllAsync<{ node_id: string; done: number; total: number }>(
           `SELECT node_id, SUM(is_done) AS done, COUNT(*) AS total FROM plan_node_tasks WHERE trip_id = ? GROUP BY node_id`,
           [tripId],
         ),
+        db.getAllAsync<{ node_id: string; photos: string }>('SELECT node_id, photos FROM plan_node_memories WHERE trip_id = ?', [tripId]),
       ]);
+      const memoryPhotos: Record<string, string> = {};
+      for (const m of memories) {
+        try {
+          const list: unknown = JSON.parse(m.photos);
+          const first = Array.isArray(list) ? list.find((u): u is string => typeof u === 'string' && u.length > 0) : undefined;
+          if (first) memoryPhotos[m.node_id] = first;
+        } catch {
+          // Unreadable list: no photo for this place.
+        }
+      }
       return {
         profiles: profiles.map(mapProfile),
         navigation,
         taskCounts: Object.fromEntries(counts.map((c) => [c.node_id, { done: c.done ?? 0, total: c.total }])),
+        memoryPhotos,
       };
     },
 

@@ -72,7 +72,20 @@ function Page({ photo, accountId, width, height, active, onZoomChange }: { photo
  * photos in the gallery's order, pinch or double-tap to zoom, pan while
  * zoomed. Back / close returns to the grid where it was.
  */
-export function PhotoViewer({ photos, index, accountId, onClose }: { photos: GalleryPhoto[]; index: number | null; accountId: string | null; onClose: () => void }) {
+export function PhotoViewer({
+  photos,
+  index,
+  accountId,
+  onClose,
+  onInfo,
+}: {
+  photos: GalleryPhoto[];
+  index: number | null;
+  accountId: string | null;
+  onClose: () => void;
+  /** Optional "Details" action for the photo on screen (caption, favourite, its destination's memory). */
+  onInfo?: (photo: GalleryPhoto) => void;
+}) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [current, setCurrent] = useState(index ?? 0);
@@ -121,7 +134,11 @@ export function PhotoViewer({ photos, index, accountId, onClose }: { photos: Gal
             <AppText variant="bodyStrong" style={styles.light} testID="viewer-counter">
               {photos.length ? `${current + 1} / ${photos.length}` : ''}
             </AppText>
-            <View style={styles.spacer} />
+            {onInfo && photo ? (
+              <IconButton icon="information-outline" accessibilityLabel="Photo details" onPress={() => onInfo(photo)} testID="viewer-info" />
+            ) : (
+              <View style={styles.spacer} />
+            )}
           </View>
           {photo ? (
             <View style={[styles.bottom, { paddingBottom: insets.bottom + spacing.sm }]} pointerEvents="none">

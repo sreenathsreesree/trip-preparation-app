@@ -1,7 +1,8 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { AppText, Button, IconButton, Notice, TextField } from '@/components/ui';
+import { AppText, Button, Collapsible, IconButton, Notice, TextField } from '@/components/ui';
 import { useAuthStore } from '@/features/auth/authStore';
 import { toErrorMessage } from '@/lib/errors';
 import { deleteStoredImage, pickAndStoreImages } from '@/lib/imageStore';
@@ -48,47 +49,23 @@ export function MemoriesTab({ ctx }: { ctx: DetailContext }) {
     }
   }
 
+  const stars = rating ? '★'.repeat(rating) + '☆'.repeat(5 - rating) : 'No rating';
   return (
     <View style={styles.root} testID="detail-memories">
-      <AppText variant="caption" tone="textMuted">
-        Your memories are private. Photos are kept on this device and, once you connect Google Drive, uploaded to your own Drive.
-      </AppText>
       <View style={styles.group}>
-        <AppText variant="label" tone="textSecondary">
-          Your rating
-        </AppText>
-        <View style={styles.stars} accessibilityRole="radiogroup" accessibilityLabel="Your rating">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <IconButton
-              key={n}
-              icon={rating !== null && n <= rating ? 'star' : 'star-outline'}
-              tone={rating !== null && n <= rating ? 'warning' : 'textMuted'}
-              variant="plain"
-              accessibilityLabel={`${n} ${n === 1 ? 'star' : 'stars'}`}
-              onPress={() => void act((c) => c.saveMemory(ctx.node.id, { rating: rating === n ? null : n }))}
-              testID={`detail-rate-${n}`}
-            />
-          ))}
+        <View style={styles.headRow}>
+          <AppText variant="label" tone="textSecondary" style={styles.flex}>
+            Photos ({photos.length})
+          </AppText>
+          <Button
+            label="Trip Memories"
+            icon="image-multiple-outline"
+            variant="ghost"
+            size="sm"
+            onPress={() => router.push({ pathname: '/trips/[tripId]/gallery', params: { tripId: ctx.tripId } })}
+            testID="detail-memory-gallery"
+          />
         </View>
-      </View>
-      <TextField label="Visited on" placeholder="YYYY-MM-DD" value={visitedOn} onChangeText={setVisitedOn} maxLength={10} testID="detail-memory-date" />
-      <TextField label="How it was" value={notes} onChangeText={setNotes} maxLength={COMPANION_LIMITS.textMax} multiline testID="detail-memory-notes" />
-      <TextField label="Favourite moments" value={moments} onChangeText={setMoments} maxLength={COMPANION_LIMITS.textMax} multiline testID="detail-memory-moments" />
-      {dirty ? (
-        <Button
-          label="Save memory"
-          icon="content-save-outline"
-          loading={busy}
-          onPress={() => void act((c) => c.saveMemory(ctx.node.id, { visitedOn: visitedOn.trim() || null, notes, moments })).then(setSaved)}
-          testID="detail-memory-save"
-        />
-      ) : null}
-      {saved && !dirty ? <Notice tone="success" title="Memory saved." /> : null}
-
-      <View style={styles.group}>
-        <AppText variant="label" tone="textSecondary">
-          Photos ({photos.length})
-        </AppText>
         <View style={styles.photos}>
           {photos.map((uri, i) => (
             <View key={uri} style={styles.photo}>
@@ -101,9 +78,52 @@ export function MemoriesTab({ ctx }: { ctx: DetailContext }) {
         </View>
         {photos.length > 0 ? <PhotoUploadStatus tripId={ctx.tripId} /> : null}
         {photos.length < COMPANION_LIMITS.photosMax ? (
-          <Button label="Add photo" icon="image-plus" variant="secondary" size="sm" onPress={() => void addPhoto()} style={styles.left} testID="detail-memory-photo" />
+          <Button label="Add photos" icon="image-plus" variant="secondary" size="sm" onPress={() => void addPhoto()} style={styles.left} testID="detail-memory-photo" />
         ) : null}
       </View>
+
+      <Collapsible
+        title="Rating, visit & moments"
+        icon="star-circle-outline"
+        summary={[stars, memory?.visitedOn ?? null].filter(Boolean).join(' · ')}
+        initiallyOpen={!memory}
+        testID="detail-memory-editor"
+      >
+        <View style={styles.group}>
+          <AppText variant="label" tone="textSecondary">
+            Your rating
+          </AppText>
+          <View style={styles.stars} accessibilityRole="radiogroup" accessibilityLabel="Your rating">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <IconButton
+                key={n}
+                icon={rating !== null && n <= rating ? 'star' : 'star-outline'}
+                tone={rating !== null && n <= rating ? 'warning' : 'textMuted'}
+                variant="plain"
+                accessibilityLabel={`${n} ${n === 1 ? 'star' : 'stars'}`}
+                onPress={() => void act((c) => c.saveMemory(ctx.node.id, { rating: rating === n ? null : n }))}
+                testID={`detail-rate-${n}`}
+              />
+            ))}
+          </View>
+        </View>
+        <TextField label="Visited on" placeholder="YYYY-MM-DD" value={visitedOn} onChangeText={setVisitedOn} maxLength={10} testID="detail-memory-date" />
+        <TextField label="How it was" value={notes} onChangeText={setNotes} maxLength={COMPANION_LIMITS.textMax} multiline testID="detail-memory-notes" />
+        <TextField label="Favourite moments" value={moments} onChangeText={setMoments} maxLength={COMPANION_LIMITS.textMax} multiline testID="detail-memory-moments" />
+        {dirty ? (
+          <Button
+            label="Save memory"
+            icon="content-save-outline"
+            loading={busy}
+            onPress={() => void act((c) => c.saveMemory(ctx.node.id, { visitedOn: visitedOn.trim() || null, notes, moments })).then(setSaved)}
+            testID="detail-memory-save"
+          />
+        ) : null}
+        {saved && !dirty ? <Notice tone="success" title="Memory saved." /> : null}
+      </Collapsible>
+      <AppText variant="caption" tone="textMuted">
+        Your memories are private. Photos are kept on this device and, once you connect Google Drive, uploaded to your own Drive. Removing a photo here never deletes it from Drive.
+      </AppText>
       {error ? <Notice tone="danger" title={error} /> : null}
     </View>
   );
@@ -115,6 +135,14 @@ const styles = StyleSheet.create({
   },
   group: {
     gap: spacing.sm,
+  },
+  headRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  flex: {
+    flex: 1,
   },
   stars: {
     flexDirection: 'row',

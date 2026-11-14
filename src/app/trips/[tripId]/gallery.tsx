@@ -1,8 +1,8 @@
 import { useLocalSearchParams } from 'expo-router';
 
-import { GalleryScreen } from '@/features/journal/gallery/GalleryScreen';
+import { MemoriesScreen } from '@/features/memories/MemoriesScreen';
 
-export default function TripGalleryRoute() {
+export default function TripMemoriesRoute() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
-  return <GalleryScreen tripId={tripId} />;
+  return <MemoriesScreen tripId={tripId} />;
 }

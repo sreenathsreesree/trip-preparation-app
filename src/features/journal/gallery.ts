@@ -16,6 +16,8 @@ export interface GalleryPhoto {
   caption: string;
   /** Destination name for Memories photos. */
   place: string | null;
+  /** The destination the Memories photo belongs to (null for journal photos). */
+  nodeId?: string | null;
 }
 
 export interface GallerySection {
