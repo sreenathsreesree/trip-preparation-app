@@ -5,7 +5,7 @@
 //   npx expo export --platform web --output-dir dist && npm run e2e:journal
 //   SCREENSHOT_DIR=/tmp/shots npm run e2e:journal
 
-import { BASE, byId, check, iso, launch, run, setStep, shot, text, waitText } from './harness.mjs';
+import { BASE, byId, check, expand, iso, launch, run, setStep, shot, text, waitText } from './harness.mjs';
 
 const now = new Date();
 const day = (d) => new Date(now.getFullYear(), now.getMonth() + 1, d);
@@ -58,6 +58,7 @@ await run('Journal test', async () => {
   await byId(page, 'plan-row-Munnar').waitFor();
   await byId(page, 'plan-open-Munnar').click();
   await byId(page, 'detail-tab-memories').click();
+  await expand(page, 'detail-memory-editor');
   await byId(page, 'detail-memory-date').fill(iso(day(11)));
   await byId(page, 'detail-memory-notes').fill('Clouds below us');
   await byId(page, 'detail-rate-5').click();

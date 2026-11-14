@@ -11,7 +11,7 @@
 // 2. Scale: a 100-place plan (10 main destinations x 9 places): expand /
 //    collapse, scrolling, action sheets, reordering and the small-screen layout.
 
-import { BASE, byId, check, iso, launch, plannerAdd, run, setStep, shot, text, waitText, within, plannerMove, plannerTab, dragRouteStop } from './harness.mjs';
+import { BASE, byId, check, expand, iso, launch, plannerAdd, run, setStep, shot, text, waitText, within, plannerMove, plannerTab, dragRouteStop } from './harness.mjs';
 
 const now = new Date();
 const day = (d) => new Date(now.getFullYear(), now.getMonth() + 1, d);
@@ -87,6 +87,7 @@ await run('Planner reliability test', async () => {
 
   await byId(page, 'plan-open-Hadimba Temple').click();
   await byId(page, 'plan-place').waitFor();
+  await expand(page, 'detail-section-notes');
   await byId(page, 'plan-place-name').fill('Hadimba Devi Temple');
   await byId(page, 'plan-place-save').click();
   await within(page, 'plan-place', 'Hadimba Devi Temple').waitFor();

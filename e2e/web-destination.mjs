@@ -5,7 +5,7 @@
 //   npx expo export --platform web --output-dir dist && npm run e2e:destination
 //   SCREENSHOT_DIR=/tmp/shots npm run e2e:destination
 
-import { BASE, byId, check, iso, launch, run, setStep, shot, text, waitText } from './harness.mjs';
+import { BASE, byId, check, expand, iso, launch, run, setStep, shot, text, waitText } from './harness.mjs';
 
 const now = new Date();
 const day = (d) => new Date(now.getFullYear(), now.getMonth() + 1, d);
@@ -74,6 +74,7 @@ await run('Destination page test', async () => {
   setStep('hero, tabs and honest "not connected" states');
   await openPlace(page, trip, 'Munnar');
   for (const t of ['overview', 'explore', 'prepare', 'plan', 'memories']) check((await byId(page, `detail-tab-${t}`).count()) === 1, `has the ${t} tab`);
+  await expand(page, 'detail-section-weather');
   await byId(page, 'weather-no-location').waitFor();
   check(/needs Munnar’s location/.test(await text(page, 'weather-no-location')), 'weather asks for a location instead of guessing');
   await byId(page, 'detail-auto-cover-credit').waitFor();
@@ -111,16 +112,20 @@ await run('Destination page test', async () => {
   check(shared.includes('Munnar') && shared.includes('google.com/maps'), 'shares the name and a Maps link');
 
   setStep('overview: details, tags, notices with source and date');
+  await expand(page, 'detail-section-about');
   await byId(page, 'detail-about').fill('Tea hills and misty viewpoints');
   await byId(page, 'detail-season').fill('September to March');
   await byId(page, 'detail-facts-save').click();
   await waitText(page, 'detail-facts', (v) => v.includes('Details saved'));
+  await expand(page, 'detail-section-tags');
   await byId(page, 'detail-tag-Must visit').click();
-  await waitText(page, 'detail-hero', (v) => v.includes('Must visit'));
   await byId(page, 'detail-tag-input').fill('Rainy day');
   await byId(page, 'detail-tag-add').click();
-  await waitText(page, 'detail-hero', (v) => v.includes('Rainy day'));
+  await page.waitForTimeout(300);
+  await byId(page, 'detail-section-tags-toggle').click();
+  await waitText(page, 'detail-section-tags', (v) => v.includes('Must visit') && v.includes('Rainy day'));
   check(true, 'preset and custom tags');
+  await expand(page, 'detail-section-alerts');
   await byId(page, 'detail-alert-add').click();
   await byId(page, 'detail-alert-kind-closure').click();
   await byId(page, 'detail-alert-title').fill('Gap road closed at night');
@@ -217,6 +222,7 @@ await run('Destination page test', async () => {
   await shot(page, 'dest-06-compare');
   await byId(page, 'compare-open-Munnar').click();
   await byId(page, 'plan-place').waitFor();
+  await expand(page, 'detail-section-offline');
   await byId(page, 'detail-offline').waitFor();
   check(/location, 2 tasks, 1 note, 1 notice, memories/.test(await text(page, 'detail-offline')), 'says what is stored on the device');
   check(errors.length === 0, `no uncaught page errors (${errors.join(' | ') || 'none'})`);
@@ -226,8 +232,11 @@ await run('Destination page test', async () => {
   ({ context, page, errors } = await launch());
   await openPlace(page, trip, 'Munnar');
   const hero = await text(page, 'detail-hero');
-  check(hero.includes('Saved for later') && hero.includes('Must visit') && hero.includes('Rainy day') && hero.includes('Half day'), 'hero tags persisted');
+  check(hero.includes('Saved for later') && hero.includes('Half day'), 'hero status persisted');
+  check(/Must visit/.test(await text(page, 'detail-section-tags')) && /Rainy day/.test(await text(page, 'detail-section-tags')), 'tags persisted');
+  await expand(page, 'detail-section-about');
   check((await byId(page, 'detail-about').inputValue()) === 'Tea hills and misty viewpoints', 'description persisted');
+  await expand(page, 'detail-section-alerts');
   await byId(page, 'detail-alert-Gap road closed at night').waitFor();
   check((await text(page, 'detail-coordinates')) === '10.08890, 77.05950', 'location persisted');
   await tab(page, 'prepare');
@@ -235,6 +244,7 @@ await run('Destination page test', async () => {
   await tab(page, 'plan');
   await byId(page, 'detail-note-food').waitFor();
   await tab(page, 'memories');
+  await expand(page, 'detail-memory-editor');
   check((await byId(page, 'detail-memory-notes').inputValue()) === 'Clouds below us at dawn', 'memory persisted');
   await page.goto(`${trip}/plan/place/${encodeURIComponent('x')}`);
   await page.getByText('Not in this plan').waitFor();

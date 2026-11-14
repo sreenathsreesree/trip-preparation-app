@@ -10,7 +10,7 @@
 // explained route impact, rename from the place screen, use the Home and
 // trip-menu entry points, then restart the browser to check persistence.
 
-import { BASE, byId, check, iso, launch, plannerAdd, plannerMove, dragRouteStop, run, setStep, shot, text, waitText, within } from './harness.mjs';
+import { BASE, byId, check, expand, iso, launch, plannerAdd, plannerMove, dragRouteStop, run, setStep, shot, text, waitText, within } from './harness.mjs';
 
 const now = new Date();
 const day = (d) => new Date(now.getFullYear(), now.getMonth() + 1, d);
@@ -76,8 +76,9 @@ await run('Planner test', async () => {
     'only main destinations become the trip’s destinations',
   );
   check(
-    JSON.stringify(await routeStops(page, tripUrl)) === JSON.stringify(['Munnar', 'Athirappilly', 'Athirappilly Waterfalls']),
-    'route has exactly the chosen stops',
+    JSON.stringify(await routeStops(page, tripUrl)) === JSON.stringify(['Munnar', 'Athirappilly']) &&
+      (await text(page, 'route-stop-Athirappilly')).includes('Also visiting: Athirappilly Waterfalls'),
+    'route lists the chosen main destinations; a chosen place inside one travels on its card',
   );
 
   setStep('same-name warning and collapse');
@@ -109,7 +110,8 @@ await run('Planner test', async () => {
     'promoting adds a trip destination right after its old main destination',
   );
   check(
-    JSON.stringify(await routeStops(page, tripUrl)) === JSON.stringify(['Munnar', 'Athirappilly', 'Athirappilly Waterfalls']),
+    JSON.stringify(await routeStops(page, tripUrl)) === JSON.stringify(['Munnar', 'Athirappilly']) &&
+      (await text(page, 'route-stop-Athirappilly')).includes('Also visiting: Athirappilly Waterfalls'),
     'promoting does not change the route',
   );
 
@@ -136,20 +138,25 @@ await run('Planner test', async () => {
   await page.waitForTimeout(300);
   check((await destinationsOnDashboard(page, tripUrl)).includes('Athirappilly → Munnar'), 'reordering updates the trip everywhere');
   check(
-    JSON.stringify(await routeStops(page, tripUrl)) === JSON.stringify(['Munnar', 'Athirappilly', 'Athirappilly Waterfalls']),
+    JSON.stringify(await routeStops(page, tripUrl)) === JSON.stringify(['Munnar', 'Athirappilly']) &&
+      (await text(page, 'route-stop-Athirappilly')).includes('Also visiting: Athirappilly Waterfalls'),
     'reordering destinations does not reorder the route',
   );
 
   setStep('manage the route separately');
-  await dragRouteStop(page, 'Athirappilly Waterfalls', 'Munnar', 'before');
-  await byId(page, 'route-add-Echo Point').click();
+  await dragRouteStop(page, 'Athirappilly', 'Munnar', 'before');
+  await page.waitForTimeout(300);
+  check(JSON.stringify(await routeStops(page, tripUrl)) === JSON.stringify(['Athirappilly', 'Munnar']), 'route stops can be reordered by dragging');
+  check((await page.locator('[data-testid="route-add-Echo Point"]').count()) === 0, 'places inside a destination are not offered as separate route stops');
   await byId(page, 'route-remove-Munnar').click();
   await page.waitForTimeout(300);
   await shot(page, 'm5-07-route');
-  check(
-    JSON.stringify(await routeStops(page, tripUrl)) === JSON.stringify(['Athirappilly Waterfalls', 'Athirappilly', 'Echo Point']),
-    'route stops can be added, removed and reordered',
-  );
+  check(JSON.stringify(await routeStops(page, tripUrl)) === JSON.stringify(['Athirappilly']), 'route stops can be removed');
+  await byId(page, 'route-add-Munnar').click();
+  await page.waitForTimeout(300);
+  check(JSON.stringify(await routeStops(page, tripUrl)) === JSON.stringify(['Athirappilly', 'Munnar']), 'main destinations can be added back');
+  await byId(page, 'route-remove-Munnar').click();
+  await page.waitForTimeout(300);
   await openPlanner(page, tripUrl);
   await byId(page, 'plan-row-Munnar').waitFor();
   check(true, 'removing a route stop keeps the place in the plan');
@@ -163,7 +170,7 @@ await run('Planner test', async () => {
   await waitText(page, 'planner-screen', (v) => v.includes('1 main destination'));
   const removal = dialogs.at(-1) ?? '';
   check(
-    removal.includes('Your route loses 3 stops') && removal.includes('Athirappilly Waterfalls') && removal.includes('no longer be one of this trip'),
+    removal.includes('Your route loses 2 stops') && removal.includes('Athirappilly Waterfalls') && removal.includes('no longer be one of this trip'),
     'removal explained its effect on the route and destinations first',
   );
   check((await routeStops(page, tripUrl)).length === 0, 'removed places left the route');
@@ -173,6 +180,7 @@ await run('Planner test', async () => {
   await byId(page, 'plan-open-Munnar').click();
   await byId(page, 'plan-place').waitFor();
   await byId(page, 'plan-place-maps').waitFor();
+  await expand(page, 'detail-section-notes');
   await byId(page, 'plan-place-name').fill('Munnar Hills');
   await byId(page, 'plan-place-notes').fill('Two nights, tea estates');
   await byId(page, 'plan-place-save').click();

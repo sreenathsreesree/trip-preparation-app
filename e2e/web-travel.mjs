@@ -8,7 +8,7 @@
 //   npx expo export --platform web --output-dir dist && npm run e2e:travel
 import { readFileSync } from 'node:fs';
 
-import { BASE, byId, check, iso, launch, providers, run, setStep, shot, text, waitText } from './harness.mjs';
+import { BASE, byId, check, expand, iso, launch, providers, run, setStep, shot, text, waitText } from './harness.mjs';
 
 const today = new Date();
 const plus = (n) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + n);
@@ -94,6 +94,7 @@ await run('Travel experience test', async () => {
   await byId(page, 'detail-location-edit').click();
   await byId(page, 'detail-location-input').fill('10.0889, 77.0595');
   await byId(page, 'detail-location-save').click();
+  await expand(page, 'detail-section-weather');
   await byId(page, 'weather-card').waitFor();
   check(/18°C · Rain/.test(await text(page, 'weather-now')), 'current weather from the provider');
   check(/Updated/.test(await text(page, 'weather-card')) && /Open-Meteo/.test(await text(page, 'weather-card')), 'last update and source shown');
@@ -114,12 +115,14 @@ await run('Travel experience test', async () => {
   setStep('trip: cover, weather along the trip, packing ideas need approval');
   await page.goto(trip);
   await byId(page, 'trip-cover-credit').waitFor();
+  await expand(page, 'trip-weather-section');
   await byId(page, 'trip-weather').waitFor();
   await byId(page, 'weather-packing-hints').waitFor();
   await page.goto(`${trip}/packing`);
   await byId(page, 'packing-screen').waitFor();
   check((await byId(page, 'packing-category-none').count()) === 0, 'nothing added to packing by itself');
   await page.goto(trip);
+  await expand(page, 'trip-weather-section');
   await byId(page, 'weather-hint-add-cold').click();
   await byId(page, 'weather-hint-added-cold').waitFor();
   await page.goto(`${trip}/packing/category/none`);
@@ -135,6 +138,7 @@ await run('Travel experience test', async () => {
   ({ context, page, errors } = await launch());
   await page.goto(`${trip}/plan`);
   await byId(page, 'plan-open-Munnar').click({ timeout: 60_000 });
+  await expand(page, 'detail-section-weather');
   await byId(page, 'weather-card').waitFor();
   await byId(page, 'detail-auto-cover-credit').waitFor();
   await byId(page, 'detail-tab-explore').click();

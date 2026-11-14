@@ -285,3 +285,10 @@ export async function dragRouteStop(page, from, to, position) {
   const handle = byId(page, `route-stop-${from}`).locator('[data-testid^="drag-"]');
   await dragElement(page, handle, byId(page, `route-stop-${to}`), position);
 }
+
+/** Opens a collapsible section (testID of the section) if it is closed. */
+export async function expand(page, section) {
+  const toggle = page.getByTestId(`${section}-toggle`);
+  await toggle.waitFor();
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+}
