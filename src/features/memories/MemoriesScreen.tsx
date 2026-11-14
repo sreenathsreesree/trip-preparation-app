@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { Screen } from '@/components/layout/Screen';
 import { ScreenHeader } from '@/components/layout/ScreenHeader';
@@ -13,7 +13,7 @@ import { pickAndStoreImages } from '@/lib/imageStore';
 import { colors, radii, spacing } from '@/theme';
 
 import { usePhotoUploadStore } from '../journal/drive/photoUploadStore';
-import type { GalleryPhoto } from '../journal/gallery';
+import { galleryColumns, type GalleryPhoto } from '../journal/gallery';
 import { GalleryThumb } from '../journal/gallery/GalleryThumb';
 import { PhotoViewer } from '../journal/gallery/PhotoViewer';
 import { COMPANION_LIMITS } from '../planner/companion';
@@ -44,6 +44,7 @@ export function MemoriesScreen({ tripId }: { tripId: string | undefined }) {
   const [albumUris, setAlbumUris] = useState<string[]>([]);
   const [mode, setMode] = useState<Mode>('place');
   const [width, setWidth] = useState(0);
+  const { width: screenWidth } = useWindowDimensions();
   const [open, setOpen] = useState<{ list: GalleryPhoto[]; index: number } | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -118,7 +119,7 @@ export function MemoriesScreen({ tripId }: { tripId: string | undefined }) {
     );
   }
 
-  const columns = width >= 700 ? 5 : width < 340 ? 2 : 3;
+  const columns = galleryColumns(screenWidth);
   const cell = width > 0 ? Math.floor((width - GAP * (columns - 1)) / columns) : 0;
   const run = async (fn: () => Promise<unknown>, fallback: string) => {
     setError(null);

@@ -141,17 +141,17 @@ await run('Gallery test', async () => {
   await byId(page, 'photo-viewer').waitFor({ state: 'detached' }).catch(() => undefined);
   const grid = byId(page, 'gallery-grid');
   await grid.evaluate((el) => {
-    const s = [el, ...el.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 10);
+    const s = (() => { const inner = [el, ...el.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 10); if (inner) return inner; let p = el.parentElement; while (p && !(p.scrollHeight > p.clientHeight + 10)) p = p.parentElement; return p; })();
     s.scrollTop = s.scrollHeight;
   });
   await page.waitForTimeout(300);
-  const before = await grid.evaluate((el) => [el, ...el.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 10).scrollTop);
+  const before = await grid.evaluate((el) => (() => { const inner = [el, ...el.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 10); if (inner) return inner; let p = el.parentElement; while (p && !(p.scrollHeight > p.clientHeight + 10)) p = p.parentElement; return p; })().scrollTop);
   const last = PHOTOS.length - 1;
   await byId(page, `gallery-photo-${last}`).click();
   await waitText(page, 'viewer-counter', (v) => v === `${PHOTOS.length} / ${PHOTOS.length}`);
   await byId(page, 'viewer-close').click();
   await page.waitForTimeout(300);
-  const after = await grid.evaluate((el) => [el, ...el.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 10).scrollTop);
+  const after = await grid.evaluate((el) => (() => { const inner = [el, ...el.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 10); if (inner) return inner; let p = el.parentElement; while (p && !(p.scrollHeight > p.clientHeight + 10)) p = p.parentElement; return p; })().scrollTop);
   check(before > 0 && Math.abs(after - before) < 2, `scroll position kept (${before} → ${after})`);
 
   setStep('removing a photo not in Drive warns that it is the only copy');

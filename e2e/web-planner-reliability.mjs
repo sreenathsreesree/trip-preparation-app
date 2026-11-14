@@ -109,16 +109,15 @@ await run('Planner reliability test', async () => {
   await plannerTab(page, 'route');
   await byId(page, 'plan-route').waitFor();
   await byId(page, 'route-add-Key Monastery').click();
-  await dragRouteStop(page, 'Key Monastery', 'Chandratal', 'before'); // one place up
+  await dragRouteStop(page, 'Key Monastery', 'Kaza', 'before'); // one place up
   await byId(page, 'route-remove-Kaza').click();
   await page.waitForTimeout(300);
   const stops = await page.locator('[data-testid^="route-stop-"]').evaluateAll((els) => els.map((e) => e.dataset.testid));
-  check(
-    // Chandratal was added as a main destination (route on by default); nesting it later kept its stop.
-    JSON.stringify(stops) ===
-      JSON.stringify(['route-stop-Manali', 'route-stop-Old Manali', 'route-stop-Key Monastery', 'route-stop-Chandratal']),
-    `route edited offline (${stops.join(', ')})`,
-  );
+  check(JSON.stringify(stops) === JSON.stringify(['route-stop-Manali', 'route-stop-Key Monastery']), `route edited offline (${stops.join(', ')})`);
+  // Places inside a destination stay on the route with it: Old Manali on Manali's card; Chandratal
+  // (nested into Kaza after it was a stop) is kept and named, not dropped.
+  check(/Also visiting: Old Manali/.test(await text(page, 'route-stop-Manali')), 'a stop inside a destination travels on its card');
+  check(/Chandratal \(in Kaza\)/.test(await text(page, 'route-inside-strays')), 'a nested stop is kept, not dropped');
   await plannerTab(page, 'destinations');
   await byId(page, 'plan-more-Old Manali').click();
   await byId(page, 'sheet-action-remove').click();
@@ -151,7 +150,7 @@ await run('Planner reliability test', async () => {
   }
   await page.goto(tripUrl);
   await byId(page, 'trip-dashboard').waitFor();
-  check((await text(page, 'plan-summary')).includes('Kaza → Manali → Key Monastery'), 'trip destinations persisted in order');
+  check((await text(page, 'trip-hero')).includes('Kaza → Manali → Key Monastery'), 'trip destinations persisted in order');
 
   // ------------------------------------------------------------ Scale
   setStep('scale: build a 100-place plan');
@@ -231,7 +230,7 @@ await run('Planner reliability test', async () => {
   check(width <= 360, `no horizontal overflow at 360 px (scroll width ${width})`);
   await page.goto(bigUrl);
   await byId(page, 'trip-dashboard').waitFor();
-  const summary = await text(page, 'plan-summary');
+  const summary = await text(page, 'trip-hero');
   check(summary.includes('Region 10 → Region 9'), 'dashboard follows the reordered destinations');
   check(
     summary.includes(plannerOrder.filter((name) => name.startsWith('Region')).join(' → ')),

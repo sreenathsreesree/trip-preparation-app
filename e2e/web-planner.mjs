@@ -18,7 +18,8 @@ const day = (d) => new Date(now.getFullYear(), now.getMonth() + 1, d);
 async function destinationsOnDashboard(page, tripUrl) {
   await page.goto(tripUrl);
   await byId(page, 'trip-dashboard').waitFor();
-  return (await text(page, 'plan-summary')).split('\n').map((l) => l.trim());
+  // The trip header shows the trip's destinations in order.
+  return (await text(page, 'trip-hero')).split('\n').map((l) => l.trim());
 }
 
 async function routeStops(page, tripUrl) {

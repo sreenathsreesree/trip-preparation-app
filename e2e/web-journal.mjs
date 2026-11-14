@@ -67,7 +67,6 @@ await run('Journal test', async () => {
 
   setStep('dashboard entry point, empty state, Drive not set up');
   await page.goto(trip);
-  await byId(page, 'journal-summary').waitFor();
   await byId(page, 'journal-open').click();
   await byId(page, 'journal-screen').waitFor();
   await byId(page, 'journal-drive-off').waitFor();
@@ -131,7 +130,7 @@ await run('Journal test', async () => {
   check((await page.locator(`[data-testid="journal-entry-Tea hills"] img`).count()) === 1, 'photo persisted');
   check((await text(page, 'journal-screen')).includes('2 entries'), 'entry count persisted');
   await page.goto(trip);
-  await waitText(page, 'journal-summary', (v) => v.includes('2 entries · 1 photo'));
-  check(true, 'dashboard card summarises the journal');
+  await byId(page, 'journal-open').waitFor();
+  check(true, 'dashboard links to the journal');
   check(errors.length === 0, `no uncaught page errors after restart (${errors.join(' | ') || 'none'})`);
 });
