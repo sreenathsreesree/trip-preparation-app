@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AppText, Button, Icon, LoadingState, Notice, SearchField } from '@/components/ui';
+import { AppText, Icon, LoadingState, Notice, SearchField } from '@/components/ui';
 import { colors, radii, spacing } from '@/theme';
 
 import type { GeoPoint } from '../../planner/model';
 import { placesProvider } from '../config';
 import { usePlaceAutocomplete } from '../placeSearch';
 import type { PlaceDetails } from '../provider';
-import { parseCoordinates, resolveShare } from '../sharedLocation';
+import { parseCoordinates } from '../sharedLocation';
+import { useResolvedLocation } from './useResolvedLocation';
 
 const LINKISH = /(?:https?:\/\/|geo:)\S+/i;
 
@@ -65,50 +66,29 @@ export function PlacePicker({
   const [text, setText] = useState('');
   const linkMode = looksLikeLocation(text);
   const search = usePlaceAutocomplete(text, bias, !linkMode);
-  const [resolving, setResolving] = useState(false);
-  const [candidates, setCandidates] = useState<PlaceDetails[] | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-
-  async function lookUp() {
-    setResolving(true);
-    setProblem(null);
-    setCandidates(null);
-    try {
-      const result = await resolveShare(text, { provider: placesProvider });
-      if (result.status === 'located') onPick(result.place);
-      else if (result.status === 'choose') setCandidates(result.candidates);
-      else setProblem(result.reason);
-    } finally {
-      setResolving(false);
-    }
-  }
+  const resolved = useResolvedLocation(text);
 
   return (
     <View style={styles.group} testID={testID}>
-      <SearchField
-        value={text}
-        onChangeText={(value) => {
-          setText(value);
-          setCandidates(null);
-          setProblem(null);
-        }}
-        placeholder={placeholder}
-        testID={`${testID}-input`}
-      />
+      <SearchField value={text} onChangeText={setText} placeholder={placeholder} testID={`${testID}-input`} />
       {linkMode ? (
-        <Button label="Find this location" icon="crosshairs-gps" size="sm" variant="secondary" loading={resolving} onPress={() => void lookUp()} style={styles.left} testID={`${testID}-resolve`} />
+        resolved.status === 'loading' ? (
+          <LoadingState label="Finding that location…" />
+        ) : resolved.status === 'done' && resolved.result.status === 'located' ? (
+          <PlaceRow place={resolved.result.place} onPress={() => resolved.result.status === 'located' && onPick(resolved.result.place)} trailing="Use" testID={`${testID}-resolve`} />
+        ) : resolved.status === 'done' && resolved.result.status === 'choose' ? (
+          resolved.result.candidates.map((place) => <PlaceRow key={place.providerPlaceId} place={place} onPress={() => onPick(place)} testID={`${testID}-candidate`} trailing="Choose" />)
+        ) : resolved.status === 'done' && resolved.result.status === 'unresolved' ? (
+          <Notice tone="warning" title="Couldn’t read that location" message={resolved.result.reason} testID={`${testID}-problem`} />
+        ) : null
       ) : null}
-      {problem ? <Notice tone="warning" title="Couldn’t read that location" message={problem} testID={`${testID}-problem`} /> : null}
-      {candidates?.map((place) => (
-        <PlaceRow key={place.providerPlaceId} place={place} onPress={() => onPick(place)} testID={`${testID}-candidate`} trailing="Choose" />
-      ))}
 
       {!linkMode && !placesProvider.configured && text.trim() ? (
         <AppText variant="caption" tone="textMuted">
           Place search is turned off in this build. Paste a Google Maps link or coordinates instead.
         </AppText>
       ) : null}
-      {!linkMode && search.status === 'loading' ? <LoadingState label="Searching…" /> : null}
+      {!linkMode && search.status === 'loading' ? <LoadingState label="Searching places…" /> : null}
       {!linkMode && search.status === 'error' ? <Notice tone="warning" title={search.message} testID={`${testID}-error`} /> : null}
       {!linkMode && search.status === 'ready' ? (
         search.places.length === 0 ? (
@@ -117,6 +97,9 @@ export function PlacePicker({
           </AppText>
         ) : (
           <View style={styles.group} testID={`${testID}-results`}>
+            <AppText variant="label" tone="textMuted">
+              Location suggestions
+            </AppText>
             {search.usedQuery && search.usedQuery.toLowerCase() !== text.trim().toLowerCase() ? (
               <AppText variant="caption" tone="textMuted">
                 Showing results for “{search.usedQuery}”
@@ -125,11 +108,6 @@ export function PlacePicker({
             {search.places.map((place) => (
               <PlaceRow key={place.providerPlaceId} place={place} onPress={() => onPick(place)} testID={`${testID}-result`} />
             ))}
-            {placesProvider.source ? (
-              <AppText variant="caption" tone="textMuted">
-                {placesProvider.source.attribution}
-              </AppText>
-            ) : null}
           </View>
         )
       ) : null}
@@ -140,9 +118,6 @@ export function PlacePicker({
 const styles = StyleSheet.create({
   group: {
     gap: spacing.sm,
-  },
-  left: {
-    alignSelf: 'flex-start',
   },
   result: {
     flexDirection: 'row',

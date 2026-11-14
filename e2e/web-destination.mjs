@@ -88,7 +88,7 @@ await run('Destination page test', async () => {
   check(/Short share links/.test(await text(page, 'detail-location-editor')), 'short links are explained, not guessed');
   check(await byId(page, 'detail-location-save').isDisabled(), 'cannot save an unreadable location');
   await byId(page, 'detail-location-picker-input').waitFor();
-  check(true, 'one search field takes names, Maps links and coordinates (OpenStreetMap)');
+  check(true, 'one search field takes names, Maps links and coordinates');
   await byId(page, 'detail-location-input').fill('https://www.google.com/maps/place/Munnar/@10.0,77.0,13z/data=!3d10.0889!4d77.0595');
   await byId(page, 'detail-location-save').click();
   await waitText(page, 'detail-coordinates', (v) => v === '10.08890, 77.05950');
@@ -178,7 +178,7 @@ await run('Destination page test', async () => {
   check(/Places inside \(1\)/.test(await text(page, 'detail-explore')), 'lists places inside');
   await byId(page, 'recommendations').waitFor();
   await byId(page, 'rec-Lakkam Waterfalls').waitFor();
-  check(/Live from OpenStreetMap/.test(await text(page, 'recommendations')), 'recommendations say they are live from OpenStreetMap');
+  check(/Live suggestions/.test(await text(page, 'recommendations')) && !/OpenStreetMap/.test(await text(page, 'recommendations')), 'recommendations say they are live, without provider branding');
   check((await byId(page, 'rec-Distant Falls').count()) === 0, 'places beyond the distance filter are left out');
 
   setStep('quick actions on a place inside: route, distance, Navigation, visited');
@@ -225,6 +225,34 @@ await run('Destination page test', async () => {
   await expand(page, 'detail-section-offline');
   await byId(page, 'detail-offline').waitFor();
   check(/location, 2 tasks, 1 note, 1 notice, memories/.test(await text(page, 'detail-offline')), 'says what is stored on the device');
+  setStep('add place: suggestions while typing fill the name and location');
+  const searchTrip = await createTrip(page, 'Search Test');
+  await page.goto(`${searchTrip}/plan`);
+  await byId(page, 'planner-screen').waitFor();
+  await byId(page, 'planner-add').click();
+  await byId(page, 'plan-add').waitFor();
+  await byId(page, 'plan-add-name').pressSequentially('Kolukku', { delay: 40 });
+  await byId(page, 'plan-add-name-suggestion').first().waitFor();
+  check(/Kerala/.test(await text(page, 'plan-add-name-suggestions')), 'suggestions show locality and state');
+  check(!/OpenStreetMap/.test(await text(page, 'plan-add')), 'no provider branding on the Add Place screen');
+  await byId(page, 'plan-add-name-suggestion').first().click();
+  check((await text(page, 'plan-add-name-coordinates')) === '10.08890, 77.05950', 'tapping a suggestion fills the coordinates');
+  check((await byId(page, 'plan-add-name').inputValue()) === 'Kolukku', 'and the name');
+  await byId(page, 'plan-add-save').click();
+  await byId(page, 'plan-row-Kolukku').waitFor();
+  await byId(page, 'plan-open-Kolukku').click();
+  check((await text(page, 'detail-coordinates')) === '10.08890, 77.05950', 'saved with its location in one step');
+  await page.goto(`${searchTrip}/plan`);
+  await byId(page, 'planner-add').click();
+  await byId(page, 'plan-add-name').pressSequentially('Kolukku', { delay: 40 });
+  await byId(page, 'plan-add-name-suggestion').first().click();
+  await byId(page, 'plan-add-save').click();
+  await byId(page, 'plan-add-same-name').waitFor();
+  check(true, 'the same place is not added twice without asking');
+  await page.goto(`${BASE}/profile`);
+  await byId(page, 'about-data-sources-toggle').click();
+  check(/© OpenStreetMap contributors/.test(await text(page, 'about-data-sources')), 'map data attribution is kept under Profile → Data sources');
+
   check(errors.length === 0, `no uncaught page errors (${errors.join(' | ') || 'none'})`);
   await context.close();
 

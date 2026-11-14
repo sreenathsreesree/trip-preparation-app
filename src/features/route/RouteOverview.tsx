@@ -12,7 +12,7 @@ import type { PlanNode } from '../planner/model';
 import { usePlannerStore } from '../planner/plannerStore';
 import { timeAgo } from '../remote/timeAgo';
 import { reorderSubset, restorableOrder } from './routeUndoRepository';
-import { formatDuration, formatKm, osrmBase, ROUTING_ATTRIBUTION, routeLegs, suggestOrder, type RouteLeg, type RouteResult } from './routing';
+import { formatDuration, formatKm, osrmBase, routeLegs, suggestOrder, type RouteLeg, type RouteResult } from './routing';
 
 const BASE = osrmBase(process.env.EXPO_PUBLIC_ROUTING_URL);
 
@@ -180,7 +180,7 @@ export function RouteOverview({ tripId, order, upcoming, visited, legs }: { trip
         ) : null}
         {saved ? <Button label="Restore previous order" icon="undo" size="sm" variant="ghost" onPress={() => void restore()} testID="route-restore" /> : null}
         <AppText variant="caption" tone="textMuted">
-          {ROUTING_ATTRIBUTION}. Your order is never changed unless you choose to.
+          Your order is never changed unless you choose to. Road data credits: Profile → Data sources.
         </AppText>
       </View>
     </Card>

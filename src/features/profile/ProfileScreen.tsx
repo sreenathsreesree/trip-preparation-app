@@ -9,6 +9,8 @@ import { AppText, Button, Card } from '@/components/ui';
 import { getRepositories } from '@/db/repositories';
 import { AccountCard } from '@/features/auth/components/AccountCard';
 import { BackupCard } from '@/features/sync/BackupCard';
+
+import { DataSources } from './DataSources';
 import { toErrorMessage } from '@/lib/errors';
 import { colors, spacing } from '@/theme';
 
@@ -110,6 +112,7 @@ export function ProfileScreen() {
             Nothing forgotten. Everything ready.
           </AppText>
         </Card>
+        <DataSources />
       </View>
     </Screen>
   );

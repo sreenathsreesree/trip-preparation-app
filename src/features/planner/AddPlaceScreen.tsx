@@ -19,7 +19,7 @@ import { toErrorMessage } from '@/lib/errors';
 import { successFeedback } from '@/lib/haptics';
 import { colors, radii, spacing } from '@/theme';
 
-import { PlacePicker, PlaceRow } from '../places/components/PlacePicker';
+import { PlaceSearchField } from '../places/components/PlaceSearchField';
 import { placesProvider } from '../places/config';
 import { toPlaceInput } from '../places/placeInput';
 import type { PlaceDetails } from '../places/provider';
@@ -191,56 +191,42 @@ function Form({ trip, parent }: { trip: TripSummary; parent: PlanNode | null }) 
           tone="info"
           icon="magnify-close"
           title="Place search is not set up yet"
-          message="Add places by name, or paste a Google Maps link or coordinates below."
+          message="Add places by name, or paste a Google Maps link or coordinates into the field below."
           testID="plan-add-search-unavailable"
         />
       ) : null}
 
-      {picked ? (
-        <View style={styles.group} testID="plan-add-picked">
-          <AppText variant="label" tone="textSecondary">
-            Location
-          </AppText>
-          <PlaceRow place={picked} />
-          {picked.location ? (
-            <AppText variant="caption" tone="textMuted" selectable>
-              {picked.location.latitude.toFixed(5)}, {picked.location.longitude.toFixed(5)}
-            </AppText>
-          ) : null}
-          <Button label="Choose a different place" icon="close" variant="ghost" size="sm" onPress={() => setPicked(null)} style={styles.left} testID="plan-add-unpick" />
-        </View>
-      ) : (
-        <View style={styles.group}>
-          <AppText variant="label" tone="textSecondary">
-            Find on the map
-          </AppText>
-          <PlacePicker
-            bias={parent?.place?.location ?? null}
-            onPick={(place) => {
-              setPicked(place);
-              setSameName(null);
-              setDuplicate(null);
-              if (!name.trim()) setName(place.name);
-            }}
-            testID="plan-add-picker"
-          />
-        </View>
-      )}
-
-      <TextField
-        label="Name"
-        placeholder={parentId ? 'e.g. Echo Point' : 'e.g. Munnar'}
+      <PlaceSearchField
+        label={parentId ? 'Place' : 'Destination'}
+        placeholder={parentId ? 'Search places, e.g. Echo Point' : 'Search places, e.g. Munnar'}
         value={name}
         onChangeText={(value) => {
           setName(value);
           setDuplicate(null);
           setSameName(null);
         }}
+        picked={picked}
+        onPick={(place) => {
+          setPicked(place);
+          setName(place.name);
+          setSameName(null);
+          setDuplicate(null);
+        }}
+        onClearPick={() => setPicked(null)}
+        bias={parent?.place?.location ?? null}
         error={revealed ? (nameError ?? undefined) : undefined}
         maxLength={PLANNER_LIMITS.nameMax}
-        autoCapitalize="words"
         testID="plan-add-name"
       />
+      {picked ? (
+        <AppText variant="caption" tone="textMuted">
+          Ready to add with its location. You can still edit the name above — the location stays.
+        </AppText>
+      ) : name.trim() ? (
+        <AppText variant="caption" tone="textMuted" testID="plan-add-manual-hint">
+          Pick a suggestion to add its map location, or add it by name only and set the location later.
+        </AppText>
+      ) : null}
       <TextField
         label="Notes (optional)"
         placeholder="Timings, tickets, who suggested it…"

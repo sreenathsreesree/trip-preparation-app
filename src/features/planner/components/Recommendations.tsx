@@ -104,12 +104,14 @@ function SourceBadge({ source, from, fetchedAt }: { source: PlacesSource; from: 
     return <Notice tone="warning" title="Demo data — not real places" message="This build uses sample entries for testing." testID="rec-source-demo" />;
   }
   const when = fetchedAt ? timeAgo(fetchedAt, new Date()) : null;
+  // Google requires its name with its content; free map data is credited under Profile → Data sources.
+  const from_ = source.name.startsWith('Google') ? ` from ${source.name}` : '';
   const text =
     from === 'stale_cache'
-      ? `Saved ${when} from ${source.name} — you seem to be offline, so this may be out of date.`
+      ? `Saved ${when}${from_} — you seem to be offline, so this may be out of date.`
       : from === 'cache'
-        ? `From ${source.name}, saved ${when}.`
-        : `Live from ${source.name}.`;
+        ? `Saved ${when}${from_}.`
+        : `Live suggestions${from_}.`;
   return (
     <AppText variant="caption" tone={from === 'stale_cache' ? 'warning' : 'textMuted'} testID={`rec-source-${from ?? 'live'}`}>
       {text}
@@ -269,8 +271,8 @@ export function Recommendations({ tripId, plan, nodeId }: { tripId: string; plan
       )}
       {recs.length > 0 ? (
         <AppText variant="caption" tone="textMuted">
-          {placesProvider.source
-            ? `${placesProvider.source.attribution}. Adding a place saves its name and location in your plan.`
+          {placesProvider.source && !placesProvider.source.name.startsWith('Google')
+            ? 'Adding a place saves its name and location in your plan. Map data credits: Profile → Data sources.'
             : 'Data, ratings and photos © Google. Shown live; only a place’s name, ID and location are saved when you add it.'}
         </AppText>
       ) : null}
