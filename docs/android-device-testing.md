@@ -180,3 +180,22 @@ Device / Android version: ________ · Build: ________ · Date: ________
 | 46 | Delete a trip with a plan: it disappears everywhere; other trips' plans are untouched | |
 | 47 | Tap reorder arrows quickly several times and double-tap *Add destination* → Save: no error, no duplicate place, dashboard order matches the planner | |
 | 48 | A plan with 50–100 places: expand/collapse, scrolling and the ⋯ menu stay responsive; nothing is cut off on a small screen; system back closes sheets and modals | |
+
+## Consolidated UX upgrade — device checks
+
+1. **Share from Google Maps:** open a place → Share → Trip Prep (app closed, and app open). The
+   Add to a trip screen shows the place; try a dropped pin, a business, and offline.
+2. **Invitations:** send an invite through WhatsApp / Messages; tap it with the app installed.
+   With `EXPO_PUBLIC_INVITE_HOST` deployed: the https link opens the app directly
+   (`adb shell pm get-app-links com.sreenathsreesree.tripprep` shows `verified`); without the app,
+   the page offers Open in Trip Prep and the code. Old `tripprep:///join/…` links still open Join.
+3. **Search:** type partial names ("munn", "eravik") and watch suggestions; paste coordinates and
+   a `maps.app.goo.gl` link.
+4. **Covers:** destination cards, route stops and the trip header show photos; turn on airplane
+   mode and reopen — thumbnails still show.
+5. **Memories:** add several photos to a destination, create an album, add/remove photos,
+   delete the album — photos remain, Drive uploads continue.
+6. **Clothing:** add items by hand and from Inventory, assign bags, delete a bag with items
+   (asked where they go).
+7. **PDF import:** a Word/Docs-exported itinerary, a Canva/agency PDF, and a scanned PDF (expect
+   the paste-text guidance).
