@@ -19,7 +19,11 @@ import { toErrorMessage } from '@/lib/errors';
 import { successFeedback } from '@/lib/haptics';
 import { colors, radii, spacing } from '@/theme';
 
+import { PlacePicker, PlaceRow } from '../places/components/PlacePicker';
 import { placesProvider } from '../places/config';
+import { toPlaceInput } from '../places/placeInput';
+import type { PlaceDetails } from '../places/provider';
+import { findSamePlace } from '../places/sharedLocation';
 import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
 import { ancestorIds, PLANNER_LIMITS, validateNodeName, type Place, type PlanNode } from './model';
@@ -40,6 +44,7 @@ function Form({ trip, parent }: { trip: TripSummary; parent: PlanNode | null }) 
   // Hand-entered places have no provider id to dedupe on, so a same-name match asks first.
   const [sameName, setSameName] = useState<PlanNode | null>(null);
   const [saved, setSaved] = useState<Place[] | null>(null);
+  const [picked, setPicked] = useState<PlaceDetails | null>(null);
   const nameError = validateNodeName(name);
   // A second tap while saving must not add the place twice.
   const inFlight = useRef(false);
@@ -64,7 +69,7 @@ function Form({ trip, parent }: { trip: TripSummary; parent: PlanNode | null }) 
     .filter(Boolean)
     .join(' › ');
 
-  async function add(input: { name?: string; place?: Place }) {
+  async function add(input: { name?: string; place?: Place | ReturnType<typeof toPlaceInput> }) {
     if (inFlight.current) return;
     inFlight.current = true;
     setSaving(true);
@@ -117,6 +122,16 @@ function Form({ trip, parent }: { trip: TripSummary; parent: PlanNode | null }) 
             icon="plus"
             onPress={() => {
               setRevealed(true);
+              if (picked) {
+                const label = name.trim() || picked.name;
+                const same = findSamePlace(plan?.nodes ?? [], { ...picked, name: label });
+                if (same && sameName?.id !== same.id) {
+                  setSameName(same);
+                  return;
+                }
+                void add({ name: label, place: toPlaceInput(picked) });
+                return;
+              }
               if (nameError) return;
               const match = plan?.nodes.find((n) => n.name.trim().toLowerCase() === name.trim().toLowerCase());
               if (match && sameName?.id !== match.id) {
@@ -176,10 +191,41 @@ function Form({ trip, parent }: { trip: TripSummary; parent: PlanNode | null }) 
           tone="info"
           icon="magnify-close"
           title="Place search is not set up yet"
-          message="Add places by name for now. Once Google place search is configured you can search and link real places with maps and details."
+          message="Add places by name, or paste a Google Maps link or coordinates below."
           testID="plan-add-search-unavailable"
         />
       ) : null}
+
+      {picked ? (
+        <View style={styles.group} testID="plan-add-picked">
+          <AppText variant="label" tone="textSecondary">
+            Location
+          </AppText>
+          <PlaceRow place={picked} />
+          {picked.location ? (
+            <AppText variant="caption" tone="textMuted" selectable>
+              {picked.location.latitude.toFixed(5)}, {picked.location.longitude.toFixed(5)}
+            </AppText>
+          ) : null}
+          <Button label="Choose a different place" icon="close" variant="ghost" size="sm" onPress={() => setPicked(null)} style={styles.left} testID="plan-add-unpick" />
+        </View>
+      ) : (
+        <View style={styles.group}>
+          <AppText variant="label" tone="textSecondary">
+            Find on the map
+          </AppText>
+          <PlacePicker
+            bias={parent?.place?.location ?? null}
+            onPick={(place) => {
+              setPicked(place);
+              setSameName(null);
+              setDuplicate(null);
+              if (!name.trim()) setName(place.name);
+            }}
+            testID="plan-add-picker"
+          />
+        </View>
+      )}
 
       <TextField
         label="Name"
@@ -234,7 +280,7 @@ function Form({ trip, parent }: { trip: TripSummary; parent: PlanNode | null }) 
         <Notice
           tone="warning"
           title={`"${sameName.name}" is already in this plan`}
-          message="Tap Add again if this is a different place with the same name."
+          message="Tap Add again if this is a different place."
           testID="plan-add-same-name"
         />
       ) : null}
@@ -321,6 +367,9 @@ const styles = StyleSheet.create({
   },
   primary: {
     flex: 1,
+  },
+  left: {
+    alignSelf: 'flex-start',
   },
   group: {
     gap: spacing.sm,

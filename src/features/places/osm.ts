@@ -82,6 +82,31 @@ interface PhotonFeature {
   properties?: Record<string, string | number | undefined>;
 }
 
+const KIND_LABEL: Record<string, string> = {
+  hotel: 'Hotel', guest_house: 'Guest house', hostel: 'Hostel', motel: 'Motel', resort: 'Resort', restaurant: 'Restaurant', cafe: 'Café',
+  fast_food: 'Food', attraction: 'Attraction', viewpoint: 'Viewpoint', museum: 'Museum', place_of_worship: 'Place of worship',
+  waterfall: 'Waterfall', peak: 'Peak', beach: 'Beach', park: 'Park', city: 'City', town: 'Town', village: 'Village', hamlet: 'Village',
+  station: 'Station', aerodrome: 'Airport', fort: 'Fort', lake: 'Lake', dam: 'Dam', zoo: 'Zoo', camp_site: 'Campsite',
+};
+
+/** "Hotel · Munnar, Idukki, Kerala, India" — locality, district and state so similar names can be told apart. */
+export function photonAddress(p: Record<string, string | number | undefined>, name: string): string {
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const parts: string[] = [];
+  const add = (v: string | null) => {
+    if (v && v !== name && !parts.includes(v)) parts.push(v);
+  };
+  add(str(p.street) ? [str(p.housenumber), str(p.street)].filter(Boolean).join(' ') : null);
+  add(str(p.locality) ?? str(p.district));
+  add(str(p.city) ?? str(p.town) ?? str(p.village));
+  add(str(p.county));
+  add(str(p.state));
+  add(str(p.country));
+  const kind = typeof p.osm_value === 'string' ? KIND_LABEL[p.osm_value] : undefined;
+  const where = parts.join(', ');
+  return kind ? (where ? `${kind} · ${where}` : kind) : where;
+}
+
 /** Normalises a Photon (OSM geocoder) feature to a place. */
 export function placeFromPhoton(f: PhotonFeature): PlaceDetails | null {
   const p = f.properties ?? {};
@@ -95,7 +120,7 @@ export function placeFromPhoton(f: PhotonFeature): PlaceDetails | null {
     providerPlaceId: osmPlaceId(type, p.osm_id),
     name,
     location: { latitude: coords[1], longitude: coords[0] },
-    formattedAddress: [str(p.city) ?? str(p.county), str(p.state), str(p.country)].filter(Boolean).join(', '),
+    formattedAddress: photonAddress(p, name),
     types: p.osm_key && p.osm_value ? [`${p.osm_key}=${p.osm_value}`] : [],
     district: str(p.county),
     state: str(p.state),

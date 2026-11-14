@@ -59,7 +59,7 @@ describe('OpenStreetMap places (free, keyless, no billing)', () => {
     const places = placesFromPhoton({
       features: [{ geometry: { coordinates: [77.0595, 10.0889] }, properties: { name: 'Munnar', osm_id: 123, osm_type: 'R', osm_key: 'place', osm_value: 'town', state: 'Kerala', country: 'India' } }],
     });
-    expect(places).toEqual([expect.objectContaining({ providerPlaceId: 'osm:r123', name: 'Munnar', location: MUNNAR, formattedAddress: 'Kerala, India' })]);
+    expect(places).toEqual([expect.objectContaining({ providerPlaceId: 'osm:r123', name: 'Munnar', location: MUNNAR, formattedAddress: 'Town · Kerala, India' })]);
   });
 
   it('calls only Overpass/Photon, maps errors honestly, and serves details from what search returned', async () => {

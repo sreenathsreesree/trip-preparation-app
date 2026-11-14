@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Linking, StyleSheet, View } from 'react-native';
 
-import { AppText, Button, Card, Icon, Notice, SearchField, TextField } from '@/components/ui';
+import { AppText, Button, Card, Icon, Notice, TextField } from '@/components/ui';
 import { toErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing } from '@/theme';
 
 import { daysUntilRefresh } from '../../places/cachePolicy';
-import { placesProvider } from '../../places/config';
+import { PlacePicker, PlaceRow } from '../../places/components/PlacePicker';
 import { placeLink } from '../../places/mapsLinks';
-import { isPlacesError, type PlaceDetails } from '../../places/provider';
-import { toPlaceInput } from '../components/Recommendations';
+import { toPlaceInput } from '../../places/placeInput';
+import type { PlaceDetails } from '../../places/provider';
 import { formatCoordinates, parseLocation } from '../locationInput';
 import type { PlaceInput } from '../model';
 import { usePlannerStore } from '../plannerStore';
@@ -20,9 +20,7 @@ export function LocationCard({ ctx }: { ctx: DetailContext }) {
   const { tripId, node } = ctx;
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<PlaceDetails[] | null>(null);
-  const [searching, setSearching] = useState(false);
+  const [picked, setPicked] = useState<PlaceDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const link = placeLink(node);
   const location = node.place?.location ?? null;
@@ -35,23 +33,9 @@ export function LocationCard({ ctx }: { ctx: DetailContext }) {
       await usePlannerStore.getState().setNodePlace(tripId, node.id, input);
       setEditing(false);
       setText('');
-      setResults(null);
+      setPicked(null);
     } catch (err) {
       setError(toErrorMessage(err, 'Could not save the location.'));
-    }
-  }
-
-  async function search() {
-    if (!query.trim()) return;
-    setSearching(true);
-    setError(null);
-    try {
-      setResults(await placesProvider.textSearch({ query: query.trim(), bias: location ?? undefined }));
-    } catch (err) {
-      setResults(null);
-      setError(isPlacesError(err) ? 'Place search failed. Check your connection and try again.' : toErrorMessage(err, 'Search failed.'));
-    } finally {
-      setSearching(false);
     }
   }
 
@@ -108,39 +92,24 @@ export function LocationCard({ ctx }: { ctx: DetailContext }) {
 
       {editing ? (
         <View style={styles.editor} testID="detail-location-editor">
-          {placesProvider.configured ? (
-            <View style={styles.info}>
-              <SearchField value={query} onChangeText={setQuery} placeholder={`Search ${placesProvider.source?.name ?? 'Google Maps'}`} testID="detail-location-search" />
-              <Button label="Search" icon="magnify" variant="secondary" size="sm" loading={searching} onPress={() => void search()} style={styles.left} />
-              {results?.map((place) => (
-                <Pressable
-                  key={place.providerPlaceId}
-                  accessibilityRole="button"
-                  onPress={() => void save(toPlaceInput(place))}
-                  style={({ pressed }) => [styles.result, pressed && styles.pressed]}
-                  testID={`detail-location-result-${place.name}`}
-                >
-                  <AppText variant="bodyStrong">{place.name}</AppText>
-                  {place.formattedAddress ? (
-                    <AppText variant="caption" tone="textMuted" numberOfLines={1}>
-                      {place.formattedAddress}
-                    </AppText>
-                  ) : null}
-                </Pressable>
-              ))}
-              {results && results.length === 0 ? (
-                <AppText variant="caption" tone="textMuted">
-                  No places found.
+          {picked ? (
+            <View style={styles.info} testID="detail-location-preview">
+              <PlaceRow place={picked} />
+              {picked.location ? (
+                <AppText variant="caption" tone="textMuted" selectable>
+                  {formatCoordinates(picked.location)}
                 </AppText>
               ) : null}
+              <View style={styles.row}>
+                <Button label="Save this location" icon="content-save-outline" size="sm" onPress={() => void save(toPlaceInput(picked))} testID="detail-location-save-picked" />
+                <Button label="Back" variant="ghost" size="sm" onPress={() => setPicked(null)} />
+              </View>
             </View>
           ) : (
-            <AppText variant="caption" tone="textMuted" testID="detail-location-search-off">
-              Google place search isn’t set up yet. Paste a Google Maps link or coordinates instead.
-            </AppText>
+            <PlacePicker bias={location} onPick={setPicked} testID="detail-location-picker" />
           )}
           <TextField
-            label="Google Maps link or coordinates"
+            label="Or enter coordinates by hand"
             placeholder="10.0889, 77.0595"
             value={text}
             onChangeText={setText}

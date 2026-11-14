@@ -68,7 +68,12 @@ export function TripsListScreen() {
       <ScreenHeader
         eyebrow="Expeditions"
         title="Trips"
-        trailing={<Button label="New trip" icon="plus" size="sm" onPress={newTrip} testID="trips-new" />}
+        trailing={
+          <View style={styles.headerActions}>
+            <Button label="Join" icon="account-multiple-plus-outline" variant="secondary" size="sm" onPress={() => router.push('/join')} testID="trips-join" />
+            <Button label="New trip" icon="plus" size="sm" onPress={newTrip} testID="trips-new" />
+          </View>
+        }
       />
 
       <SegmentedControl<TripLifecycle>
@@ -118,6 +123,10 @@ export function TripsListScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
   list: {
     gap: spacing.md,
   },

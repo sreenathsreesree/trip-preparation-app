@@ -1,6 +1,5 @@
 import { accountScoped } from '@/lib/accountScopedStores';
 import * as Crypto from 'expo-crypto';
-import * as Linking from 'expo-linking';
 import { create } from 'zustand';
 
 import { getRepositories } from '@/db/repositories';
@@ -12,6 +11,7 @@ import { toErrorMessage } from '@/lib/errors';
 import { syncSharedTrip } from './sharedSync';
 import { createSupabaseSharingApi, type SharedInvite, type SharedMember, type SharingApi } from './sharingApi';
 import type { SharedEntry, SharedSpace } from './sharingRepository';
+import { buildInviteLinks, type InviteLinks } from './inviteLinks';
 import { createInvite, joinTrip, shareTrip, stopSharing, type Account } from './sharingService';
 
 export interface TripSharing {
@@ -32,7 +32,7 @@ interface SharingState {
   sync: (tripId: string) => Promise<void>;
   syncAll: () => Promise<void>;
   share: (trip: { id: string; name: string; startDate: string; endDate: string }) => Promise<void>;
-  createInviteLink: (tripId: string, role: 'editor' | 'viewer') => Promise<string>;
+  createInviteLink: (tripId: string, role: 'editor' | 'viewer') => Promise<InviteLinks>;
   loadInvites: (tripId: string) => Promise<void>;
   revokeInvite: (tripId: string, inviteId: string) => Promise<void>;
   setRole: (tripId: string, userId: string, role: 'editor' | 'viewer') => Promise<void>;
@@ -141,7 +141,7 @@ export const useSharingStore = accountScoped(create<SharingState>()((set, get) =
         if (!space) throw new Error('Share the trip first.');
         const { token } = await createInvite(space.cloudTripId, role, { api, tokens });
         void get().loadInvites(tripId);
-        return Linking.createURL(`/join/${token}`);
+        return buildInviteLinks(token);
       }),
 
     loadInvites: (tripId) =>

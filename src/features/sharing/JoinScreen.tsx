@@ -4,21 +4,27 @@ import { StyleSheet, View } from 'react-native';
 
 import { Screen } from '@/components/layout/Screen';
 import { ScreenHeader } from '@/components/layout/ScreenHeader';
-import { AppText, Button, Card, Notice } from '@/components/ui';
+import { AppText, Button, Card, Notice, TextField } from '@/components/ui';
 import { useAuthStore } from '@/features/auth/authStore';
 import { isCloudConfigured } from '@/features/auth/supabase';
 import { toErrorMessage } from '@/lib/errors';
 import { spacing } from '@/theme';
 
-import { parseInviteToken } from './sharingService';
+import { parseInviteToken } from './inviteLinks';
 import { useSharingStore } from './sharingStore';
 
-/** Opened from an invitation link (tripprep://join/<token>). Joining needs an explicit tap. */
-export function JoinScreen({ token }: { token: string | undefined }) {
+/**
+ * Opened from an invitation link (https://<host>/join/<token> or
+ * tripprep://join/<token>), or from Trips → Join a trip with a pasted code or
+ * link. Joining always needs an explicit tap; expiry, revocation and the use
+ * limit are checked by the server when accepting.
+ */
+export function JoinScreen({ token, manual = false }: { token: string | undefined; manual?: boolean }) {
   const signedIn = useAuthStore((s) => s.status === 'signedIn');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const parsed = token ? parseInviteToken(token) : null;
+  const [typed, setTyped] = useState('');
+  const parsed = manual ? parseInviteToken(typed) : token ? parseInviteToken(token) : null;
 
   async function join() {
     if (!parsed) return;
@@ -37,7 +43,23 @@ export function JoinScreen({ token }: { token: string | undefined }) {
   return (
     <Screen testID="join-screen" bottomInset>
       <ScreenHeader showBack title="Join a shared trip" />
-      {!parsed ? (
+      {manual ? (
+        <Card>
+          <View style={styles.group}>
+            <TextField
+              label="Invitation link or code"
+              value={typed}
+              onChangeText={setTyped}
+              placeholder="Paste the link or code you received"
+              autoCapitalize="none"
+              autoCorrect={false}
+              testID="join-code"
+            />
+            {typed.trim() && !parsed ? <AppText variant="caption" tone="danger" testID="join-code-invalid">That doesn’t look like a Trip Prep invitation.</AppText> : null}
+          </View>
+        </Card>
+      ) : null}
+      {manual && !parsed ? null : !parsed ? (
         <Notice tone="danger" title="This invitation link isn’t valid" message="Ask the trip owner to send a new one." testID="join-invalid" />
       ) : !isCloudConfigured() ? (
         <Notice tone="info" title="Sharing isn’t available in this build" testID="join-unavailable" />

@@ -73,7 +73,8 @@
           "isAndroidForegroundServiceEnabled": false,
           "motionUsagePermission": false
         }
-      ]
+      ],
+      "./modules/share-intake/app.plugin.js"
     ],
     "experiments": {
       "typedRoutes": true

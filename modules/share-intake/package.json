@@ -1,0 +1,7 @@
+{
+  "name": "share-intake",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Receives text shared to Trip Prep from other Android apps (Google Maps Share → Trip Prep).",
+  "main": "index.ts"
+}

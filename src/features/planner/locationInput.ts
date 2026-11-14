@@ -1,3 +1,4 @@
+import { parseCoordinates, parseMapsUrl } from '../places/sharedLocation';
 import { isValidLocation, type GeoPoint } from './model';
 
 /**
@@ -34,12 +35,14 @@ export function parseLocation(input: string): ParsedLocation {
       ? { ok: true, location }
       : { ok: false, reason: 'Latitude must be between −90 and 90, and longitude between −180 and 180.' };
   }
+  const coords = parseCoordinates(text);
+  if (coords) return { ok: true, location: coords };
 
   if (/^https?:\/\//i.test(text)) {
     if (/(?:maps\.app\.goo\.gl|goo\.gl\/maps)/i.test(text)) {
       return {
         ok: false,
-        reason: 'Short share links can’t be read without opening them. Open it in Google Maps, then copy the coordinates (long-press the pin) or the full link.',
+        reason: 'Short share links are opened when you search with them above (online). Or long-press the pin in Google Maps and copy the coordinates.',
       };
     }
     for (const pattern of PATTERNS) {
@@ -47,6 +50,8 @@ export function parseLocation(input: string): ParsedLocation {
       const location = match ? point(match[1], match[2]) : null;
       if (location) return { ok: true, location };
     }
+    const fromUrl = parseMapsUrl(text).location;
+    if (fromUrl) return { ok: true, location: fromUrl };
     return { ok: false, reason: 'That link has no coordinates in it. Long-press the pin in Google Maps and copy the coordinates instead.' };
   }
   return { ok: false, reason: 'Enter coordinates like “10.0889, 77.0595” or paste a Google Maps link.' };

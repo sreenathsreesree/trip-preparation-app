@@ -42,12 +42,7 @@ export async function createInvite(cloudTripId: string, role: 'editor' | 'viewer
   return { token, inviteId };
 }
 
-/** Extracts the token from an invitation link or a pasted token. */
-export function parseInviteToken(input: string): string | null {
-  const text = input.trim();
-  const match = /(?:^|\/)join\/([A-Za-z0-9_-]{16,128})(?:[/?#]|$)/.exec(text) ?? /^([A-Za-z0-9_-]{16,128})$/.exec(text);
-  return match?.[1] ?? null;
-}
+export { parseInviteToken } from './inviteLinks';
 
 /**
  * Joins with an invitation. A shared trip already on this device for this

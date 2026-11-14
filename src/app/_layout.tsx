@@ -22,6 +22,7 @@ import { activePartition, getDatabase, onPartitionChange, setActiveAccount } fro
 import { partitionFor, partitionUserId, type Partition } from '@/db/partitions';
 import { useAuthStore } from '@/features/auth/authStore';
 import { PhotoUploadWatcher } from '@/features/journal/components/PhotoUploadWatcher';
+import { ShareIntakeWatcher } from '@/features/shareIntake/ShareIntakeWatcher';
 import { SharedTripsWatcher } from '@/features/sharing/SharedTripsWatcher';
 import { SyncWatcher } from '@/features/sync/SyncWatcher';
 import { ArrivalWatcher } from '@/features/planner/components/ArrivalWatcher';
@@ -155,6 +156,7 @@ export default function RootLayout() {
           <PhotoUploadWatcher key={`photos-${partition}`} />
           <SharedTripsWatcher key={`shared-${partition}`} />
           <SyncWatcher key={`sync-${partition}`} />
+          <ShareIntakeWatcher />
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

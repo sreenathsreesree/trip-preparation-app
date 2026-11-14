@@ -13,6 +13,7 @@ import { colors, spacing } from '@/theme';
 import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
 import type { SharedMember } from './sharingApi';
+import { inviteMessage, type InviteLinks } from './inviteLinks';
 import { useSharingStore, useTripSharing } from './sharingStore';
 
 const ROLE_LABEL = { owner: 'Owner', editor: 'Can edit', viewer: 'Can view' } as const;
@@ -88,12 +89,12 @@ function Members({ trip }: { trip: TripSummary }) {
 
 function Invites({ trip }: { trip: TripSummary }) {
   const sharing = useTripSharing(trip.id);
-  const [link, setLink] = useState<{ url: string; role: 'editor' | 'viewer' } | null>(null);
+  const [link, setLink] = useState<{ links: InviteLinks; role: 'editor' | 'viewer' } | null>(null);
   const [busy, setBusy] = useState(false);
   const make = async (role: 'editor' | 'viewer') => {
     setBusy(true);
     try {
-      setLink({ url: await useSharingStore.getState().createInviteLink(trip.id, role), role });
+      setLink({ links: await useSharingStore.getState().createInviteLink(trip.id, role), role });
     } catch {
       // The store shows the error.
     } finally {
@@ -116,14 +117,22 @@ function Invites({ trip }: { trip: TripSummary }) {
             <AppText variant="caption" tone="textMuted">
               Send this link to the people you want to {link.role === 'editor' ? 'edit with you' : 'view the trip'}. It works for 7 days and up to 10 people. Anyone with the link can join, so share it privately.
             </AppText>
-            <AppText variant="body" selectable numberOfLines={3}>
-              {link.url}
+            <AppText variant="body" selectable numberOfLines={3} testID="share-invite-url">
+              {link.links.primary}
             </AppText>
+            <AppText variant="caption" tone="textMuted" selectable testID="share-invite-code">
+              Code: {link.links.token}
+            </AppText>
+            {!link.links.web ? (
+              <AppText variant="caption" tone="textMuted">
+                This build has no web invitation address, so some messaging apps may show the link as plain text. The person can still open Trip Prep → Trips → Join a trip and enter the code.
+              </AppText>
+            ) : null}
             <Button
               label="Share link"
               icon="share-variant-outline"
               size="sm"
-              onPress={() => void Share.share({ message: `Join my trip “${trip.name}” on Trip Prep: ${link.url}` }).catch(() => undefined)}
+              onPress={() => void Share.share({ message: inviteMessage(trip.name, link.links) }).catch(() => undefined)}
               style={styles.left}
             />
           </View>
