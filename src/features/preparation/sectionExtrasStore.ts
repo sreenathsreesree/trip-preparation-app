@@ -4,8 +4,8 @@ import { getRepositories } from '@/db/repositories';
 import { accountScoped } from '@/lib/accountScopedStores';
 
 import { useChecklistStore } from './checklistStore';
-import type { ChecklistOwner, Priority } from './model';
-import type { ChecklistGroup, TaskLink } from './sectionExtrasRepository';
+import { ownerKey, type ChecklistOwner, type Priority } from './model';
+import { CLOTHING_SECTION_TITLE, findClothingSection, type ChecklistGroup, type TaskLink } from './sectionExtrasRepository';
 
 export interface SectionExtras {
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -25,7 +25,11 @@ interface State {
   setQuantity: (sectionId: string, taskId: string, quantity: number) => Promise<void>;
   addManual: (owner: ChecklistOwner, sectionId: string, groupId: string | null, title: string, priority: Priority) => Promise<void>;
   addFromInventory: (owner: ChecklistOwner, sectionId: string, groupId: string | null, items: { itemId: string; quantity?: number }[]) => Promise<{ added: number; skipped: number }>;
+  /** The trip's Clothing checklist section, created (once) when the trip has none. */
+  ensureClothingSection: (owner: ChecklistOwner) => Promise<string>;
 }
+
+let ensuring: Promise<string> | null = null;
 
 /** Groups and Inventory links of checklist sections; tasks stay in the checklist store. */
 export const useSectionExtrasStore = accountScoped(
@@ -77,6 +81,22 @@ export const useSectionExtrasStore = accountScoped(
         const result = await (await getRepositories()).sectionExtras.addFromInventory(sectionId, groupId, items);
         await after(sectionId, owner);
         return result;
+      },
+      ensureClothingSection(owner) {
+        // One at a time, so two quick taps never create two Clothing sections.
+        ensuring ??= (async () => {
+          const checklists = useChecklistStore.getState();
+          await checklists.load(owner);
+          const entry = useChecklistStore.getState().byOwner[ownerKey(owner)];
+          // Never create a second Clothing section because the checklist failed to load.
+          if (entry?.status !== 'ready') throw new Error(entry?.error ?? 'Could not load this trip’s checklist.');
+          const found = findClothingSection(entry.sections);
+          if (found) return found.id;
+          return (await checklists.addSection(owner, CLOTHING_SECTION_TITLE)).id;
+        })().finally(() => {
+          ensuring = null;
+        });
+        return ensuring;
       },
     };
   }),

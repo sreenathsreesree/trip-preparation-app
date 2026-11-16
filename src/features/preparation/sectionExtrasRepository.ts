@@ -25,8 +25,27 @@ export class SectionExtrasError extends Error {}
  * user's own sections (Clothing, Gear, Toiletries…). Not documents, vehicle
  * checks, errands, shopping (things not owned yet) or home departure.
  */
-export function supportsInventory(kind: SectionKind): boolean {
-  return kind === 'packing' || kind === 'custom';
+export function supportsInventory(kind: SectionKind, title?: string | null): boolean {
+  if (kind === 'packing') return true;
+  if (kind !== 'custom') return false;
+  // A user's own section about paperwork, the vehicle, errands or buying things is not for things they own.
+  return !(title && NOT_OWNED_TITLE.test(title));
+}
+
+const NOT_OWNED_TITLE = /\b(documents?|papers|passports?|visas?|tickets?|bookings?|vehicles?|errands?|shopping|to buy|purchases?)\b/i;
+
+/** A user's clothing section ("Clothing", "Clothes", "Outfits", "Wear"…). */
+export const CLOTHING_TITLE = /cloth|wear|outfit|apparel|garment/i;
+export const CLOTHING_SECTION_TITLE = 'Clothing';
+
+export function isClothingSection(section: { kind: SectionKind; title: string }): boolean {
+  return section.kind === 'custom' && CLOTHING_TITLE.test(section.title);
+}
+
+/** The trip's clothing section: one named exactly "Clothing" first, else any clothing-like custom section. */
+export function findClothingSection<S extends { kind: SectionKind; title: string; position: number }>(sections: readonly S[]): S | null {
+  const own = sections.filter(isClothingSection).sort((a, b) => a.position - b.position);
+  return own.find((s) => s.title.trim().toLowerCase() === CLOTHING_SECTION_TITLE.toLowerCase()) ?? own[0] ?? null;
 }
 
 export function validateGroupTitle(title: string, existing: readonly Pick<ChecklistGroup, 'id' | 'title'>[], selfId?: string): string | null {
@@ -119,6 +138,30 @@ export function createSectionExtrasRepository(db: Database, deps: { createId: ()
       });
     },
 
+    /**
+     * Before a task moves to another section: the name of its Inventory item when that
+     * item is already linked there (it would be listed twice), else null.
+     */
+    async linkConflict(taskId: string, targetSectionId: string): Promise<string | null> {
+      const row = await db.getFirstAsync<{ name: string }>(
+        `SELECT i.name FROM checklist_task_links l JOIN inventory_items i ON i.id = l.inventory_item_id
+         WHERE l.task_id = ? AND EXISTS (
+           SELECT 1 FROM checklist_task_links o JOIN checklist_tasks t ON t.id = o.task_id
+           WHERE t.section_id = ? AND o.task_id <> l.task_id AND o.inventory_item_id = l.inventory_item_id)`,
+        [taskId, targetSectionId],
+      );
+      return row?.name ?? null;
+    },
+
+    /** The task's link (group, Inventory item and its name, quantity), or null. */
+    async taskLink(taskId: string): Promise<(TaskLink & { inventoryItemName: string | null }) | null> {
+      const row = await db.getFirstAsync<{ group_id: string | null; inventory_item_id: string | null; quantity: number; name: string | null }>(
+        'SELECT l.group_id, l.inventory_item_id, l.quantity, i.name FROM checklist_task_links l LEFT JOIN inventory_items i ON i.id = l.inventory_item_id WHERE l.task_id = ?',
+        [taskId],
+      );
+      return row ? { groupId: row.group_id, inventoryItemId: row.inventory_item_id, quantity: row.quantity, inventoryItemName: row.name } : null;
+    },
+
     async setTaskGroup(taskId: string, groupId: string | null): Promise<void> {
       const sectionId = await sectionOfTask(taskId);
       if (!sectionId) throw new SectionExtrasError('That task no longer exists.');
@@ -146,6 +189,13 @@ export function createSectionExtrasRepository(db: Database, deps: { createId: ()
      * linked in this section are skipped, not added twice.
      */
     async addFromInventory(sectionId: string, groupId: string | null, items: readonly { itemId: string; quantity?: number }[]): Promise<{ added: number; skipped: number }> {
+      const section = await db.getFirstAsync<{ kind: SectionKind; title: string }>('SELECT kind, title FROM checklist_sections WHERE id = ?', [sectionId]);
+      if (!section) throw new SectionExtrasError('That section no longer exists.');
+      if (!supportsInventory(section.kind, section.title)) throw new SectionExtrasError('Inventory items can’t be added to this section.');
+      if (groupId) {
+        const g = await db.getFirstAsync<{ section_id: string }>('SELECT section_id FROM checklist_groups WHERE id = ?', [groupId]);
+        if (!g || g.section_id !== sectionId) throw new SectionExtrasError('Choose a group of this section.');
+      }
       const linked = new Set(
         (
           await db.getAllAsync<{ inventory_item_id: string }>(
