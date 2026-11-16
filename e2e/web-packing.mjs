@@ -289,6 +289,7 @@ await run('Packing categories test', async () => {
 
   setStep('checklist section: groups, add manually and from Inventory');
   await page.goto(tripB);
+  await byId(page, 'open-checklist').click();
   await byId(page, 'section-card-packing').click();
   await byId(page, 'section-screen-packing').waitFor();
   await byId(page, 'section-groups-section-toggle').click();
@@ -356,6 +357,8 @@ await run('Packing categories test', async () => {
   check(/Sandals/.test(await text(page, 'section-group-block-Tops')), 'and between groups');
 
   await page.goto(`${BASE}/checklists`);
+  const tripBId = new URL(tripB).pathname.split('/').pop();
+  await byId(page, `checklist-trip-toggle-${tripBId}`).click();
   const row = page.getByRole('button', { name: /^Gokarna, Clothing:/ });
   await row.first().waitFor({ timeout: 60_000 });
   check((await row.count()) === 1, 'the Checklist tab lists one Clothing section (no copy was made)');
@@ -366,8 +369,67 @@ await run('Packing categories test', async () => {
   await byId(page, 'trip-clothing').click();
   await byId(page, 'section-screen-custom').waitFor();
   await page.goto(`${BASE}/checklists`);
+  await byId(page, `checklist-trip-toggle-${tripBId}`).click();
   await page.getByRole('button', { name: /^Gokarna, Clothing:/ }).first().waitFor();
   check((await page.getByRole('button', { name: /^Gokarna, Clothing:/ }).count()) === 1, 'opening Clothing again does not create a second section');
+
+  setStep('Checklist: compact trip cards, one open at a time');
+  const tripAId = new URL(tripA).pathname.split('/').pop();
+  await page.goto(`${BASE}/checklists`);
+  await byId(page, `checklist-trip-toggle-${tripAId}`).waitFor({ timeout: 60_000 });
+  check((await page.locator('[data-testid^="checklist-trip-sections-"]').count()) === 0, 'several upcoming trips start collapsed');
+  const collapsedCount = await text(page, `checklist-trip-count-${tripAId}`);
+  await byId(page, `checklist-trip-toggle-${tripAId}`).click();
+  await byId(page, `checklist-trip-sections-${tripAId}`).waitFor();
+  const sums = await byId(page, `checklist-trip-sections-${tripAId}`).locator('[data-testid^="section-card-"]').allInnerTexts();
+  const totals = sums.map((t) => /(\d+)\/(\d+)/.exec(t)).filter(Boolean).reduce((a, m) => [a[0] + Number(m[1]), a[1] + Number(m[2])], [0, 0]);
+  check(collapsedCount.startsWith(`${totals[0]}/${totals[1]}`), `collapsed figure ${collapsedCount} matches the sections (${totals[0]}/${totals[1]})`);
+  await byId(page, `checklist-trip-toggle-${tripBId}`).click();
+  await byId(page, `checklist-trip-sections-${tripBId}`).waitFor();
+  check((await byId(page, `checklist-trip-sections-${tripAId}`).count()) === 0, 'opening another trip closes the first');
+  await byId(page, `checklist-trip-toggle-${tripBId}`).click();
+  check((await page.locator('[data-testid^="checklist-trip-sections-"]').count()) === 0, 'tapping the open trip closes it');
+  await byId(page, `checklist-trip-toggle-${tripAId}`).click();
+  await byId(page, `checklist-trip-sections-${tripAId}`).locator('[data-testid="section-card-documents"]').click();
+  await byId(page, 'section-screen-documents').waitFor();
+  check(page.url().includes(tripAId), 'a section opens for the right trip');
+
+  setStep('Dashboard 2.0: overview only, six shortcuts, weather folded');
+  await page.goto(tripA);
+  await byId(page, 'trip-dashboard').waitFor();
+  check((await byId(page, 'trip-hero').count()) === 1 && (await byId(page, 'trip-cover-error').count()) === 0, 'compact header without a photo-error panel');
+  await byId(page, 'trip-hero-fallback').waitFor();
+  check(/days/.test(await text(page, 'trip-hero-dates')), 'header shows dates and length');
+  check((await page.locator('[data-testid="trip-dashboard"] [data-testid^="section-card-"]').count()) === 0, 'no checklist sections on the dashboard');
+  check((await byId(page, 'trip-quick-links').locator('[role="link"]').count()) === 6, 'exactly six shortcuts');
+  const weather = byId(page, 'trip-weather-section-toggle');
+  check((await weather.getAttribute('aria-expanded')) === 'false', 'weather starts folded');
+  await weather.click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="trip-weather-section-toggle"]')?.getAttribute('aria-expanded') === 'true');
+  await weather.click();
+  await page.waitForFunction(() => document.querySelector('[data-testid="trip-weather-section-toggle"]')?.getAttribute('aria-expanded') === 'false');
+  check(true, 'weather expands inline and folds again');
+  for (const [id, screen] of [
+    ['trip-calculator', 'calc-quick'],
+    ['trip-clothing', 'section-screen-custom'],
+    ['journal-open', 'journal-screen'],
+    ['trip-memories', 'memories-screen'],
+    ['trip-group', 'group-trip-screen'],
+    ['trip-mine', 'my-trip-screen'],
+  ]) {
+    await page.goto(tripA);
+    await byId(page, id).click();
+    await byId(page, screen).waitFor({ timeout: 30_000 });
+    check(page.url().includes(tripAId), `${id} opens this trip’s ${screen}`);
+  }
+  await page.goto(tripA);
+  await byId(page, 'journey-button').click();
+  await page.waitForURL(/\/plan/);
+  check(page.url().includes(tripAId) && page.url().includes('navigation'), 'Start journey opens the journey view; nothing navigates by itself');
+  await page.goto(tripA);
+  await byId(page, 'open-checklist').click();
+  await byId(page, `checklist-trip-sections-${tripAId}`).waitFor();
+  check(true, 'Open preparation checklist opens this trip on the Checklist tab');
 
   setStep('offline: packing keeps working');
   await page.goto(`${tripB}/packing`);

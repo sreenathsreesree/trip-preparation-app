@@ -89,18 +89,31 @@ await run('Web smoke test', async () => {
     await within(page, 'trip-dashboard', 'Manali → Chandratal → Kaza', { exact: false }).isVisible(),
     'route keeps stop order',
   );
-  check((await text(page, 'departure-status')) === 'Not ready to depart', 'open essentials block departure');
-  const readiness0 = await text(page, 'readiness-percent');
+  const tripId = tripPath.split('/').pop();
+  const dashboardPercent0 = await waitText(page, 'completion-percent', (v) => v.length > 0);
+  for (const kind of ['packing', 'documents', 'vehicle', 'tasks', 'shopping', 'home']) {
+    check((await byId(page, `section-card-${kind}`).count()) === 0, `no ${kind} section card on the dashboard`);
+  }
+  check((await page.locator('[data-testid="trip-dashboard"] [data-testid^="task-check-"]').count()) === 0, 'no checklist tasks on the dashboard');
+  await shot(page, '04-dashboard');
+
+  setStep('Open preparation checklist: this trip, expanded, with its sections');
+  await byId(page, 'open-checklist').click();
+  await byId(page, 'checklists-screen').waitFor();
+  await byId(page, `checklist-trip-sections-${tripId}`).waitFor();
   for (const kind of ['packing', 'documents', 'vehicle', 'tasks', 'shopping', 'home']) {
     await byId(page, `section-card-${kind}`).waitFor();
   }
-  check(true, 'six standard sections for a car trip');
-  await shot(page, '04-dashboard');
-
-  setStep('tick an essential from the readiness panel');
-  await page.locator('[data-testid="readiness-panel"] [data-testid^="task-check-"]').first().click();
-  const readiness1 = await waitText(page, 'readiness-percent', (v) => v !== readiness0);
-  check(true, `readiness updates immediately (${readiness0} → ${readiness1})`);
+  check(true, 'six standard sections for a car trip, on the Checklist tab');
+  check((await text(page, `checklist-trip-percent-${tripId}`)) === dashboardPercent0, `the Checklist shows the dashboard’s figure (${dashboardPercent0})`);
+  await shot(page, '04b-checklist');
+  await page.goto(`${BASE}/checklists`);
+  await byId(page, `checklist-trip-toggle-${tripId}`).waitFor({ timeout: 60_000 });
+  check((await byId(page, `checklist-trip-sections-${tripId}`).count()) === 0, 'a single trip starts compact');
+  check(/%/.test(await text(page, `checklist-trip-percent-${tripId}`)) && /tasks done/.test(await text(page, `checklist-trip-count-${tripId}`)), 'its overall progress shows without expanding');
+  check(/Show sections/.test(await text(page, `checklist-trip-toggle-${tripId}`)), 'expanding is obvious');
+  await byId(page, `checklist-trip-toggle-${tripId}`).click();
+  await byId(page, `checklist-trip-sections-${tripId}`).waitFor();
 
   setStep('section: add, edit details, reorder');
   await byId(page, 'section-card-packing').click();
@@ -132,6 +145,16 @@ await run('Web smoke test', async () => {
   await byId(page, 'toggle-reorder').click();
   await page.waitForTimeout(600); // let layout animations settle
   await shot(page, '06-section');
+
+  setStep('readiness matches after ticking a task');
+  await sectionScreen.locator('[data-testid^="task-check-"]').first().click();
+  await page.waitForTimeout(300);
+  await page.goto(tripUrl);
+  await byId(page, 'trip-dashboard').waitFor();
+  const dashboardPercent1 = await waitText(page, 'completion-percent', (v) => v !== dashboardPercent0);
+  await byId(page, 'open-checklist').click();
+  await waitText(page, `checklist-trip-percent-${tripId}`, (v) => v === dashboardPercent1);
+  check(true, `dashboard and Checklist update together (${dashboardPercent0} → ${dashboardPercent1})`);
 
   setStep('edit trip details');
   await page.goto(tripUrl);
@@ -180,6 +203,7 @@ await run('Web smoke test', async () => {
   setStep('apply template to the trip');
   await page.goto(tripUrl);
   await byId(page, 'trip-dashboard').waitFor();
+  await byId(page, 'open-checklist').click();
   await byId(page, 'apply-templates').click();
   await byId(page, 'apply-templates-screen').waitFor();
   await page.locator('[data-testid^="template-option-"]').first().click();
@@ -196,6 +220,7 @@ await run('Web smoke test', async () => {
   await within(page, 'template-editor', 'Microspikes').waitFor();
   await page.goto(tripUrl);
   await byId(page, 'trip-dashboard').waitFor();
+  await byId(page, 'open-checklist').click();
   await byId(page, 'section-card-gear').click();
   await within(page, 'section-screen-custom', 'Trekking poles').waitFor();
   check(
@@ -203,6 +228,7 @@ await run('Web smoke test', async () => {
     'template edit did not change the trip',
   );
   await page.goto(tripUrl);
+  await byId(page, 'open-checklist').click();
   await byId(page, 'apply-templates').click();
   await page.locator('[data-testid^="template-option-"]').first().click();
   await byId(page, 'apply-templates-confirm').click();
@@ -280,6 +306,7 @@ await run('Web smoke test', async () => {
     (await waitText(page, 'completion-percent', (v) => v.length > 0)) === originalCompletion,
     'ticks persisted',
   );
+  await byId(page, 'open-checklist').click();
   await byId(page, 'section-card-packing').click();
   await within(page, 'section-screen-packing', 'Pre-stretched, 520 pitch').waitFor();
   check(true, 'task details persisted');

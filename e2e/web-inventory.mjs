@@ -180,8 +180,8 @@ await run('Inventory & packing test', async () => {
     travellers: [{ name: 'Asha' }, { name: 'Kabir', child: true }],
     transport: 'flight',
   });
-  await byId(page, 'packing-summary').waitFor();
-  check(true, 'dashboard shows the packing card');
+  await byId(page, 'readiness-summary').waitFor();
+  check((await byId(page, 'packing-summary').count()) === 0, 'the dashboard shows one readiness summary, not a packing task card');
   await shot(page, 'm4-07-dashboard-card');
   const tripB = await createTrip(page, {
     name: 'Photo Walk',

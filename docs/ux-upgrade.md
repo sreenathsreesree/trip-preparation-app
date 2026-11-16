@@ -99,3 +99,17 @@ this phase; nothing was deployed.
   item already in a section is not added twice, and moving a task into a section that already has
   that item is refused with an explanation.
 - No schema change (local schema stays v16).
+
+## Dashboard 2.0 and compact Checklist trips (Nov 2026)
+
+- **Trip dashboard = travel command centre:** compact header (cover, or a layered scenic
+  fallback with no photo-error panel; dates, length, travellers, trip type, route), Journey
+  overview (destinations, places, route, days, Plan destinations), Journey readiness (one
+  percentage, done/total, progress bar, *Open preparation checklist*), the journey button, six
+  shortcuts and folded weather. No checklist sections, tasks, templates or tools on the dashboard.
+- **Checklist tab:** each upcoming trip is a compact card (dates, timing, %, bar, done/total,
+  open essentials). Tap to show its sections; one trip open at a time. The expanded card also
+  holds the checklist tools that left the dashboard (Manage sections, Add from template, Save as
+  template, Add vehicle checks). *Open preparation checklist* opens the Checklist tab with that
+  trip expanded (listed even if it has ended).
+- Both screens use `checklistProgress()` on the same loaded checklist, so the figures always match.
