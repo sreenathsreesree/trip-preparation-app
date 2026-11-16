@@ -6,6 +6,7 @@ import { colors, radii, spacing } from '@/theme';
 import type { IconName } from '@/theme/icons';
 
 const LINKS: { key: string; label: string; icon: IconName; testID: string; href: (tripId: string) => Href }[] = [
+  { key: 'calculator', label: 'Calculator', icon: 'calculator-variant-outline', testID: 'trip-calculator', href: (tripId) => ({ pathname: '/calculator/[tripId]', params: { tripId, tab: 'calculator' } }) },
   { key: 'clothing', label: 'Clothing', icon: 'tshirt-crew-outline', testID: 'trip-clothing', href: (tripId) => ({ pathname: '/trips/[tripId]/clothing', params: { tripId } }) },
   { key: 'journal', label: 'Journal', icon: 'book-open-page-variant-outline', testID: 'journal-open', href: (tripId) => ({ pathname: '/trips/[tripId]/journal', params: { tripId } }) },
   { key: 'memories', label: 'Memories', icon: 'image-multiple-outline', testID: 'trip-memories', href: (tripId) => ({ pathname: '/trips/[tripId]/gallery', params: { tripId } }) },
@@ -39,10 +40,12 @@ export function QuickLinks({ tripId }: { tripId: string }) {
 const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   tile: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: '30%',
     minWidth: 0,
     minHeight: 64,
     alignItems: 'center',

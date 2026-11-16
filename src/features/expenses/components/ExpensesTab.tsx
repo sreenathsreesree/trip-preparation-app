@@ -6,6 +6,7 @@ import { AppText, Button, Card, EmptyState, Icon, Notice, SegmentedControl, Tag 
 import { formatDateLong } from '@/lib/dates';
 import { colors, radii, spacing } from '@/theme';
 
+import { useTripPlan } from '../../planner/plannerStore';
 import type { Workspace } from '../expenseRepository';
 import type { LedgerSummary } from '../ledger';
 import { formatMoney } from '../money';
@@ -16,6 +17,7 @@ type Filter = 'all' | 'group' | 'personal';
 export function ExpensesTab({ tripId, ws, summary, today }: { tripId: string; ws: Workspace; summary: LedgerSummary; today: string }) {
   const [filter, setFilter] = useState<Filter>('all');
   const names = new Map(ws.participants.map((p) => [p.id, p.name]));
+  const placeNames = new Map((useTripPlan(tripId).plan?.nodes ?? []).map((n) => [n.id, n.name]));
   const list = ws.expenses.filter((e) => filter === 'all' || e.scope === filter);
   const days = [...new Set(list.map((e) => e.spentOn))].sort((a, b) => b.localeCompare(a));
   const newExpense = () => router.push({ pathname: '/calculator/[tripId]/expense', params: { tripId } });
@@ -109,6 +111,7 @@ export function ExpensesTab({ tripId, ws, summary, today }: { tripId: string; ws
                         </AppText>
                         <AppText variant="caption" tone="textSecondary" numberOfLines={1}>
                           {e.scope === 'group' ? `${names.get(e.paidBy ?? '') ?? 'Someone'} paid · ${e.splits.length} sharing` : 'Personal'} · {e.categoryName || cat.label}
+                        {e.placeNodeId && placeNames.has(e.placeNodeId) ? ` · ${placeNames.get(e.placeNodeId)}` : ''}
                         </AppText>
                       </View>
                       <View style={styles.amount}>

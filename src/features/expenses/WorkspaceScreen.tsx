@@ -4,7 +4,8 @@ import { StyleSheet, View } from 'react-native';
 
 import { Screen } from '@/components/layout/Screen';
 import { ScreenHeader } from '@/components/layout/ScreenHeader';
-import { ActionSheet, ErrorState, IconButton, LoadingState, SegmentedControl, Tag, type SheetAction } from '@/components/ui';
+import { ActionSheet, ErrorState, IconButton, LoadingState, OptionTile, Tag, type SheetAction } from '@/components/ui';
+import type { IconName } from '@/theme/icons';
 import { colors, spacing } from '@/theme';
 
 import { usePlannerStore } from '../planner/plannerStore';
@@ -13,13 +14,25 @@ import { useToday, useTrip } from '../trips/hooks';
 import { BalancesTab } from './components/BalancesTab';
 import { BudgetTab } from './components/BudgetTab';
 import { ExpensesTab } from './components/ExpensesTab';
+import { OverviewTab } from './components/OverviewTab';
+import { QuickCalculator } from './components/QuickCalculator';
 import { ToolsTab } from './components/ToolsTab';
 import { useExpenseStore, useTripLedger } from './expenseStore';
 import { summarize } from './ledger';
 import { COMMON_CURRENCIES } from './money';
 
-export type WorkspaceTab = 'expenses' | 'balances' | 'budget' | 'tools';
-export const isWorkspaceTab = (v: unknown): v is WorkspaceTab => v === 'expenses' || v === 'balances' || v === 'budget' || v === 'tools';
+export type WorkspaceTab = 'calculator' | 'expenses' | 'overview' | 'balances' | 'budget' | 'tools';
+
+/** The calculator's sections, all inside one screen (no extra navigation). */
+export const WORKSPACE_TABS: readonly { value: WorkspaceTab; label: string; icon: IconName }[] = [
+  { value: 'calculator', label: 'Calculator', icon: 'calculator-variant-outline' },
+  { value: 'expenses', label: 'Expenses', icon: 'receipt-text-outline' },
+  { value: 'overview', label: 'Overview', icon: 'chart-donut' },
+  { value: 'balances', label: 'Split & settle', icon: 'scale-balance' },
+  { value: 'budget', label: 'Budget', icon: 'target' },
+  { value: 'tools', label: 'Travel tools', icon: 'toolbox-outline' },
+];
+export const isWorkspaceTab = (v: unknown): v is WorkspaceTab => WORKSPACE_TABS.some((t) => t.value === v);
 
 export function WorkspaceScreen({ tripId, initialTab = 'expenses' }: { tripId: string | undefined; initialTab?: WorkspaceTab }) {
   const { trip } = useTrip(tripId);
@@ -71,17 +84,11 @@ export function WorkspaceScreen({ tripId, initialTab = 'expenses' }: { tripId: s
           ) : null}
         </View>
       ) : null}
-      <SegmentedControl
-        options={[
-          { value: 'expenses', label: 'Expenses' },
-          { value: 'balances', label: 'Balances' },
-          { value: 'budget', label: 'Budget' },
-          { value: 'tools', label: 'Tools' },
-        ]}
-        value={tab}
-        onChange={setTab}
-        accessibilityLabel="Calculator sections"
-      />
+      <View style={styles.sections} accessibilityRole="tablist" accessibilityLabel="Calculator sections" testID="calc-sections">
+        {WORKSPACE_TABS.map((t) => (
+          <OptionTile key={t.value} layout="chip" label={t.label} icon={t.icon} selected={tab === t.value} onPress={() => setTab(t.value)} testID={`calc-tab-${t.value}`} />
+        ))}
+      </View>
       {ledger.status === 'error' ? (
         <ErrorState message={ledger.error ?? 'Could not load expenses.'} onRetry={() => tripId && void useExpenseStore.getState().load(tripId)} />
       ) : !ws || !tripId ? (
@@ -91,7 +98,9 @@ export function WorkspaceScreen({ tripId, initialTab = 'expenses' }: { tripId: s
           {tab === 'expenses' ? <ExpensesTab tripId={tripId} ws={ws} summary={summarize(ws)} today={today} /> : null}
           {tab === 'balances' ? <BalancesTab tripId={tripId} ws={ws} summary={summarize(ws)} /> : null}
           {tab === 'budget' ? <BudgetTab tripId={tripId} ws={ws} summary={summarize(ws)} today={today} /> : null}
-          {tab === 'tools' ? <ToolsTab tripId={tripId} currency={ws.currency} people={ws.participants.filter((p) => !p.archived).length} canAddGroup={!ws.groupReadOnly} /> : null}
+          {tab === 'calculator' ? <QuickCalculator tripId={tripId} currency={ws.currency} /> : null}
+          {tab === 'overview' ? <OverviewTab tripId={tripId} ws={ws} /> : null}
+          {tab === 'tools' ? <ToolsTab tripId={tripId} ws={ws} /> : null}
         </View>
       )}
       <ActionSheet visible={choosingCurrency} title="Default currency" subtitle="New expenses start in this currency. Existing amounts are never converted." actions={currencyActions} onClose={() => setChoosingCurrency(false)} testID="calc-currency-sheet" />
@@ -100,6 +109,11 @@ export function WorkspaceScreen({ tripId, initialTab = 'expenses' }: { tripId: s
 }
 
 const styles = StyleSheet.create({
+  sections: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
   tags: {
     flexDirection: 'row',
     flexWrap: 'wrap',

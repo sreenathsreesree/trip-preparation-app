@@ -10,6 +10,7 @@ import { toErrorMessage } from '@/lib/errors';
 import { successFeedback } from '@/lib/haptics';
 import { colors, radii, spacing } from '@/theme';
 
+import { usePlannerStore, useTripPlan } from '../planner/plannerStore';
 import { useToday } from '../trips/hooks';
 import type { Expense, ExpenseScope, Workspace } from './expenseRepository';
 import { useExpenseStore, useTripLedger } from './expenseStore';
@@ -28,6 +29,7 @@ import {
   type SplitInput,
   type SplitMethod,
 } from './money';
+import { placeOptions } from './overview';
 import { BUILT_IN_CATEGORIES, CUSTOM_PREFIX } from './planning';
 
 export interface EditorPrefill {
@@ -36,6 +38,10 @@ export interface EditorPrefill {
   currency?: string;
   category?: string;
   scope?: ExpenseScope;
+  method?: SplitMethod;
+  placeNodeId?: string;
+  /** Per-person split inputs (participant id → text), e.g. from the per-person splitter. */
+  splits?: Record<string, string>;
 }
 
 function initialInputs(expense: Expense | null, currency: string): Record<string, string> {
@@ -60,9 +66,16 @@ function Editor({ tripId, ws, expense, prefill }: { tripId: string; ws: Workspac
   const [category, setCategory] = useState(expense?.category ?? prefill.category ?? 'food');
   const [spentOn, setSpentOn] = useState(expense?.spentOn ?? today);
   const [paidBy, setPaidBy] = useState<string | null>(expense?.paidBy ?? me?.id ?? null);
-  const [method, setMethod] = useState<SplitMethod>(expense?.splitMethod ?? 'equal');
-  const [included, setIncluded] = useState<Set<string>>(new Set(expense?.scope === 'group' ? expense.splits.map((s) => s.participantId) : active.filter((p) => !p.archived).map((p) => p.id)));
-  const [inputs, setInputs] = useState<Record<string, string>>(initialInputs(expense, expense?.currency ?? ws.currency));
+  const [method, setMethod] = useState<SplitMethod>(expense?.splitMethod ?? prefill.method ?? 'equal');
+  const planNodes = useTripPlan(tripId).plan?.nodes;
+  const places = placeOptions((planNodes ?? []).map((n) => ({ id: n.id, parentId: n.parentId, name: n.name })));
+  const [placeNodeId, setPlaceNodeId] = useState<string | null>(expense ? expense.placeNodeId : (prefill.placeNodeId ?? null));
+  const [showAllPlaces, setShowAllPlaces] = useState(false);
+  const prefillSplit = !expense && prefill.splits ? Object.keys(prefill.splits).filter((id) => active.some((p) => p.id === id && !p.archived)) : [];
+  const [included, setIncluded] = useState<Set<string>>(
+    new Set(expense?.scope === 'group' ? expense.splits.map((s) => s.participantId) : prefillSplit.length > 0 ? prefillSplit : active.filter((p) => !p.archived).map((p) => p.id)),
+  );
+  const [inputs, setInputs] = useState<Record<string, string>>(expense ? initialInputs(expense, expense.currency) : (prefill.splits ?? {}));
   const [notes, setNotes] = useState(expense?.notes ?? '');
   const [newCategory, setNewCategory] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -128,7 +141,20 @@ function Editor({ tripId, ws, expense, prefill }: { tripId: string; ws: Workspac
     try {
       await useExpenseStore.getState().saveExpense(
         tripId,
-        { scope, title, amountMinor: parsedAmount.minor, currency, category, spentOn: spentOn.trim(), paidBy: scope === 'group' ? paidBy : null, splitMethod: method, splits: splitInputs, notes },
+        {
+          scope,
+          title,
+          amountMinor: parsedAmount.minor,
+          currency,
+          category,
+          spentOn: spentOn.trim(),
+          paidBy: scope === 'group' ? paidBy : null,
+          splitMethod: method,
+          splits: splitInputs,
+          notes,
+          // Only a destination that still exists in this trip's plan; otherwise "Entire trip".
+          placeNodeId: placeNodeId && places.some((p) => p.id === placeNodeId) ? placeNodeId : null,
+        },
         expense?.id ?? null,
       );
       successFeedback();
@@ -228,6 +254,41 @@ function Editor({ tripId, ws, expense, prefill }: { tripId: string; ws: Workspac
         ) : null}
       </View>
 
+      <View style={styles.group} testID="calc-location">
+        <AppText variant="label" tone="textSecondary">
+          Location (optional)
+        </AppText>
+        <View style={styles.chips}>
+          <OptionTile
+            layout="chip"
+            label="Entire trip / no location"
+            icon="earth"
+            selected={placeNodeId === null || !places.some((p) => p.id === placeNodeId)}
+            onPress={() => !readOnly && setPlaceNodeId(null)}
+            testID="calc-place-none"
+          />
+          {(showAllPlaces ? places : places.filter((p) => p.depth === 0 || p.id === placeNodeId)).map((p) => (
+            <OptionTile
+              key={p.id}
+              layout="chip"
+              label={p.depth === 0 ? p.name : p.path}
+              icon={p.depth === 0 ? 'map-marker-outline' : 'map-marker-radius-outline'}
+              selected={placeNodeId === p.id}
+              onPress={() => !readOnly && setPlaceNodeId(p.id)}
+              testID={`calc-place-${p.name}`}
+            />
+          ))}
+        </View>
+        {places.some((p) => p.depth > 0) && !showAllPlaces ? (
+          <Button label="Show places inside destinations" icon="chevron-down" variant="ghost" size="sm" onPress={() => setShowAllPlaces(true)} style={styles.left} testID="calc-place-more" />
+        ) : null}
+        {places.length === 0 ? (
+          <AppText variant="caption" tone="textMuted">
+            Add destinations in the trip plan to record where you spent. Without one, the expense counts for the entire trip.
+          </AppText>
+        ) : null}
+      </View>
+
       {scope === 'group' ? (
         <>
           <View style={styles.group}>
@@ -304,6 +365,7 @@ export function ExpenseEditorScreen({ tripId, expenseId, prefill }: { tripId: st
   useFocusEffect(
     useCallback(() => {
       if (tripId && !useExpenseStore.getState().byTrip[tripId]?.workspace) void useExpenseStore.getState().load(tripId);
+      if (tripId) void usePlannerStore.getState().load(tripId);
     }, [tripId]),
   );
   const ws = ledger.workspace;
@@ -346,6 +408,9 @@ const styles = StyleSheet.create({
   },
   currency: {
     width: 96,
+  },
+  left: {
+    alignSelf: 'flex-start',
   },
   fieldButton: {
     marginTop: spacing.lg,
