@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { Screen } from '@/components/layout/Screen';
 import { goBackOrHome, ScreenHeader } from '@/components/layout/ScreenHeader';
-import { AppText, Button, EmptyState, LoadingState, Notice, OptionTile } from '@/components/ui';
+import { AppText, Button, EmptyState, LoadingState, Notice, OptionTile, TextField } from '@/components/ui';
 import { todayISO } from '@/lib/dates';
 import { toErrorMessage } from '@/lib/errors';
 import { successFeedback } from '@/lib/haptics';
@@ -35,6 +35,8 @@ const TARGETS: { value: ShareTarget; label: string; icon: 'map-marker-path' | 'm
 export function ShareToTripScreen({ text, subject }: { text: string; subject: string | null }) {
   const [resolved, setResolved] = useState<ResolvedShare | null>(null);
   const [place, setPlace] = useState<PlaceDetails | null>(null);
+  /** Fallback when the shared place can't be found: add it by name, without a map location. */
+  const [manualName, setManualName] = useState<string | null>(null);
   const trips = useTripsStore((s) => s.trips);
   const tripsStatus = useTripsStore((s) => s.status);
   const [tripId, setTripId] = useState<string | null>(null);
@@ -75,20 +77,23 @@ export function ShareToTripScreen({ text, subject }: { text: string; subject: st
 
   const nodes = planState.plan?.nodes ?? [];
   const mains = nodes.filter((n) => n.parentId === null);
-  const duplicate = place ? findSamePlace(nodes, place) : null;
+  const duplicate = place ? findSamePlace(nodes, place) : manualName?.trim() ? findSamePlace(nodes, { providerPlaceId: null, name: manualName.trim() }) : null;
+  const sharedUrl = resolved?.status === 'unresolved' ? (resolved.url ?? null) : null;
   const effectiveParent = target === 'child' ? (parentId ?? mains[0]?.id ?? null) : null;
 
   async function save() {
-    if (!place || !selectedTrip) return;
+    const name = place?.name ?? manualName?.trim() ?? '';
+    if (!selectedTrip || !name) return;
     setSaving(true);
     setError(null);
     try {
       const result = await usePlannerStore.getState().addNode(selectedTrip, {
         parentId: effectiveParent,
-        name: place.name,
-        notes: '',
+        name,
+        // Without a resolved place, the original link is kept in the notes for reference.
+        notes: !place && sharedUrl ? `Shared from Google Maps: ${sharedUrl}` : '',
         addToRoute: target === 'route',
-        place: toPlaceInput(place),
+        ...(place ? { place: toPlaceInput(place) } : {}),
       });
       const nodeId = result.node.id;
       if (result.status === 'added') successFeedback();
@@ -110,7 +115,7 @@ export function ShareToTripScreen({ text, subject }: { text: string; subject: st
             icon="plus"
             onPress={() => void save()}
             loading={saving}
-            disabled={!place || !selectedTrip || !!duplicate || (target === 'child' && !effectiveParent)}
+            disabled={(!place && !manualName?.trim()) || !selectedTrip || !!duplicate || (target === 'child' && !effectiveParent)}
             style={styles.primary}
             testID="share-place-save"
           />
@@ -146,7 +151,34 @@ export function ShareToTripScreen({ text, subject }: { text: string; subject: st
         ) : resolved?.status === 'unresolved' ? (
           <View style={styles.group}>
             <Notice tone="warning" title="Couldn’t find the place in what was shared" message={resolved.reason} testID="share-place-unresolved" />
-            <PlacePicker onPick={setPlace} testID="share-place-picker" />
+            {manualName === null ? (
+              <>
+                <PlacePicker
+                  onPick={(p) => {
+                    setManualName(null);
+                    setPlace(p);
+                  }}
+                  testID="share-place-picker"
+                />
+                <Button
+                  label={resolved.name ? `Add “${resolved.name}” without a map location` : 'Add it by name instead'}
+                  icon="pencil-outline"
+                  variant="ghost"
+                  size="sm"
+                  onPress={() => setManualName(resolved.name ?? '')}
+                  style={styles.left}
+                  testID="share-place-manual"
+                />
+              </>
+            ) : (
+              <View style={styles.group} testID="share-place-manual-form">
+                <TextField label="Place name" value={manualName} onChangeText={setManualName} maxLength={120} autoCapitalize="words" testID="share-place-manual-name" />
+                <AppText variant="caption" tone="textMuted">
+                  Saved without a map location; you can set it later on the place’s page. The shared link is kept in its notes.
+                </AppText>
+                <Button label="Search instead" variant="ghost" size="sm" onPress={() => setManualName(null)} style={styles.left} />
+              </View>
+            )}
           </View>
         ) : null}
         <AppText variant="caption" tone="textMuted" numberOfLines={3} selectable>

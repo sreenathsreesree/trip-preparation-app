@@ -44,7 +44,7 @@ describe('Google Maps and other map links', () => {
     expect(parseMapsUrl(url).location?.latitude).toBeCloseTo(lat, 4);
   });
   it('keeps a search name when there are no coordinates', () => {
-    expect(parseMapsUrl('https://www.google.com/maps?q=Eravikulam+National+Park')).toEqual({ location: null, name: 'Eravikulam National Park' });
+    expect(parseMapsUrl('https://www.google.com/maps?q=Eravikulam+National+Park')).toEqual({ location: null, name: 'Eravikulam National Park', placeId: null });
     expect(parseMapsUrl('geo:0,0?q=Top+Station').name).toBe('Top Station');
   });
 });

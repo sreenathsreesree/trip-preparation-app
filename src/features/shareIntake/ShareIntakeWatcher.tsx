@@ -20,16 +20,25 @@ export function routeShare(share: SharedText) {
   router.push({ pathname: '/share/place', params: { text: share.text.slice(0, 2000), subject: share.subject?.slice(0, 200) ?? '' } });
 }
 
+/**
+ * Cold start: the share that launched the app is taken once and routed after the
+ * navigator mounts. Warm start: shares arriving while the app runs come through the
+ * listener. Returns the cleanup.
+ */
+export function watchShares(
+  source: { takeInitial: () => SharedText | null; addListener: (fn: (share: SharedText) => void) => () => void },
+  route: (share: SharedText) => void = routeShare,
+): () => void {
+  const initial = source.takeInitial();
+  const timer = initial ? setTimeout(() => route(initial), 0) : null;
+  const unsubscribe = source.addListener(route);
+  return () => {
+    if (timer) clearTimeout(timer);
+    unsubscribe();
+  };
+}
+
 export function ShareIntakeWatcher() {
-  useEffect(() => {
-    const initial = takeInitialShare();
-    // Let the navigator mount before pushing the screen.
-    const timer = initial ? setTimeout(() => routeShare(initial), 0) : null;
-    const unsubscribe = addShareListener(routeShare);
-    return () => {
-      if (timer) clearTimeout(timer);
-      unsubscribe();
-    };
-  }, []);
+  useEffect(() => watchShares({ takeInitial: takeInitialShare, addListener: addShareListener }), []);
   return null;
 }
