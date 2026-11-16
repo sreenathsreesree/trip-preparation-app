@@ -1,0 +1,6 @@
+# Trip Prep places proxy (Cloudflare Workers). NOT deployed — see README.md.
+# The Google key is a secret (`wrangler secret put GOOGLE_PLACES_KEY`), never in this file.
+name = "trip-prep-places"
+main = "worker.mjs"
+compatibility_date = "2025-10-01"
+workers_dev = true

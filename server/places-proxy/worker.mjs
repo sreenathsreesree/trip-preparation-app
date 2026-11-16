@@ -32,7 +32,18 @@ const PLACE_FIELDS = [
   'googleMapsUri',
   'editorialSummary',
   'currentOpeningHours.openNow',
+  'addressComponents',
+  'shortFormattedAddress',
+  'plusCode',
 ];
+
+// Short share links the proxy may open (never arbitrary URLs: no open redirect / SSRF).
+const SHORT_LINK = /^https:\/\/(?:maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs)\/[A-Za-z0-9_\-/?=&.%]+$/;
+const GOOGLE_HOST = /^(?:[a-z0-9-]+\.)*(?:google\.[a-z.]+|goo\.gl|g\.co|app\.goo\.gl)$/i;
+const RANKS_NEARBY = ['POPULARITY', 'DISTANCE'];
+const RANKS_TEXT = ['RELEVANCE', 'DISTANCE'];
+
+const component = (place, type) => (place.addressComponents ?? []).find((c) => Array.isArray(c.types) && c.types.includes(type))?.longText ?? null;
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
@@ -57,7 +68,15 @@ function normalise(place) {
       authorAttributions: (p.authorAttributions ?? []).map((a) => ({ displayName: a.displayName ?? '', uri: a.uri ?? null })),
     })),
     mapsUri: place.googleMapsUri ?? null,
-    metadata: typeof place.currentOpeningHours?.openNow === 'boolean' ? { openNow: place.currentOpeningHours.openNow } : {},
+    district: component(place, 'administrative_area_level_2') ?? component(place, 'administrative_area_level_3'),
+    state: component(place, 'administrative_area_level_1'),
+    country: component(place, 'country'),
+    metadata: {
+      ...(typeof place.currentOpeningHours?.openNow === 'boolean' ? { openNow: place.currentOpeningHours.openNow } : {}),
+      ...(component(place, 'locality') || component(place, 'sublocality') ? { locality: component(place, 'locality') ?? component(place, 'sublocality') } : {}),
+      ...(place.plusCode?.globalCode ? { plusCode: place.plusCode.globalCode } : {}),
+      ...(place.shortFormattedAddress ? { shortAddress: place.shortFormattedAddress } : {}),
+    },
     attributions: ['Google Maps'],
   };
 }
@@ -73,6 +92,32 @@ async function google(env, path, body, mask) {
   });
   if (!response.ok) return { error: errorKind(response.status) };
   return { data: await response.json() };
+}
+
+/**
+ * Follows a Google Maps short link hop by hop (at most 6), only through Google
+ * hosts, and returns the final Maps URL. No API key is used for this.
+ */
+export async function followShortLink(link, fetchImpl = fetch) {
+  let current = link;
+  for (let hop = 0; hop < 6; hop++) {
+    const response = await fetchImpl(current, { method: 'GET', redirect: 'manual', headers: { Accept: 'text/html' } });
+    const location = response.headers.get('Location');
+    if (response.status >= 300 && response.status < 400 && location) {
+      const next = new URL(location, current);
+      if (next.protocol !== 'https:' || !GOOGLE_HOST.test(next.hostname)) return null;
+      current = next.toString();
+      if (/\/maps(?:\/|\?|$)|[?&](?:q|query|ftid|cid)=/.test(next.pathname + next.search) && !/^(?:maps\.app\.)?goo\.gl$/i.test(next.hostname)) return current;
+      continue;
+    }
+    if (response.ok) {
+      const html = await response.text();
+      const found = /https:\/\/(?:www\.)?google\.[a-z.]+\/maps\/[^"'\s<>]+/i.exec(html);
+      return found ? found[0].replace(/\\u0026/g, '&').replace(/&amp;/g, '&') : current === link ? null : current;
+    }
+    return null;
+  }
+  return null;
 }
 
 export default {
@@ -96,10 +141,11 @@ export default {
         if (!isPoint(body.location)) return json({ error: 'invalid_request' }, 400);
         const radius = Math.min(MAX_RADIUS_M, Math.max(100, Number(body.radiusMeters) || 5000));
         const types = Array.isArray(body.includedTypes) ? body.includedTypes.filter((t) => typeof t === 'string').slice(0, 5) : undefined;
+        const rankPreference = RANKS_NEARBY.includes(body.rankPreference) ? body.rankPreference : undefined;
         const { data, error } = await google(
           env,
           '/places:searchNearby',
-          { includedTypes: types, maxResultCount: results, locationRestriction: circle(body.location, radius) },
+          { includedTypes: types, maxResultCount: results, locationRestriction: circle(body.location, radius), ...(rankPreference ? { rankPreference } : {}) },
           PLACE_FIELDS.map((f) => `places.${f}`).join(','),
         );
         return error ? json({ error }) : json({ places: (data.places ?? []).map(normalise).filter(Boolean) });
@@ -107,13 +153,22 @@ export default {
       if (url.pathname === '/text') {
         const query = String(body.query ?? '').slice(0, 100).trim();
         if (!query) return json({ error: 'invalid_request' }, 400);
+        const radius = Math.min(MAX_RADIUS_M, Math.max(100, Number(body.radiusMeters) || MAX_RADIUS_M));
+        const rankPreference = RANKS_TEXT.includes(body.rankPreference) ? body.rankPreference : undefined;
+        const pageToken = typeof body.pageToken === 'string' && /^[A-Za-z0-9_=-]{1,2000}$/.test(body.pageToken) ? body.pageToken : undefined;
         const { data, error } = await google(
           env,
           '/places:searchText',
-          { textQuery: query, maxResultCount: results, ...(isPoint(body.bias) ? { locationBias: circle(body.bias, MAX_RADIUS_M) } : {}) },
-          PLACE_FIELDS.map((f) => `places.${f}`).join(','),
+          {
+            textQuery: query,
+            pageSize: results,
+            ...(isPoint(body.bias) ? { locationBias: circle(body.bias, radius) } : {}),
+            ...(rankPreference ? { rankPreference } : {}),
+            ...(pageToken ? { pageToken } : {}),
+          },
+          [...PLACE_FIELDS.map((f) => `places.${f}`), 'nextPageToken'].join(','),
         );
-        return error ? json({ error }) : json({ places: (data.places ?? []).map(normalise).filter(Boolean) });
+        return error ? json({ error }) : json({ places: (data.places ?? []).map(normalise).filter(Boolean), nextPageToken: typeof data.nextPageToken === 'string' ? data.nextPageToken : null });
       }
       if (url.pathname === '/details') {
         const id = String(body.placeId ?? '');
@@ -125,10 +180,16 @@ export default {
       if (url.pathname === '/autocomplete') {
         const input = String(body.input ?? '').slice(0, 100).trim();
         if (input.length < 2) return json({ suggestions: [] });
+        const region = typeof body.regionCode === 'string' && /^[a-z]{2}$/i.test(body.regionCode) ? body.regionCode.toLowerCase() : undefined;
         const { data, error } = await google(
           env,
           '/places:autocomplete',
-          { input, sessionToken: body.sessionToken, ...(isPoint(body.bias) ? { locationBias: circle(body.bias, MAX_RADIUS_M) } : {}) },
+          {
+            input,
+            sessionToken: typeof body.sessionToken === 'string' ? body.sessionToken.slice(0, 100) : undefined,
+            ...(isPoint(body.bias) ? { locationBias: circle(body.bias, MAX_RADIUS_M), origin: { latitude: Number(body.bias.latitude), longitude: Number(body.bias.longitude) } } : {}),
+            ...(region ? { regionCode: region } : {}),
+          },
           'suggestions.placePrediction.placeId,suggestions.placePrediction.structuredFormat,suggestions.placePrediction.types,suggestions.placePrediction.distanceMeters',
         );
         if (error) return json({ error });
@@ -144,6 +205,12 @@ export default {
               distanceMeters: typeof p.distanceMeters === 'number' ? p.distanceMeters : null,
             })),
         });
+      }
+      if (url.pathname === '/resolve-link') {
+        const link = String(body.url ?? '').trim();
+        if (!SHORT_LINK.test(link)) return json({ error: 'invalid_request' }, 400);
+        const resolved = await followShortLink(link);
+        return resolved ? json({ url: resolved }) : json({ error: 'not_found' });
       }
       return json({ error: 'not_found' }, 404);
     } catch {

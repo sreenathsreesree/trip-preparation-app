@@ -16,8 +16,8 @@ search say "not set up" and places are added by name (or with coordinates the us
    only in the proxy as a secret.
 4. A host for `worker.mjs` — written for **Cloudflare Workers** (free tier):
    ```bash
-   npx wrangler@latest secret put GOOGLE_PLACES_KEY
-   npx wrangler@latest deploy server/places-proxy/worker.mjs --name trip-prep-places
+   npx wrangler@4 secret put GOOGLE_PLACES_KEY --config server/places-proxy/wrangler.toml
+   npx wrangler@4 deploy --config server/places-proxy/wrangler.toml
    ```
 5. Set **`EXPO_PUBLIC_PLACES_PROXY_URL`** (the worker's https URL — not a secret) in the EAS
    environments and build. Until it is set, the app never calls Google.
@@ -25,6 +25,38 @@ search say "not set up" and places are added by name (or with coordinates the us
 Before deploying, check the endpoints and field names in `worker.mjs` against the current
 Places API (New) documentation, and the caching / attribution rules
 (`src/features/places/cachePolicy.ts`).
+
+## Exact configuration still missing (checked Nov 2026)
+
+Nothing below exists yet in this repository or its build settings, so **no live Google request has
+been made or verified**:
+
+| Item | Where | Status |
+|---|---|---|
+| Google Cloud project with **Places API (New)** enabled | Google Cloud console | owner to confirm |
+| **Billing account** linked to that project, with a budget alert and per-API quotas | Google Cloud console → Billing / Quotas | missing — Google requires it even within the free allowance |
+| Server API key restricted to **Places API (New)** only (API restriction). As a server key it has no app restriction; keep it out of the app | Google Cloud console → Credentials | missing |
+| `GOOGLE_PLACES_KEY` secret on the worker | `npx wrangler@4 secret put GOOGLE_PLACES_KEY --config server/places-proxy/wrangler.toml` | missing |
+| Worker deployed (`trip-prep-places`) | `npx wrangler@4 deploy --config server/places-proxy/wrangler.toml` (needs a Cloudflare token with **Workers Scripts: Edit**) | not deployed |
+| `EXPO_PUBLIC_PLACES_PROXY_URL=https://trip-prep-places.<subdomain>.workers.dev` | EAS environment variables (preview / production) | missing |
+
+Until all of these are in place the app uses free open map data (OpenStreetMap) automatically, and
+says so honestly when something isn't available. When the proxy answers `not_configured` (deployed
+without the key) the app also falls back to open data; quota, network and refusal errors are shown,
+never hidden behind other data.
+
+## Endpoints (all POST JSON unless noted)
+
+| Path | Google API (New) | Notes |
+|---|---|---|
+| `/autocomplete` | `places:autocomplete` | `{ input, sessionToken, bias?, regionCode? }`; the session token groups typing with the one details call after a pick |
+| `/details` | `places/{id}` | `{ placeId, sessionToken? }`; adds address components (district, state, locality) and the Plus Code |
+| `/nearby` | `places:searchNearby` | `{ location, radiusMeters ≤ 50 km, includedTypes, rankPreference: POPULARITY \| DISTANCE }`, max 20 |
+| `/text` | `places:searchText` | `{ query, bias?, radiusMeters?, rankPreference: RELEVANCE \| DISTANCE, pageToken? }` → `nextPageToken` |
+| `/resolve-link` | none (no key used) | `{ url }` — only `https://maps.app.goo.gl/…`, `goo.gl/maps/…`, `g.co/kgs/…`; follows at most 6 redirects and only through Google hosts |
+| `GET /photo?name=…&maxWidthPx=…` | `…/media` | photos are fetched only when shown |
+
+Tests: `node --test server/places-proxy/worker.test.mjs` (part of `npm run test:cloud`; Google is faked).
 
 ## Cost controls built in
 
