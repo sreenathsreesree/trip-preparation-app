@@ -161,3 +161,67 @@ export function parseDecimal(text: string): number | null {
   const n = Number(clean);
   return n > 0 && Number.isFinite(n) ? n : null;
 }
+
+/* ------------------------------------------------------------------ */
+/* Travel estimates (never saved as expenses by themselves)            */
+/* ------------------------------------------------------------------ */
+
+const positiveInt = (n: number, message: string) => {
+  if (!Number.isInteger(n) || n < 1 || n > 10_000) throw new RangeError(message);
+};
+const checkedMinor = (minor: number) => {
+  if (!Number.isSafeInteger(minor) || minor > MAX_MINOR) throw new RangeError('That is too large.');
+  return minor;
+};
+
+/** Fuel for a distance at a mileage (km per litre); doubled for a round trip. */
+export function fuelEstimate(distanceKm: number, kmPerLitre: number, pricePerLitreMinor: number, roundTrip: boolean) {
+  const km = roundTrip ? distanceKm * 2 : distanceKm;
+  const { litres, costMinor } = fuelCostMinor(km, { unit: 'km_per_l', value: kmPerLitre }, pricePerLitreMinor);
+  return { distanceKm: Math.round(km * 10) / 10, litres, costMinor };
+}
+
+/** Cost per room per night × rooms × nights. */
+export function accommodationEstimate(perRoomNightMinor: number, rooms: number, nights: number): number {
+  if (!(perRoomNightMinor > 0)) throw new RangeError('Enter the cost per room per night.');
+  positiveInt(rooms, 'Enter how many rooms.');
+  positiveInt(nights, 'Enter how many nights.');
+  return checkedMinor(perRoomNightMinor * rooms * nights);
+}
+
+/** Daily budget per person × people × days. */
+export function foodEstimate(perPersonDayMinor: number, people: number, days: number): number {
+  if (!(perPersonDayMinor > 0)) throw new RangeError('Enter the daily budget per person.');
+  positiveInt(people, 'Enter how many people.');
+  positiveInt(days, 'Enter how many days.');
+  return checkedMinor(perPersonDayMinor * people * days);
+}
+
+export const ESTIMATE_LINES = [
+  { key: 'fuel', label: 'Fuel', category: 'fuel' },
+  { key: 'stay', label: 'Accommodation', category: 'stay' },
+  { key: 'food', label: 'Food', category: 'food' },
+  { key: 'tolls', label: 'Tolls & parking', category: 'tolls' },
+  { key: 'activities', label: 'Activities', category: 'activities' },
+  { key: 'other', label: 'Other', category: 'other' },
+] as const;
+export type EstimateKey = (typeof ESTIMATE_LINES)[number]['key'];
+
+/** Subtotals and the estimated total (estimates only; recorded expenses are separate). */
+export function tripEstimate(values: Partial<Record<EstimateKey, number>>) {
+  const lines = ESTIMATE_LINES.map((l) => ({ ...l, minor: Math.max(0, values[l.key] ?? 0) }));
+  const totalMinor = checkedMinor(lines.reduce((a, l) => a + l.minor, 0));
+  return { lines, totalMinor };
+}
+
+/** The estimate as a planned budget (only when the user chooses to use it as the plan). */
+export function estimateAsBudget(estimate: ReturnType<typeof tripEstimate>, currency: string, keepDailyLimit: number | null): BudgetPlan {
+  const byCategory = new Map<string, number>();
+  for (const l of estimate.lines) if (l.minor > 0) byCategory.set(l.category, (byCategory.get(l.category) ?? 0) + l.minor);
+  return {
+    currency,
+    totalMinor: estimate.totalMinor,
+    dailyLimitMinor: keepDailyLimit,
+    lines: [...byCategory.entries()].map(([category, plannedMinor]) => ({ category, plannedMinor })),
+  };
+}
