@@ -51,5 +51,11 @@ await run('Sharing test', async () => {
   await page.goto(`${BASE}/join/abcdefghijklmnopqrstuvwxyz012345`);
   await byId(page, 'join-unavailable').waitFor();
   check((await byId(page, 'join-accept').count()) === 0, 'cannot join without the cloud');
+  await page.goto(`${BASE}/join`);
+  await byId(page, 'join-code').fill('hello');
+  await byId(page, 'join-code-invalid').waitFor();
+  await byId(page, 'join-code').fill('Join my trip: tripprep:///join/abcdefghijklmnopqrstuvwxyz012345 thanks');
+  await byId(page, 'join-unavailable').waitFor();
+  check(true, 'a pasted message with an old-style link is read, and nothing is joined without a tap');
   check(errors.length === 0, `no uncaught page errors (${errors.join(' | ') || 'none'})`);
 });

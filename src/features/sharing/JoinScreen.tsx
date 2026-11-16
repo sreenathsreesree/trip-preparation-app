@@ -11,6 +11,7 @@ import { toErrorMessage } from '@/lib/errors';
 import { spacing } from '@/theme';
 
 import { parseInviteToken } from './inviteLinks';
+import { pendingInvite } from './pendingInviteStore';
 import { useSharingStore } from './sharingStore';
 
 /**
@@ -32,6 +33,7 @@ export function JoinScreen({ token, manual = false }: { token: string | undefine
     setError(null);
     try {
       const tripId = await useSharingStore.getState().join(parsed);
+      await pendingInvite.clear();
       router.replace({ pathname: '/trips/[tripId]', params: { tripId } });
     } catch (err) {
       setError(toErrorMessage(err, 'Could not join the trip.'));
@@ -67,8 +69,15 @@ export function JoinScreen({ token, manual = false }: { token: string | undefine
         <Notice
           tone="info"
           title="Sign in to join"
-          message="Sign in with Google, then open the link again."
-          action={{ label: 'Sign in', icon: 'login', onPress: () => router.push('/auth/sign-in') }}
+          message="Sign in with Google. You’ll come straight back to this invitation to accept it."
+          action={{
+            label: 'Sign in',
+            icon: 'login',
+            onPress: () => {
+              if (parsed) void pendingInvite.remember(parsed).finally(() => router.push('/auth/sign-in'));
+              else router.push('/auth/sign-in');
+            },
+          }}
           testID="join-signin"
         />
       ) : (

@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -7,6 +7,7 @@ import { ScreenHeader } from '@/components/layout/ScreenHeader';
 import { AppText, Button, Card, Icon, Notice } from '@/components/ui';
 import { colors, radii, spacing } from '@/theme';
 
+import { afterSignInPath } from '../sharing/pendingInviteStore';
 import { useAuthStore } from './authStore';
 
 const POINTS = [
@@ -25,8 +26,10 @@ export function SignInScreen() {
   const clearMessages = useAuthStore((state) => state.clearMessages);
 
   // Leave once signed in, whether through the browser result or a deep link.
+  // A remembered invitation takes the user back to its Join screen (joining still needs a tap).
   useEffect(() => {
-    if (status === 'signedIn') router.dismissTo('/profile');
+    if (status !== 'signedIn') return;
+    void afterSignInPath().then((path) => (path === '/profile' ? router.dismissTo('/profile') : router.replace(path as Href)));
   }, [status]);
 
   // Messages belong to this visit only.

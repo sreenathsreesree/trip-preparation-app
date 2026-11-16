@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { type Href, router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
@@ -8,6 +8,7 @@ import { colors, spacing } from '@/theme';
 
 import { useAuthStore } from './authStore';
 import { AUTH_CALLBACK_PATH } from './redirect';
+import { afterSignInPath } from '../sharing/pendingInviteStore';
 
 type Phase = 'working' | 'error';
 
@@ -43,6 +44,8 @@ export function AuthCallbackScreen({ params }: { params: Record<string, string |
       if (outcome.status === 'error') {
         setMessage(outcome.message);
         setPhase('error');
+      } else if (outcome.status === 'signedIn') {
+        void afterSignInPath().then((path) => (path === '/profile' ? router.dismissTo('/profile') : router.replace(path as Href)));
       } else {
         router.dismissTo('/profile');
       }

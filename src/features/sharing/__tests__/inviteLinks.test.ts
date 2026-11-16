@@ -51,3 +51,30 @@ describe('invitation links', () => {
     expect(redirectSystemPath({ path: '/join', initial: false })).toBe('/join');
   });
 });
+
+import { createPendingInvite, PENDING_INVITE_TTL_MS } from '../pendingInvite';
+
+describe('invitations through the whole flow', () => {
+  it('routes the same way on a cold start (initial link) and a warm start (link while open)', () => {
+    for (const initial of [true, false]) {
+      expect(redirectSystemPath({ path: `https://invite.example.org/join/${token}`, initial })).toBe(`/join/${token}`);
+      expect(redirectSystemPath({ path: `tripprep://join/${token}`, initial })).toBe(`/join/${token}`);
+      expect(redirectSystemPath({ path: `tripprep:///join/${encodeURIComponent(token)}`, initial })).toBe(`/join/${token}`);
+    }
+  });
+
+  it('keeps the invitation across Google sign-in, once, and not for ever', async () => {
+    const data = new Map<string, string>();
+    const store = { get: async (k: string) => data.get(k) ?? null, set: async (k: string, v: string) => void data.set(k, v), remove: async (k: string) => void data.delete(k) };
+    let now = 1_000_000;
+    const pending = createPendingInvite(store, () => now);
+    await pending.remember(token);
+    expect(await pending.take()).toBe(token);
+    expect(await pending.take()).toBeNull();
+    await pending.remember(token);
+    now += PENDING_INVITE_TTL_MS + 1;
+    expect(await pending.take()).toBeNull();
+    await pending.remember('not a token!');
+    expect(await pending.take()).toBeNull();
+  });
+});

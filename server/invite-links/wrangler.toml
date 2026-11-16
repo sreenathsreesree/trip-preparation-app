@@ -1,0 +1,13 @@
+# Trip Prep invitation links — Cloudflare Workers (free plan). Not deployed by the app's tooling.
+# Deploy:  npx wrangler@latest deploy --config server/invite-links/wrangler.toml
+name = "trip-prep-invite"
+main = "worker.mjs"
+compatibility_date = "2025-10-01"
+workers_dev = true
+
+[vars]
+# SHA-256 fingerprint(s) of the Android app-signing certificate (EAS: Credentials → Android →
+# Keystore → SHA256 Fingerprint). Comma-separated, "AB:CD:…" form. Public values, not secrets.
+ANDROID_CERT_SHA256 = ""
+# Optional https page where people can get the app (e.g. the latest internal APK page).
+APP_DOWNLOAD_URL = ""
