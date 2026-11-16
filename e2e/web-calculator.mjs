@@ -66,7 +66,7 @@ await run('Trip calculator test', async () => {
 
   setStep('people');
   await byId(page, 'calc-panel-expenses').waitFor();
-  await byId(page, 'calc-workspace').getByText('Balances', { exact: true }).first().click();
+  await byId(page, 'calc-tab-balances').click();
   await byId(page, 'calc-people').waitFor();
   for (const name of ['Ben', 'Cy']) {
     await byId(page, 'calc-person-name').fill(name);
@@ -74,7 +74,7 @@ await run('Trip calculator test', async () => {
     await byId(page, `calc-person-${name}`).waitFor();
   }
   check((await text(page, 'calc-people')).includes('Me (me)'), 'the trip’s traveller is “me”');
-  await byId(page, 'calc-workspace').getByText('Expenses', { exact: true }).first().click();
+  await byId(page, 'calc-tab-expenses').click();
 
   setStep('group expense split equally, with a live preview');
   await byId(page, 'calc-add').click();
@@ -130,7 +130,7 @@ await run('Trip calculator test', async () => {
   await shot(page, 'calc-02-expenses');
 
   setStep('balances and simplified debts, per currency');
-  await byId(page, 'calc-workspace').getByText('Balances', { exact: true }).first().click();
+  await byId(page, 'calc-tab-balances').click();
   await byId(page, 'calc-balances').waitFor();
   // INR: Me paid 9000, owes 3000+500+200 = 3700 → +5300. Ben: paid 1000, owes 3000+250+100 = 3350 → −2350. Cy: paid 300, owes 3000+250 → −2950.
   check((await text(page, 'calc-debt-Cy-Me')).includes('2,950.00') && (await text(page, 'calc-debt-Ben-Me')).includes('2,350.00'), 'INR debts settle everyone in two payments');
@@ -149,7 +149,7 @@ await run('Trip calculator test', async () => {
   check((await text(page, 'calc-debt-Cy-Me')).includes('2,950.00'), 'other debts are unchanged');
 
   setStep('budget, planned vs actual, daily limit warnings');
-  await byId(page, 'calc-workspace').getByText('Budget', { exact: true }).first().click();
+  await byId(page, 'calc-tab-budget').click();
   await byId(page, 'calc-budget').waitFor();
   await byId(page, 'calc-budget-edit').click();
   await byId(page, 'calc-budget-total').fill('12000');
@@ -164,30 +164,107 @@ await run('Trip calculator test', async () => {
   await byId(page, 'calc-budget').getByText('My spending', { exact: true }).first().click();
   await waitText(page, 'calc-budget-total-bar', (v) => v.includes('4,450.00'));
   check(true, 'my spending = my shares (3,700) + personal (750)');
-  await byId(page, 'calc-workspace').getByText('Expenses', { exact: true }).first().click();
+  await byId(page, 'calc-tab-expenses').click();
   await byId(page, 'calc-daily-warning-INR').waitFor();
   check((await text(page, 'calc-daily-warning-INR')).includes('Over today’s INR limit'), 'expenses screen warns about the daily limit');
   await shot(page, 'calc-04-budget');
 
   setStep('calculators');
-  await byId(page, 'calc-workspace').getByText('Tools', { exact: true }).first().click();
+  await byId(page, 'calc-tab-tools').click();
   await byId(page, 'calc-tools').waitFor();
   await byId(page, 'calc-fuel-distance').fill('300');
   await byId(page, 'calc-fuel-efficiency').fill('15');
   await byId(page, 'calc-fuel-price').fill('102.50');
   await waitText(page, 'calc-fuel-result', (v) => v.includes('20 L') && v.includes('2,050.00'));
-  await byId(page, 'calc-trip-tolls').fill('350');
-  await waitText(page, 'calc-trip-result', (v) => v.includes('2,400.00') && v.includes('800.00'));
+  await byId(page, 'calc-fuel-round').click();
+  await waitText(page, 'calc-fuel-result', (v) => v.includes('600 km') && v.includes('40 L') && v.includes('4,100.00'));
+  await byId(page, 'calc-fuel-round').click();
+  await waitText(page, 'calc-fuel-result', (v) => v.includes('2,050.00'));
+  check(true, 'fuel: litres and cost, with a round-trip option');
+  await byId(page, 'calc-tool-stay-toggle').click();
+  await byId(page, 'calc-stay-cost').fill('2500');
+  await byId(page, 'calc-stay-rooms').fill('2');
+  await byId(page, 'calc-stay-nights').fill('3');
+  await waitText(page, 'calc-stay-result', (v) => v.includes('15,000.00'));
+  await byId(page, 'calc-tool-food-toggle').click();
+  await byId(page, 'calc-food-daily').fill('800');
+  await byId(page, 'calc-food-people').fill('3');
+  await byId(page, 'calc-food-days').fill('5');
+  await waitText(page, 'calc-food-result', (v) => v.includes('12,000.00'));
+  check(true, 'accommodation and food estimates');
+  await byId(page, 'calc-tool-estimate-toggle').click();
+  await byId(page, 'calc-est-fill').click();
+  await byId(page, 'calc-est-tolls').fill('350');
+  await waitText(page, 'calc-est-result', (v) => v.includes('29,400.00'));
+  check(true, 'total estimate combines the calculators (2,050 + 15,000 + 12,000 + 350)');
+  await byId(page, 'calc-tool-split-toggle').click();
   await byId(page, 'calc-pp-total').fill('1000');
-  await waitText(page, 'calc-pp-result', (v) => v.includes('333.33') && v.includes('1 person pays one more'));
-  check(true, 'fuel, road-trip and per-person calculators');
+  await waitText(page, 'calc-pp-share-Me', (v) => v.includes('333.34'));
+  await byId(page, 'calc-pp-method-percent').click();
+  await byId(page, 'calc-pp-input-Me').fill('50');
+  await byId(page, 'calc-pp-input-Ben').fill('30');
+  await byId(page, 'calc-pp-input-Cy').fill('20');
+  await waitText(page, 'calc-pp-share-Ben', (v) => v.includes('300.00'));
+  check(true, 'per-person splitter uses the existing split methods');
+  await byId(page, 'calc-tool-distance-toggle').click();
+  await byId(page, 'calc-dist-none').waitFor();
+  check(true, 'distance and time are not invented without located destinations');
   await byId(page, 'calc-fuel-add').click();
   await byId(page, 'calc-editor').waitFor();
   check((await byId(page, 'calc-title').inputValue()) === 'Fuel' && (await byId(page, 'calc-amount').inputValue()) === '2050.00', 'fuel cost becomes a prefilled expense');
   await byId(page, 'calc-save').click();
   await byId(page, 'calc-tools').waitFor();
-  await byId(page, 'calc-workspace').getByText('Expenses', { exact: true }).first().click();
+  await byId(page, 'calc-tab-expenses').click();
   await byId(page, 'calc-expense-Fuel').waitFor();
+  check((await byId(page, 'calc-expense-Accommodation').count()) === 0 && !(await text(page, 'calc-expenses')).includes('29,400'), 'estimates are never saved as expenses');
+
+  setStep('quick calculator from the trip dashboard');
+  await page.goto(`${BASE}/trips/${kerala}`);
+  await byId(page, 'trip-calculator').click();
+  await byId(page, 'calc-quick').waitFor();
+  await context.setOffline(true);
+  for (const key of ['1', '2', 'Plus', '3', '0', 'Multiply', '2', 'Equals']) await byId(page, `calc-key-${key}`).click();
+  await waitText(page, 'calc-quick-display', (v) => v.trim() === '72');
+  check(true, 'operator precedence: 12 + 30 × 2 = 72 (offline)');
+  await byId(page, 'calc-history-72').waitFor();
+  check((await text(page, 'calc-history')).includes('12 + 30 × 2'), 'the calculation is in this trip’s history');
+  await byId(page, 'calc-key-Clear').click();
+  await byId(page, 'calc-history-72').click();
+  await byId(page, 'calc-key-Divide').click();
+  await byId(page, 'calc-key-4').click();
+  await byId(page, 'calc-key-Equals').click();
+  await waitText(page, 'calc-quick-display', (v) => v.trim() === '18');
+  check(true, 'reuses a previous result');
+  await context.setOffline(false);
+  await byId(page, 'calc-tab-expenses').click();
+  check((await byId(page, 'calc-expense-Lunch').count()) === 0, 'a calculation is not an expense');
+  await byId(page, 'calc-tab-calculator').click();
+  await byId(page, 'calc-history-72').click();
+  await byId(page, 'calc-key-Equals').click();
+  await byId(page, 'calc-quick-add').click();
+  await byId(page, 'calc-editor').waitFor();
+  check((await byId(page, 'calc-amount').inputValue()) === '72.00', 'the result fills the expense amount');
+  check((await text(page, 'calc-location')).includes('Entire trip'), 'location is optional (entire trip)');
+  await byId(page, 'calc-editor').getByText('Personal', { exact: true }).first().click();
+  await byId(page, 'calc-title').fill('Lunch');
+  await byId(page, 'calc-save').click();
+  await byId(page, 'calc-quick').waitFor();
+  await byId(page, 'calc-tab-expenses').click();
+  await byId(page, 'calc-expense-Lunch').waitFor();
+  await shot(page, 'calc-05-quick');
+
+  setStep('financial overview');
+  await byId(page, 'calc-tab-overview').click();
+  await byId(page, 'calc-overview').waitFor();
+  // Group INR 9,000 + 1,000 + 300 + 2,050 = 12,350; personal 750 + 72 = 822.
+  check((await text(page, 'calc-ov-actual')).includes('13,172.00'), 'actual spending counts every expense once');
+  check((await text(page, 'calc-ov-planned')).includes('12,000.00'), 'planned budget is shown separately');
+  check((await text(page, 'calc-ov-unassigned')).includes('13,172.00'), 'expenses without a location are listed under the entire trip');
+  check((await text(page, 'calc-ov-personal')).includes('822.00') && (await text(page, 'calc-ov-group')).includes('12,350.00'), 'group and personal are separated');
+  await shot(page, 'calc-06-overview');
+
+  await byId(page, 'calc-tab-expenses').click();
+  await byId(page, 'calc-panel-expenses').waitFor();
 
   setStep('offline, edit and delete');
   await context.setOffline(true);
@@ -212,5 +289,11 @@ await run('Trip calculator test', async () => {
   await page.goto(`${BASE}/calculator/${goa}`);
   await byId(page, 'calc-no-expenses').waitFor();
   check(true, 'each trip has its own workspace');
+  await page.goto(`${BASE}/calculator/${kerala}?tab=calculator`);
+  await byId(page, 'calc-history-72').waitFor({ timeout: 60_000 });
+  check(true, 'calculation history persisted');
+  await page.goto(`${BASE}/calculator/${goa}?tab=calculator`);
+  await byId(page, 'calc-history-empty').waitFor({ timeout: 60_000 });
+  check(true, 'another trip has its own (empty) history');
   check(errors.length === 0, `no uncaught page errors after restart (${errors.join(' | ') || 'none'})`);
 });

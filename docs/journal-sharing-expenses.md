@@ -215,7 +215,8 @@ Live sharing is untested end to end until the migration is deployed.
 
 **Entry points:** Home → *Trip calculator* (trip list, active trip first and highlighted: happening
 now, else the next upcoming, else the most recent), trip menu → *Trip calculator*. Each trip has its
-own workspace at `/calculator/[tripId]` with tabs *Expenses*, *Balances*, *Budget*, *Tools*.
+own workspace at `/calculator/[tripId]` with tabs *Expenses*, *Balances*, *Budget*, *Tools* (see the
+upgrade below for the current sections).
 
 **Money rules** (`src/features/expenses/money.ts`): integer minor units per ISO currency (0, 2 or 3
 decimals), strict parsing (no guessing), equal / exact / percentage (basis points) / shares splits with
@@ -262,6 +263,44 @@ suite `npm run e2e:calculator`.
 **Limits:** any editor may edit any group expense (as in Splitwise); the most recent save wins between
 two editors (stale writes are refused, not merged). Exchange rates are not supported, so totals in
 different currencies are never combined. The "today" warnings use the device's date.
+
+### Trip Calculator upgrade (Nov 2026, local schema v16)
+
+**Entry:** every trip dashboard has a **Calculator** tile (quick links) that opens the trip's
+workspace on the calculator; Home and the trip menu still open the same workspace. One screen holds
+the sections *Calculator*, *Expenses*, *Overview*, *Split & settle* (the former Balances),
+*Budget* and *Travel tools*, switched with chips (no extra screens).
+
+**Quick calculator** (`expenses/calculator.ts`, pure and offline): + − × ÷ with × ÷ before + −,
+decimals, phone-style percent (200 + 10% = 220; 200 × 10% = 20), sign change, clear, backspace,
+live preview, results rounded to 12 significant digits (0.1 + 0.2 = 0.3), division by zero and
+oversize numbers reported instead of shown. Copy uses `expo-clipboard`. A result becomes an expense
+only through **Add as expense**, which opens the normal expense form with the amount prefilled.
+History: `calculator_history` (local v16), per trip, newest 50 kept; tap an entry to reuse its
+result. Account isolation comes from the per-account database plus an account-scoped store.
+
+**Expense location (optional):** *Entire trip / no location*, a main destination, or a place inside
+one (the planner's existing `trip_plan_nodes`; nothing is created). Stored in `expense_places`
+(local v16, no foreign key to `expenses` so a pulled shared-trip update keeps it; removed with the
+expense; removing the destination makes the expense "Entire trip"). The repository refuses a
+destination from another trip. Locations are not sent to shared trips (no cloud schema change in
+this phase), so other members see those expenses without a location.
+
+**Travel tools** (estimates; never saved as expenses): fuel (km/L or L/100 km, round trip),
+accommodation (room × night), food (person × day), total trip estimate (fuel, stay, food, tolls &
+parking, activities, other; can fill from the tools above, and can be *used as the planned budget*
+after confirmation — recorded expenses are untouched), per-person splitter (the existing equal /
+exact / percentage / shares logic; *Save as a group expense* opens the normal form with that
+split), and distance & travel time between two located destinations from the existing OSRM route
+service — shown only when a real road route exists, otherwise "Road route unavailable".
+
+**Overview** (`expenses/overview.ts`): planned budget, actual (every recorded expense once: group
+totals + personal), remaining after group spending and after my spending (the Budget tab's two
+views), per destination (nested places rolled up into their main destination; no location or a
+removed destination → *Entire trip / no location*), per category, group vs personal, and per
+person (paid and share, group expenses only). Per currency, never converted.
+
+Tests: `calculator.test.ts`, `tripCalculator.test.ts`; E2E `npm run e2e:calculator`.
 
 ## 6. Phase N — integration and regression
 
