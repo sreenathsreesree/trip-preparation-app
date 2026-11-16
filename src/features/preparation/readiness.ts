@@ -153,3 +153,21 @@ export function statsFromRow(row: {
     },
   };
 }
+
+export interface ChecklistProgress {
+  /** Share of every task ticked (optional included), as shown everywhere a trip's preparation appears. */
+  percent: number;
+  done: number;
+  total: number;
+  /** Essential tasks still open. */
+  essentialsOpen: number;
+}
+
+/**
+ * The one progress figure for a trip's preparation checklist — used by the trip dashboard and
+ * by the Checklist tab (collapsed and expanded), so the numbers always match.
+ */
+export function checklistProgress(tasks: readonly Pick<ChecklistTask, 'priority' | 'isDone'>[]): ChecklistProgress {
+  const stats = computeStats(tasks);
+  return { percent: completionPercent(stats), done: stats.done, total: stats.total, essentialsOpen: openCount(stats.essential) };
+}

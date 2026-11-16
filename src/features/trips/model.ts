@@ -194,3 +194,11 @@ export function copyName(name: string, max: number): string {
   const base = name.length + suffix.length > max ? name.slice(0, max - suffix.length).trimEnd() : name;
   return `${base}${suffix}`;
 }
+
+/** Inclusive number of days from the start to the end date. */
+export function tripDays(trip: { startDate: string; endDate: string }): number {
+  const start = Date.parse(`${trip.startDate}T00:00:00Z`);
+  const end = Date.parse(`${trip.endDate}T00:00:00Z`);
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return 1;
+  return Math.round((end - start) / 86_400_000) + 1;
+}
