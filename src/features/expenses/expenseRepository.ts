@@ -44,6 +44,11 @@ export interface Expense {
   splitMethod: SplitMethod;
   splits: (Share & { inputValue: number })[];
   notes: string;
+  /**
+   * Optional location: one of the trip's planner destinations (main or nested).
+   * Null means "Entire trip / no location". Kept on this device only.
+   */
+  placeNodeId: string | null;
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
@@ -84,6 +89,8 @@ export interface ExpenseInput {
   splitMethod?: SplitMethod;
   splits?: readonly SplitInput[];
   notes?: string;
+  /** A planner destination of this trip; null clears it; undefined leaves it unchanged. */
+  placeNodeId?: string | null;
 }
 
 const isIsoDate = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
@@ -144,7 +151,7 @@ export interface ExpenseRepository {
     tripId: string,
     record:
       | { kind: 'participant'; id: string; name: string; userId: string | null; archived: boolean; updatedAt: string }
-      | { kind: 'expense'; expense: Omit<Expense, 'tripId' | 'scope'> }
+      | { kind: 'expense'; expense: Omit<Expense, 'tripId' | 'scope' | 'placeNodeId'> }
       | { kind: 'settlement'; settlement: Omit<SettlementRecord, 'tripId'> }
       | { kind: 'budget'; plan: BudgetPlan; updatedAt: string },
   ): Promise<boolean>;
@@ -177,7 +184,7 @@ export function createExpenseRepository(db: Database, deps: { createId: IdFactor
     return map;
   }
 
-  const mapExpense = (r: ExpenseRow, splits: (Share & { inputValue: number })[]): Expense => ({
+  const mapExpense = (r: ExpenseRow, splits: (Share & { inputValue: number })[], placeNodeId: string | null): Expense => ({
     id: r.id,
     tripId: r.trip_id,
     scope: r.scope,
@@ -191,6 +198,7 @@ export function createExpenseRepository(db: Database, deps: { createId: IdFactor
     splitMethod: r.split_method,
     splits,
     notes: r.notes,
+    placeNodeId,
     createdBy: r.created_by,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -222,9 +230,16 @@ export function createExpenseRepository(db: Database, deps: { createId: IdFactor
   async function participantsOf(tripId: string) {
     return (await db.getAllAsync<Parameters<typeof mapParticipant>[0]>('SELECT * FROM expense_participants WHERE trip_id = ? ORDER BY position, created_at', [tripId])).map(mapParticipant);
   }
+  async function placeOf(expenseId: string): Promise<string | null> {
+    return (await db.getFirstAsync<{ node_id: string }>('SELECT node_id FROM expense_places WHERE expense_id = ?', [expenseId]))?.node_id ?? null;
+  }
   async function getExpense(id: string) {
     const row = await db.getFirstAsync<ExpenseRow>('SELECT * FROM expenses WHERE id = ?', [id]);
-    return row ? mapExpense(row, (await splitsFor([id])).get(id) ?? []) : null;
+    return row ? mapExpense(row, (await splitsFor([id])).get(id) ?? [], await placeOf(id)) : null;
+  }
+  async function assertTripNode(tripId: string, nodeId: string) {
+    const node = await db.getFirstAsync<{ id: string }>('SELECT id FROM trip_plan_nodes WHERE id = ? AND trip_id = ?', [nodeId, tripId]);
+    if (!node) throw new ExpenseError('That destination is not part of this trip any more.');
   }
   async function categoryName(tripId: string, key: string): Promise<string> {
     if (BUILT_IN_CATEGORIES.some((c) => c.key === key)) return '';
@@ -243,7 +258,7 @@ export function createExpenseRepository(db: Database, deps: { createId: IdFactor
 
   const repo: ExpenseRepository = {
     async workspace(tripId) {
-      const [participants, categories, rows, settlements, budgets, settings, readOnly] = await Promise.all([
+      const [participants, categories, rows, settlements, budgets, settings, readOnly, places] = await Promise.all([
         participantsOf(tripId),
         db.getAllAsync<CustomCategory>('SELECT id, name FROM expense_categories WHERE trip_id = ? ORDER BY name', [tripId]),
         db.getAllAsync<ExpenseRow>('SELECT * FROM expenses WHERE trip_id = ? ORDER BY spent_on DESC, created_at DESC', [tripId]),
@@ -251,12 +266,14 @@ export function createExpenseRepository(db: Database, deps: { createId: IdFactor
         db.getAllAsync<{ currency: string; total_minor: number | null; daily_limit_minor: number | null; lines: string }>('SELECT * FROM expense_budgets WHERE trip_id = ? ORDER BY currency', [tripId]),
         db.getFirstAsync<{ currency: string }>('SELECT currency FROM expense_settings WHERE trip_id = ?', [tripId]),
         groupReadOnly(tripId),
+        db.getAllAsync<{ expense_id: string; node_id: string }>('SELECT expense_id, node_id FROM expense_places WHERE trip_id = ?', [tripId]),
       ]);
       const splits = await splitsFor(rows.map((r) => r.id));
+      const placeBy = new Map(places.map((p) => [p.expense_id, p.node_id]));
       return {
         participants,
         categories,
-        expenses: rows.map((r) => mapExpense(r, splits.get(r.id) ?? [])),
+        expenses: rows.map((r) => mapExpense(r, splits.get(r.id) ?? [], placeBy.get(r.id) ?? null)),
         settlements: settlements.map(mapSettlement),
         budgets: budgets.map((b) => ({ currency: b.currency, totalMinor: b.total_minor, dailyLimitMinor: b.daily_limit_minor, lines: parseLines(b.lines) })),
         currency: settings?.currency ?? 'INR',
@@ -357,6 +374,7 @@ export function createExpenseRepository(db: Database, deps: { createId: IdFactor
       if (existing && existing.tripId !== tripId) throw new ExpenseError('That expense belongs to another trip.');
       if (input.scope === 'group' || existing?.scope === 'group') await assertGroupWritable(tripId);
       const catName = await categoryName(tripId, input.category);
+      if (input.placeNodeId) await assertTripNode(tripId, input.placeNodeId);
       const method: SplitMethod = input.scope === 'group' ? (input.splitMethod ?? 'equal') : 'equal';
 
       let shares: Share[] = [];
@@ -403,6 +421,14 @@ export function createExpenseRepository(db: Database, deps: { createId: IdFactor
           );
         }
         await writeSplits(expenseId, shares, input.splits ?? []);
+        if (input.placeNodeId === null) await db.runAsync('DELETE FROM expense_places WHERE expense_id = ?', [expenseId]);
+        else if (input.placeNodeId) {
+          await db.runAsync(
+            `INSERT INTO expense_places (expense_id, trip_id, node_id, updated_at) VALUES (?, ?, ?, ?)
+             ON CONFLICT (expense_id) DO UPDATE SET node_id = excluded.node_id, trip_id = excluded.trip_id, updated_at = excluded.updated_at`,
+            [expenseId, tripId, input.placeNodeId, t],
+          );
+        }
       });
       return (await getExpense(expenseId)) as Expense;
     },
@@ -411,7 +437,10 @@ export function createExpenseRepository(db: Database, deps: { createId: IdFactor
       const e = await getExpense(id);
       if (!e) return null;
       if (e.scope === 'group') await assertGroupWritable(e.tripId);
-      await db.runAsync('DELETE FROM expenses WHERE id = ?', [id]);
+      await db.withTransactionAsync(async () => {
+        await db.runAsync('DELETE FROM expenses WHERE id = ?', [id]);
+        await db.runAsync('DELETE FROM expense_places WHERE expense_id = ?', [id]);
+      });
       return { tripId: e.tripId, scope: e.scope };
     },
 
@@ -596,7 +625,10 @@ export function createExpenseRepository(db: Database, deps: { createId: IdFactor
 
     async removeRemote(tripId, kind, id) {
       if (await repo.isQueued(tripId, kind, id)) return;
-      if (kind === 'expense') await db.runAsync("DELETE FROM expenses WHERE id = ? AND trip_id = ? AND scope = 'group'", [id, tripId]);
+      if (kind === 'expense') {
+        const r = await db.runAsync("DELETE FROM expenses WHERE id = ? AND trip_id = ? AND scope = 'group'", [id, tripId]);
+        if (r.changes > 0) await db.runAsync('DELETE FROM expense_places WHERE expense_id = ?', [id]);
+      }
       else if (kind === 'settlement') await db.runAsync('DELETE FROM expense_settlements WHERE id = ? AND trip_id = ?', [id, tripId]);
       else if (kind === 'budget') await db.runAsync('DELETE FROM expense_budgets WHERE trip_id = ? AND currency = ?', [tripId, id]);
       else await db.runAsync('UPDATE expense_participants SET archived_at = COALESCE(archived_at, ?) WHERE id = ? AND trip_id = ?', [stamp(), id, tripId]);

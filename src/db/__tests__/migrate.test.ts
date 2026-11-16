@@ -32,6 +32,7 @@ describe('migrate', () => {
         'group_workspace',
         'memories_clothing_covers',
         'checklist_groups_inventory',
+        'calculator_history_expense_places',
       ],
     });
     expect(await getSchemaVersion(db)).toBe(migrations.length);
@@ -43,6 +44,7 @@ describe('migrate', () => {
     expect(tables.map((t) => t.name)).toEqual([
       'auto_cover_thumbs',
         'auto_covers',
+      'calculator_history',
       'checklist_groups',
         'checklist_sections',
         'checklist_task_links',
@@ -57,6 +59,7 @@ describe('migrate', () => {
       'expense_categories',
       'expense_outbox',
       'expense_participants',
+      'expense_places',
       'expense_settings',
       'expense_settlements',
       'expense_splits',

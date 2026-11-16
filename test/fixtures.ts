@@ -8,6 +8,7 @@ import { createPreferencesRepository } from '@/features/packing/preferencesRepos
 import { createPurchaseRepository } from '@/features/packing/purchaseRepository';
 import { createRecommendationRepository } from '@/features/packing/recommendationRepository';
 import { createPhotoUploadRepository } from '@/features/journal/drive/photoUploadRepository';
+import { createCalculatorRepository } from '@/features/expenses/calculatorRepository';
 import { createExpenseRepository } from '@/features/expenses/expenseRepository';
 import { createJournalRepository } from '@/features/journal/journalRepository';
 import { createSharingRepository } from '@/features/sharing/sharingRepository';
@@ -71,6 +72,7 @@ export async function setupRepositories(db: TestDatabase = openTestDatabase(), c
     companion: createCompanionRepository(shared, deps),
     journal: createJournalRepository(shared, deps),
     expenses: createExpenseRepository(shared, deps),
+    calculator: createCalculatorRepository(shared, deps),
     sharing: createSharingRepository(shared, deps),
     photoUploads: createPhotoUploadRepository(shared, deps),
     group: createGroupRepository(shared, deps),

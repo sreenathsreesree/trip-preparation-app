@@ -1,4 +1,5 @@
 import { createPhotoUploadRepository } from '@/features/journal/drive/photoUploadRepository';
+import { createCalculatorRepository } from '@/features/expenses/calculatorRepository';
 import { createExpenseRepository } from '@/features/expenses/expenseRepository';
 import { createJournalRepository } from '@/features/journal/journalRepository';
 import { createSharingRepository } from '@/features/sharing/sharingRepository';
@@ -52,6 +53,7 @@ export async function getRepositories(partition?: Partition) {
     companion: createCompanionRepository(db, { createId }),
     journal: createJournalRepository(db, { createId }),
     expenses: createExpenseRepository(db, { createId }),
+    calculator: createCalculatorRepository(db, { createId }),
     sharing: createSharingRepository(db, {}),
     photoUploads: createPhotoUploadRepository(db, { createId }),
     gallery: createGalleryRepository(db),

@@ -144,6 +144,9 @@ export const SYNC_TABLES: readonly SyncTable[] = [
 
 /** Local tables that never sync, with the reason. */
 export const LOCAL_ONLY_TABLES: Readonly<Record<string, string>> = {
+  // Trip Calculator upgrade (local schema v16).
+  calculator_history: 'Quick calculator history per trip (local v16); a calculation is never an expense until saved.',
+  expense_places: 'An expense’s optional destination (local v16); the expenses themselves sync as before.',
   // Checklist groups and Inventory links (local schema v15).
   checklist_groups: 'Groups inside checklist sections (local v15); the tasks themselves sync as before.',
   checklist_task_links: 'A checklist task’s group and linked Inventory item (local v15); Inventory items sync as before.',
