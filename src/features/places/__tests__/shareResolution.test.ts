@@ -119,7 +119,7 @@ describe('resolving a shared place', () => {
     const { provider, fetchImpl } = setup({ resolveLink: jest.fn(async () => 'https://www.google.com/maps/search/?api=1&query=Attukad&query_place_id=ChIJattukad1234567') });
     const r = await resolveShare(SHORT, { provider, fetchImpl });
     expect(provider.resolveLink).toHaveBeenCalledWith(SHORT, undefined);
-    expect(provider.details).toHaveBeenCalledWith('ChIJattukad1234567', {}, undefined);
+    expect(provider.details).toHaveBeenCalledWith('ChIJattukad1234567', { nameHint: 'Attukad' }, undefined);
     expect(r).toMatchObject({ status: 'located', place: { providerPlaceId: 'ChIJattukad1234567', metadata: { sharedUrl: SHORT } } });
   });
 

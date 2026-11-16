@@ -34,6 +34,8 @@ const ERROR_KINDS: readonly PlacesErrorKind[] = [
   'not_found',
   'invalid_request',
   'cancelled',
+  'budget_exhausted',
+  'disabled',
   'unknown',
 ];
 
@@ -118,9 +120,10 @@ export function createProxyProvider(baseUrl: string, fetchImpl: typeof fetch = f
       json = null;
     }
     const reported = (json as { error?: unknown } | null)?.error;
+    const code = (json as { code?: unknown } | null)?.code;
     if (!response.ok || reported) {
       const kind = typeof reported === 'string' && (ERROR_KINDS as readonly string[]).includes(reported) ? (reported as PlacesErrorKind) : kindForStatus(response.status);
-      throw new PlacesError(kind);
+      throw new PlacesError(kind, undefined, typeof code === 'string' && /^[A-Z_]{3,40}$/.test(code) ? code : null);
     }
     return json as T;
   }
@@ -160,7 +163,8 @@ export function createProxyProvider(baseUrl: string, fetchImpl: typeof fetch = f
         : [];
     },
     async details(providerPlaceId, options, signal) {
-      const result = await post<{ place?: unknown }>('/details', { placeId: providerPlaceId, sessionToken: options.sessionToken }, signal);
+      const nameHint = options.nameHint?.trim().slice(0, 120) || undefined;
+      const result = await post<{ place?: unknown }>('/details', { placeId: providerPlaceId, sessionToken: options.sessionToken, ...(nameHint ? { nameHint } : {}) }, signal);
       const place = sanitizePlace(result.place);
       if (!place) throw new PlacesError('not_found');
       return place;

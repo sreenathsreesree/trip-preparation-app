@@ -110,7 +110,7 @@ export async function resolveSuggestion(
   options: { sessionToken: string; signal?: AbortSignal; provider?: Pick<PlacesProvider, 'details'> },
 ): Promise<PlaceDetails> {
   const provider = options.provider ?? placesProvider;
-  const place = await provider.details(suggestion.providerPlaceId, { sessionToken: options.sessionToken }, options.signal);
+  const place = await provider.details(suggestion.providerPlaceId, { sessionToken: options.sessionToken, nameHint: suggestion.primaryText }, options.signal);
   return { ...place, name: place.name || suggestion.primaryText, providerPlaceId: place.providerPlaceId || suggestion.providerPlaceId };
 }
 
@@ -124,7 +124,9 @@ export function describeSearchError(error: unknown): string {
       return 'Place search is busy or over its daily limit. Try again in a little while.';
     case 'denied':
     case 'not_configured':
-      return 'Place search isn’t available in this build right now.';
+    case 'disabled':
+    case 'budget_exhausted':
+      return 'Place search isn’t available right now.';
     case 'not_found':
       return 'That place couldn’t be loaded.';
     default:

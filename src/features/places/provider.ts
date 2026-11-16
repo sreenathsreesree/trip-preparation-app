@@ -113,7 +113,12 @@ export interface PlacesProvider {
   /** Opens a Maps short link on the server side and returns the final URL (null when it can't). */
   resolveLink?(url: string, signal?: AbortSignal): Promise<string | null>;
   autocomplete(request: AutocompleteRequest, signal?: AbortSignal): Promise<PlaceSuggestion[]>;
-  details(providerPlaceId: string, options: { sessionToken?: string }, signal?: AbortSignal): Promise<PlaceDetails>;
+  /**
+   * Full place for an id. `nameHint` is the name the user already saw (the tapped suggestion
+   * or the shared name): with it the provider can skip asking for the name, which keeps
+   * Google's Place Details in its cheapest (Essentials) tier.
+   */
+  details(providerPlaceId: string, options: { sessionToken?: string; nameHint?: string }, signal?: AbortSignal): Promise<PlaceDetails>;
   nearby(request: NearbyRequest, signal?: AbortSignal): Promise<PlaceDetails[]>;
   textSearch(request: TextSearchRequest, signal?: AbortSignal): Promise<PlaceDetails[]>;
   /** Image URL for a provider photo (loaded live, never stored), or null when photos are unavailable. */
@@ -129,6 +134,10 @@ export type PlacesErrorKind =
   | 'not_found'
   | 'invalid_request'
   | 'cancelled'
+  /** The places service's own spending limit for Google is reached (free data is used instead). */
+  | 'budget_exhausted'
+  /** Google is switched off on the places service (or its accounting is unavailable). */
+  | 'disabled'
   | 'unknown';
 
 const MESSAGES: Record<PlacesErrorKind, string> = {
@@ -140,6 +149,8 @@ const MESSAGES: Record<PlacesErrorKind, string> = {
   not_found: 'That place could not be found.',
   invalid_request: 'That search could not be processed.',
   cancelled: 'Search cancelled.',
+  budget_exhausted: 'Enhanced place search has reached its limit for now; free map search is used instead.',
+  disabled: 'Enhanced place search is switched off; free map search is used instead.',
   unknown: 'Place search failed. Try again.',
 };
 
@@ -147,6 +158,8 @@ export class PlacesError extends Error {
   constructor(
     readonly kind: PlacesErrorKind,
     message: string = MESSAGES[kind],
+    /** The service's precise reason (e.g. GOOGLE_BUDGET_EXHAUSTED), for diagnostics. */
+    readonly code: string | null = null,
   ) {
     super(message);
     this.name = 'PlacesError';

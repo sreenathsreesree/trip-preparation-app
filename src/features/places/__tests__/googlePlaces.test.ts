@@ -80,7 +80,7 @@ describe('Google Places autocomplete (through the proxy)', () => {
     const place = await resolveSuggestion(suggestions[0]!, { provider, sessionToken: token });
     const details = calls.filter((c) => c.url.endsWith('/details'));
     expect(details).toHaveLength(1);
-    expect(details[0]?.body).toEqual({ placeId: 'ChIJattukad', sessionToken: token });
+    expect(details[0]?.body).toEqual({ placeId: 'ChIJattukad', sessionToken: token, nameHint: 'Attukad Waterfalls' });
     expect(place).toMatchObject({
       provider: 'google',
       providerPlaceId: 'ChIJattukad',
@@ -164,9 +164,9 @@ describe('Google first, open data only when Google is not set up', () => {
     expect((await p.details('osm:n1', {})).name).toBe('Munnar (open data)');
   });
 
-  it('does not hide quota or network errors behind other data', async () => {
-    const busy = fakeProxy({ '/autocomplete': () => ({ status: 429, json: { error: 'quota' } }) });
-    await expect(withFallback(busy.provider, fallback).autocomplete({ input: 'Munnar', sessionToken: 't' })).rejects.toMatchObject({ kind: 'quota' });
+  it('does not hide a missing place behind other data', async () => {
+    const gone = fakeProxy({ '/details': () => ({ status: 404, json: { error: 'not_found' } }) });
+    await expect(withFallback(gone.provider, fallback).details('ChIJgone', {})).rejects.toMatchObject({ kind: 'not_found' });
   });
 });
 

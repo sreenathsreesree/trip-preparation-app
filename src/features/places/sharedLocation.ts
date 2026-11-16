@@ -313,7 +313,7 @@ export async function resolveShare(input: string, deps: ResolveDeps, subject?: s
   // 2. Place ID → the exact place.
   if (parsed.placeId && provider.configured && provider.id === 'google' && provider.details) {
     try {
-      const place = await provider.details(parsed.placeId, {}, deps.signal);
+      const place = await provider.details(parsed.placeId, parsed.name ? { nameHint: parsed.name } : {}, deps.signal);
       return { status: 'located', place: withLink(place, sharedUrl), candidates: [] };
     } catch {
       // Fall through to coordinates or the name.
