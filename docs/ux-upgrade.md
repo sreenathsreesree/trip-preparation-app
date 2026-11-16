@@ -84,3 +84,18 @@ Local migration 14 (additive, new tables only): `auto_cover_thumbs`, `memory_alb
 `memory_album_photos`, `memory_photo_notes`, `clothing_categories`, `clothing_items`. All are
 local-only (see `sync/tables.ts`), per account partition. **No cloud migration** is needed for
 this phase; nothing was deployed.
+
+## Clothing and checklist sections (Nov 2026)
+
+- The dashboard's **Clothing** tile now opens the trip's *Clothing* checklist section — the same
+  screen the Checklist tab opens (tasks with priority, groups, Add from Inventory). The section is
+  found by name (a custom section called "Clothing", else one like "Clothes" or "Outfits") or created
+  once; nothing is copied. Bags and packed status remain one tap away ("Bags and packed status").
+- Groups (create, rename, delete with "move them to…" or "keep without a group", add into a group,
+  move between groups) work in every section. The task editor can also change a task's group and
+  shows the Inventory item it is linked to.
+- Add from Inventory is offered in Packing and the user's own sections, except ones about
+  documents, tickets/bookings, vehicles, errands or shopping. Items are linked, never copied; an
+  item already in a section is not added twice, and moving a task into a section that already has
+  that item is refused with an explanation.
+- No schema change (local schema stays v16).
