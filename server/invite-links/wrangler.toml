@@ -8,6 +8,6 @@ workers_dev = true
 [vars]
 # SHA-256 fingerprint(s) of the Android app-signing certificate (EAS: Credentials → Android →
 # Keystore → SHA256 Fingerprint). Comma-separated, "AB:CD:…" form. Public values, not secrets.
-ANDROID_CERT_SHA256 = ""
+ANDROID_CERT_SHA256 = "AB:AA:37:98:EF:07:2D:49:53:94:50:4A:EB:D9:E2:A3:9F:74:00:A0:7B:BB:CA:34:61:6B:7D:16:EF:84:E0:B8"
 # Optional https page where people can get the app (e.g. the latest internal APK page).
 APP_DOWNLOAD_URL = ""
