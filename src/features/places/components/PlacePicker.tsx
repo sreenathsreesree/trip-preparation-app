@@ -6,9 +6,9 @@ import { colors, radii, spacing } from '@/theme';
 
 import type { GeoPoint } from '../../planner/model';
 import { placesProvider } from '../config';
-import { usePlaceAutocomplete } from '../placeSearch';
 import type { PlaceDetails } from '../provider';
 import { parseCoordinates } from '../sharedLocation';
+import { PlaceSuggestions } from './PlaceSuggestions';
 import { useResolvedLocation } from './useResolvedLocation';
 
 const LINKISH = /(?:https?:\/\/|geo:)\S+/i;
@@ -47,8 +47,7 @@ export function PlaceRow({ place, onPress, testID, trailing }: { place: PlaceDet
 }
 
 /**
- * One field for finding a place: type a name for suggestions (debounced,
- * OpenStreetMap), or paste a Google Maps link (long or short) or coordinates.
+ * One field for finding a place: type a name for suggestions (debounced), or paste a Google Maps link (long or short) or coordinates.
  * Nothing is saved here — `onPick` hands the chosen place to the caller, which
  * shows a preview and saves only when the user confirms.
  */
@@ -65,7 +64,6 @@ export function PlacePicker({
 }) {
   const [text, setText] = useState('');
   const linkMode = looksLikeLocation(text);
-  const search = usePlaceAutocomplete(text, bias, !linkMode);
   const resolved = useResolvedLocation(text);
 
   return (
@@ -88,29 +86,14 @@ export function PlacePicker({
           Place search is turned off in this build. Paste a Google Maps link or coordinates instead.
         </AppText>
       ) : null}
-      {!linkMode && search.status === 'loading' ? <LoadingState label="Searching places…" /> : null}
-      {!linkMode && search.status === 'error' ? <Notice tone="warning" title={search.message} testID={`${testID}-error`} /> : null}
-      {!linkMode && search.status === 'ready' ? (
-        search.places.length === 0 ? (
-          <AppText variant="caption" tone="textMuted" testID={`${testID}-empty`}>
-            No places found for “{text.trim()}”. Try fewer words, the nearest town, or paste a Google Maps link.
-          </AppText>
-        ) : (
-          <View style={styles.group} testID={`${testID}-results`}>
-            <AppText variant="label" tone="textMuted">
-              Location suggestions
-            </AppText>
-            {search.usedQuery && search.usedQuery.toLowerCase() !== text.trim().toLowerCase() ? (
-              <AppText variant="caption" tone="textMuted">
-                Showing results for “{search.usedQuery}”
-              </AppText>
-            ) : null}
-            {search.places.map((place) => (
-              <PlaceRow key={place.providerPlaceId} place={place} onPress={() => onPick(place)} testID={`${testID}-result`} />
-            ))}
-          </View>
-        )
-      ) : null}
+      <PlaceSuggestions
+        query={text}
+        bias={bias}
+        enabled={!linkMode}
+        onPick={onPick}
+        emptyHint={`No places found for “${text.trim()}”. Try fewer words, the nearest town, or paste a Google Maps link.`}
+        testID={testID}
+      />
     </View>
   );
 }

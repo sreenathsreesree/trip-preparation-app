@@ -34,7 +34,7 @@ export function demoPlaces(request: Pick<DiscoverRequest, 'category' | 'location
 export const demoProvider: PlacesProvider = {
   id: 'manual',
   configured: true,
-  source: { kind: 'demo', name: 'Demo data', attribution: 'Demo data — not real places' },
+  source: { kind: 'demo', name: 'Demo data', attribution: 'Demo data — not real places', storable: true },
   autocomplete: () => Promise.reject(new PlacesError('not_configured', 'Search is not available with demo data.')),
   details: () => Promise.reject(new PlacesError('not_found')),
   nearby: (r) => Promise.resolve(demoPlaces({ category: 'nearby', location: r.location, radiusMeters: r.radiusMeters })),

@@ -437,9 +437,12 @@ export function createPlannerRepository(
       let id = existing?.id;
       if (id) {
         await db.runAsync(
-          `UPDATE places SET name = ?, latitude = ?, longitude = ?, formatted_address = ?, types = ?, district = ?,
-             state = ?, country = ?, metadata = ?, fetched_at = ?, updated_at = ? WHERE id = ?`,
-          [...values, id],
+          // Coordinates and address already saved are kept when a refresh has none (never erased by a lookup).
+          `UPDATE places SET name = ?,
+             latitude = CASE WHEN ? IS NULL THEN latitude ELSE ? END, longitude = CASE WHEN ? IS NULL THEN longitude ELSE ? END,
+             formatted_address = CASE WHEN ? = '' THEN formatted_address ELSE ? END, types = ?, district = COALESCE(?, district),
+             state = COALESCE(?, state), country = COALESCE(?, country), metadata = ?, fetched_at = ?, updated_at = ? WHERE id = ?`,
+          [values[0] as string, values[1] as number | null, values[1] as number | null, values[2] as number | null, values[2] as number | null, values[3] as string, values[3] as string, ...values.slice(4), id],
         );
       } else {
         id = deps.createId();

@@ -7,6 +7,7 @@ import {
   type PlacePhotoRef,
   type PlaceSuggestion,
   type PlacesErrorKind,
+  type PlacesPage,
   type PlacesProvider,
   type TextSearchRequest,
 } from './provider';
@@ -130,12 +131,33 @@ export function createProxyProvider(baseUrl: string, fetchImpl: typeof fetch = f
       return clean ? [clean] : [];
     }) : [];
 
+  async function textPage(request: TextSearchRequest, signal?: AbortSignal): Promise<PlacesPage> {
+    const { rank, ...rest } = request;
+    const result = await post<{ places?: unknown; nextPageToken?: unknown }>(
+      '/text',
+      { ...rest, ...(rank ? { rankPreference: rank === 'distance' ? 'DISTANCE' : 'RELEVANCE' } : {}) },
+      signal,
+    );
+    return { places: places(result.places), nextPageToken: typeof result.nextPageToken === 'string' && result.nextPageToken ? result.nextPageToken : null };
+  }
+
   return {
     id: 'google',
     configured: true,
+    source: { kind: 'live', name: 'Google Maps', attribution: 'Data © Google' },
     async autocomplete(request: AutocompleteRequest, signal) {
       const result = await post<{ suggestions?: PlaceSuggestion[] }>('/autocomplete', request, signal);
-      return Array.isArray(result.suggestions) ? result.suggestions.filter((s) => typeof s?.providerPlaceId === 'string') : [];
+      return Array.isArray(result.suggestions)
+        ? result.suggestions
+            .filter((s) => typeof s?.providerPlaceId === 'string' && typeof s.primaryText === 'string' && s.primaryText.trim())
+            .map((s) => ({
+              providerPlaceId: s.providerPlaceId,
+              primaryText: s.primaryText.trim(),
+              secondaryText: typeof s.secondaryText === 'string' ? s.secondaryText : '',
+              types: Array.isArray(s.types) ? s.types.filter((t): t is string => typeof t === 'string') : [],
+              distanceMeters: typeof s.distanceMeters === 'number' && Number.isFinite(s.distanceMeters) ? s.distanceMeters : null,
+            }))
+        : [];
     },
     async details(providerPlaceId, options, signal) {
       const result = await post<{ place?: unknown }>('/details', { placeId: providerPlaceId, sessionToken: options.sessionToken }, signal);
@@ -144,10 +166,40 @@ export function createProxyProvider(baseUrl: string, fetchImpl: typeof fetch = f
       return place;
     },
     async nearby(request: NearbyRequest, signal) {
-      return places((await post<{ places?: unknown }>('/nearby', request, signal)).places);
+      const { rank, ...rest } = request;
+      return places((await post<{ places?: unknown }>('/nearby', { ...rest, ...(rank ? { rankPreference: rank === 'distance' ? 'DISTANCE' : 'POPULARITY' } : {}) }, signal)).places);
     },
     async textSearch(request: TextSearchRequest, signal) {
-      return places((await post<{ places?: unknown }>('/text', request, signal)).places);
+      return (await textPage(request, signal)).places;
+    },
+    async discoverPage(request, signal): Promise<PlacesPage> {
+      const search = request.search;
+      if (!search) throw new PlacesError('invalid_request');
+      if (search.kind === 'nearby') {
+        // Nearby Search returns at most 20 places and has no further pages.
+        const found = await this.nearby({ location: request.location, radiusMeters: request.radiusMeters, includedTypes: search.includedTypes, maxResults: request.maxResults ?? 20, rank: request.rank }, signal);
+        return { places: found, nextPageToken: null };
+      }
+      return textPage(
+        {
+          query: search.query,
+          bias: request.location,
+          radiusMeters: request.radiusMeters,
+          maxResults: request.maxResults ?? 20,
+          rank: request.rank === 'distance' ? 'distance' : 'relevance',
+          pageToken: request.pageToken ?? null,
+        },
+        signal,
+      );
+    },
+    async resolveLink(url, signal) {
+      try {
+        const result = await post<{ url?: unknown }>('/resolve-link', { url }, signal);
+        return typeof result.url === 'string' && /^https:\/\//.test(result.url) ? result.url : null;
+      } catch (error) {
+        if (error instanceof PlacesError && error.kind === 'cancelled') throw error;
+        return null;
+      }
     },
     photoUrl(photo, maxWidthPx) {
       return `${base}/photo?${new URLSearchParams({ name: photo.name, maxWidthPx: String(Math.round(maxWidthPx)) }).toString()}`;

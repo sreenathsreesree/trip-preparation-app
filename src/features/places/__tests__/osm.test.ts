@@ -73,7 +73,7 @@ describe('OpenStreetMap places (free, keyless, no billing)', () => {
       return new Response(JSON.stringify({ features: [{ geometry: { coordinates: [77.0595, 10.0889] }, properties: { name: 'Munnar', osm_id: 5, osm_type: 'N' } }] }), { status: 200 });
     }) as unknown as typeof fetch;
     const provider = createOsmProvider(fetchImpl);
-    expect(provider.source).toEqual({ kind: 'live', name: 'OpenStreetMap', attribution: '© OpenStreetMap contributors' });
+    expect(provider.source).toEqual({ kind: 'live', name: 'OpenStreetMap', attribution: '© OpenStreetMap contributors', storable: true });
     const found = await provider.discover!({ selectors: ['["tourism"="viewpoint"]'], category: 'viewpoints', location: MUNNAR, radiusMeters: 5000, maxResults: 20 });
     expect(found).toHaveLength(3);
     const suggestions = await provider.autocomplete({ input: 'Munn', sessionToken: 'x', bias: MUNNAR });

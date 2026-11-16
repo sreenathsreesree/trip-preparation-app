@@ -43,6 +43,8 @@ export interface AutocompleteRequest {
   sessionToken: string;
   /** Bias results towards this point (e.g. the destination being planned). */
   bias?: GeoPoint | null;
+  /** Two-letter region to prefer (e.g. "in"); optional. */
+  regionCode?: string;
 }
 
 export interface NearbyRequest {
@@ -51,12 +53,25 @@ export interface NearbyRequest {
   /** Provider place types to include, e.g. tourist_attraction, park. */
   includedTypes?: readonly string[];
   maxResults?: number;
+  /** Most popular first (default) or nearest first. */
+  rank?: 'popularity' | 'distance';
 }
 
 export interface TextSearchRequest {
   query: string;
   bias?: GeoPoint | null;
   maxResults?: number;
+  /** Radius of the bias circle (metres); results outside may still appear and are filtered by the caller. */
+  radiusMeters?: number;
+  rank?: 'relevance' | 'distance';
+  /** Continues an earlier search (providers that page). */
+  pageToken?: string | null;
+}
+
+/** One page of places; `nextPageToken` is set when the provider has more. */
+export interface PlacesPage {
+  places: PlaceDetails[];
+  nextPageToken: string | null;
 }
 
 export interface DiscoverRequest {
@@ -67,6 +82,10 @@ export interface DiscoverRequest {
   location: GeoPoint;
   radiusMeters: number;
   maxResults?: number;
+  /** How the provider should search this category (place types or a text query). */
+  search?: { kind: 'nearby'; includedTypes: readonly string[] } | { kind: 'text'; query: string };
+  rank?: 'popularity' | 'distance';
+  pageToken?: string | null;
 }
 
 /** Where a provider's data comes from, shown with every result. Demo data is never presented as live. */
@@ -74,6 +93,12 @@ export interface PlacesSource {
   kind: 'live' | 'demo';
   name: string;
   attribution: string;
+  /**
+   * Whether results may be kept on the device between sessions. Open map data may; Google Places
+   * content is only held in memory for the session (its terms allow storing Place IDs and,
+   * for at most 30 days, coordinates — not names, ratings or photos).
+   */
+  storable?: boolean;
 }
 
 export interface PlacesProvider {
@@ -83,6 +108,10 @@ export interface PlacesProvider {
   readonly source?: PlacesSource;
   /** Places of a category around a point (providers without it use nearby / text search). */
   discover?(request: DiscoverRequest, signal?: AbortSignal): Promise<PlaceDetails[]>;
+  /** Like `discover`, one page at a time (providers that support paging). */
+  discoverPage?(request: DiscoverRequest, signal?: AbortSignal): Promise<PlacesPage>;
+  /** Opens a Maps short link on the server side and returns the final URL (null when it can't). */
+  resolveLink?(url: string, signal?: AbortSignal): Promise<string | null>;
   autocomplete(request: AutocompleteRequest, signal?: AbortSignal): Promise<PlaceSuggestion[]>;
   details(providerPlaceId: string, options: { sessionToken?: string }, signal?: AbortSignal): Promise<PlaceDetails>;
   nearby(request: NearbyRequest, signal?: AbortSignal): Promise<PlaceDetails[]>;

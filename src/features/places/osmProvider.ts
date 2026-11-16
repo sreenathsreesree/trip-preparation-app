@@ -1,5 +1,8 @@
 import { distanceMeters } from '../planner/arrival';
 import { OSM_ATTRIBUTION, overpassQuery, placesFromOverpass, placesFromPhoton, suggestionFromPlace } from './osm';
+import { Platform } from 'react-native';
+
+import { APP_USER_AGENT } from '../covers/wikimediaClient';
 import { PlacesError, type PlaceDetails, type PlacesProvider } from './provider';
 
 /**
@@ -12,6 +15,8 @@ import { PlacesError, type PlaceDetails, type PlacesProvider } from './provider'
  */
 export const PHOTON_URL = 'https://photon.komoot.io/api/';
 export const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+/** A second public Overpass instance, tried once when the main one is overloaded or down. */
+export const OVERPASS_MIRROR_URL = 'https://overpass.private.coffee/api/interpreter';
 const MIN_GAP_MS = 1100;
 
 function spacer() {
@@ -38,14 +43,21 @@ export function createOsmProvider(fetchImpl: typeof fetch = (...args) => fetch(.
   async function get(url: string, init: RequestInit | undefined, signal?: AbortSignal): Promise<unknown> {
     let response: Response;
     try {
-      response = await fetchImpl(url, { ...init, signal, headers: { Accept: 'application/json', ...(init?.headers as Record<string, string>) } });
+      // Community services ask apps to identify themselves; Android's default client name is often blocked.
+      response = await fetchImpl(url, { ...init, signal, headers: { Accept: 'application/json', ...(Platform.OS === 'web' ? {} : { 'User-Agent': APP_USER_AGENT }), ...(init?.headers as Record<string, string>) } });
     } catch (error) {
       if (signal?.aborted) throw new PlacesError('cancelled');
       throw new PlacesError(error instanceof TypeError ? 'offline' : 'network');
     }
     if (response.status === 429 || response.status === 504) throw new PlacesError('quota');
+    if (response.status === 403) throw new PlacesError('denied');
     if (!response.ok) throw new PlacesError(response.status >= 500 ? 'network' : 'invalid_request');
-    return response.json();
+    try {
+      return await response.json();
+    } catch {
+      // Overloaded servers answer with an HTML error page instead of JSON.
+      throw new PlacesError('network');
+    }
   }
 
   const remember = (places: PlaceDetails[]) => {
@@ -65,7 +77,7 @@ export function createOsmProvider(fetchImpl: typeof fetch = (...args) => fetch(.
   return {
     id: 'manual',
     configured: true,
-    source: { kind: 'live', name: 'OpenStreetMap', attribution: OSM_ATTRIBUTION },
+    source: { kind: 'live', name: 'OpenStreetMap', attribution: OSM_ATTRIBUTION, storable: true },
     async autocomplete(request, signal) {
       const places = await photon(request.input, request.bias ?? null, 6, signal);
       return places.map((p) => suggestionFromPlace(p, request.bias ?? null, distanceMeters));
@@ -84,9 +96,15 @@ export function createOsmProvider(fetchImpl: typeof fetch = (...args) => fetch(.
     },
     async discover(request, signal) {
       const body = new URLSearchParams({ data: overpassQuery(request.selectors, request.location, request.radiusMeters, Math.max(20, (request.maxResults ?? 20) * 3)) });
-      const json = await overpassQueue(() =>
-        get(OVERPASS_URL, { method: 'POST', body: body.toString(), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }, signal),
-      );
+      const init = { method: 'POST', body: body.toString(), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } };
+      let json: unknown;
+      try {
+        json = await overpassQueue(() => get(OVERPASS_URL, init, signal));
+      } catch (error) {
+        const kind = error instanceof PlacesError ? error.kind : 'unknown';
+        if (kind === 'cancelled' || kind === 'offline') throw error;
+        json = await overpassQueue(() => get(OVERPASS_MIRROR_URL, init, signal));
+      }
       return remember(placesFromOverpass(json)).slice(0, request.maxResults ?? 20);
     },
     photoUrl: () => null,
