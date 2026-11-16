@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
-import { ActionSheet, AppText, Card, Icon, IconButton, LoadingState, Notice, OptionTile, type SheetAction } from '@/components/ui';
+import { ActionSheet, AppText, Button, Card, Icon, IconButton, LoadingState, Notice, OptionTile, type SheetAction } from '@/components/ui';
 import { toErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing } from '@/theme';
 
@@ -25,7 +25,7 @@ import {
   type RecommendationSort,
 } from '../../places/discovery';
 import { isPlacesError, type PlaceDetails, type PlacesErrorKind, type PlacesSource } from '../../places/provider';
-import { cachedFetch } from '../../remote/remoteCacheRepository';
+import { describeRecommendationError, hasRatings, loadRecommendations } from '../../places/recommendationsService';
 import { timeAgo } from '../../remote/timeAgo';
 import type { TripPlan } from '../model';
 import { usePlannerStore } from '../plannerStore';
@@ -60,6 +60,9 @@ function RecommendationCard({ rec, onAdd }: { rec: Recommendation; onAdd: () => 
             </AppText>
             <AppText variant="caption" tone="textSecondary" numberOfLines={1}>
               {[label, rec.distanceMeters !== null ? `${formatDistance(rec.distanceMeters)} away` : null].filter(Boolean).join(' · ') || 'Place'}
+            </AppText>
+            <AppText variant="caption" tone="textMuted" numberOfLines={1}>
+              {[typeof place.metadata?.locality === 'string' ? place.metadata.locality : null, place.district, place.state].filter((v, i, all) => v && all.indexOf(v) === i).join(', ')}
             </AppText>
           </View>
           {rec.inPlan ? (
@@ -96,8 +99,6 @@ function RecommendationCard({ rec, onAdd }: { rec: Recommendation; onAdd: () => 
   );
 }
 
-const PLACES_CACHE_MS = 7 * 24 * 60 * 60 * 1000;
-
 /** Says where results come from: live, saved earlier (and how long ago), or demo data. */
 function SourceBadge({ source, from, fetchedAt }: { source: PlacesSource; from: 'live' | 'cache' | 'stale_cache' | null; fetchedAt: string | null }) {
   if (source.kind === 'demo') {
@@ -130,7 +131,10 @@ export function Recommendations({ tripId, plan, nodeId }: { tripId: string; plan
   const [radiusKm, setRadiusKm] = useState<DistanceKm>(10);
   const [sort, setSort] = useState<RecommendationSort>('relevance');
   /** The latest finished request, keyed by what was asked (so a newer request shows as loading). */
-  const [result, setResult] = useState<{ key: string; places: PlaceDetails[]; error: PlacesErrorKind | null; fetchedAt: string | null; from: 'live' | 'cache' | 'stale_cache' | null } | null>(null);
+  const [result, setResult] = useState<{ key: string; places: PlaceDetails[]; nextPageToken: string | null; error: PlacesErrorKind | null; fetchedAt: string | null; from: 'live' | 'cache' | 'stale_cache' | null } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
   const [adding, setAdding] = useState<PlaceDetails | null>(null);
   const [message, setMessage] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
 
@@ -141,43 +145,52 @@ export function Recommendations({ tripId, plan, nodeId }: { tripId: string; plan
   const selected = DISCOVERY_CATEGORIES.find((c) => c.key === category) ?? DISCOVERY_CATEGORIES[0];
   const latitude = context?.location.latitude;
   const longitude = context?.location.longitude;
+  // "Nearest" asks the service for the closest places; Popular and Top rated share one request.
+  const rank = sort === 'distance' ? 'distance' : 'popularity';
 
-  const requestKey = `${latitude},${longitude},${selected?.key},${radiusKm}`;
+  const requestKey = `${latitude},${longitude},${selected?.key},${radiusKm},${rank},${attempt}`;
   useEffect(() => {
     if (!placesProvider.configured || latitude === undefined || longitude === undefined || !selected) return;
     const controller = new AbortController();
-    const location = { latitude, longitude };
-    const key = `${latitude},${longitude},${selected.key},${radiusKm}`;
-    const fetcher = () =>
-      placesProvider.discover
-        ? placesProvider.discover({ selectors: selected.osm, category: selected.key, location, radiusMeters: radiusKm * 1000, maxResults: 20 }, controller.signal)
-        : selected.search.kind === 'nearby'
-          ? placesProvider.nearby({ location, radiusMeters: radiusKm * 1000, includedTypes: selected.search.includedTypes, maxResults: 20 }, controller.signal)
-          : placesProvider.textSearch({ query: selected.search.query, bias: location, maxResults: 20 }, controller.signal);
-    // Storable providers (OpenStreetMap, demo) are cached for offline use; Google content is shown live only.
-    const cacheable = placesProvider.source !== undefined;
-    const request = cacheable
-      ? getRepositories().then(({ remoteCache }) =>
-          cachedFetch(
-            remoteCache,
-            { key: `places:${placesProvider.source?.name}:${selected.key}:${latitude.toFixed(3)},${longitude.toFixed(3)}:${radiusKm}`, kind: 'places', source: placesProvider.source?.name ?? '', maxAgeMs: PLACES_CACHE_MS, now: new Date() },
-            fetcher,
-          ),
-        )
-      : fetcher().then((payload) => ({ payload, fetchedAt: null, from: 'live' as const }));
-    request
-      .then((r) => setResult({ key, places: r.payload, error: null, fetchedAt: r.fetchedAt, from: r.from }))
+    const key = `${latitude},${longitude},${selected.key},${radiusKm},${rank},${attempt}`;
+    getRepositories()
+      .then(({ remoteCache }) =>
+        loadRecommendations(
+          { category: selected, location: { latitude, longitude }, radiusKm, sort: rank === 'distance' ? 'distance' : 'relevance' },
+          { provider: placesProvider, cache: remoteCache, signal: controller.signal },
+        ),
+      )
+      .then((page) => !controller.signal.aborted && setResult({ key, places: page.places, nextPageToken: page.nextPageToken, error: null, fetchedAt: page.fetchedAt, from: page.from }))
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        setResult({ key, places: [], error: isPlacesError(error) ? error.kind : 'unknown', fetchedAt: null, from: null });
+        setResult({ key, places: [], nextPageToken: null, error: isPlacesError(error) ? error.kind : 'unknown', fetchedAt: null, from: null });
       });
     return () => controller.abort();
-  }, [latitude, longitude, selected, radiusKm]);
+  }, [latitude, longitude, selected, radiusKm, rank, attempt]);
 
   const current_ = result && result.key === requestKey ? result : null;
   const status = current_ === null ? 'loading' : current_.error ? 'error' : 'ready';
   const errorKind = current_?.error ?? null;
   const recs = context && current_ ? rankRecommendations(current_.places, context.location, radiusKm, isInPlan, sort) : [];
+  const googleContent = recs.some((r) => r.place.provider === 'google');
+
+  async function loadMore() {
+    if (!current_?.nextPageToken || !selected || latitude === undefined || longitude === undefined) return;
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      const { remoteCache } = await getRepositories();
+      const page = await loadRecommendations(
+        { category: selected, location: { latitude, longitude }, radiusKm, sort: rank === 'distance' ? 'distance' : 'relevance', pageToken: current_.nextPageToken },
+        { provider: placesProvider, cache: remoteCache },
+      );
+      setResult((r) => (r && r.key === current_.key ? { ...r, places: [...r.places, ...page.places], nextPageToken: page.nextPageToken } : r));
+    } catch (error) {
+      setMoreError(describeRecommendationError(isPlacesError(error) ? error.kind : 'unknown').title);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   const place = (target: Placement) => {
     const chosen = adding;
@@ -237,7 +250,11 @@ export function Recommendations({ tripId, plan, nodeId }: { tripId: string; plan
         Around {context.from.name}
         {context.from.id !== nodeId ? ' (the nearest place with a location)' : ''}.
       </AppText>
-      <SourceBadge source={placesProvider.source ?? { kind: 'live', name: 'Google Maps', attribution: 'Data © Google' }} from={current_?.from ?? null} fetchedAt={current_?.fetchedAt ?? null} />
+      <SourceBadge
+        source={googleContent || !placesProvider.source ? { kind: 'live', name: 'Google Maps', attribution: 'Data © Google' } : placesProvider.source}
+        from={current_?.from ?? null}
+        fetchedAt={current_?.fetchedAt ?? null}
+      />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
         {DISCOVERY_CATEGORIES.map((c) => (
           <OptionTile key={c.key} layout="chip" label={c.label} icon={c.icon} selected={c.key === category} onPress={() => setCategory(c.key)} testID={`rec-cat-${c.key}`} />
@@ -254,24 +271,44 @@ export function Recommendations({ tripId, plan, nodeId }: { tripId: string; plan
         ))}
       </View>
       {message ? <Notice tone={message.tone} title={message.text} testID="rec-message" /> : null}
+      {sort === 'rating' && status === 'ready' && recs.length > 0 ? (
+        <AppText variant="caption" tone="textMuted" testID="rec-rating-note">
+          {hasRatings(recs.map((r) => r.place)) ? 'Places without ratings are listed last.' : 'No ratings are available for these places, so they keep their usual order.'}
+        </AppText>
+      ) : null}
       {status === 'loading' ? (
         <LoadingState label="Finding places nearby…" />
       ) : status === 'error' ? (
-        <Notice tone="warning" title="Could not load recommendations" message={errorKind ? describeKind(errorKind) : undefined} testID="rec-error" />
+        (() => {
+          const info = describeRecommendationError(errorKind ?? 'unknown');
+          return (
+            <Notice
+              tone="warning"
+              title={info.title}
+              message={info.message}
+              action={info.retry ? { label: 'Retry', icon: 'refresh', onPress: () => setAttempt((n) => n + 1) } : undefined}
+              testID={`rec-error-${errorKind ?? 'unknown'}`}
+            />
+          );
+        })()
       ) : recs.length === 0 && status === 'ready' ? (
         <AppText variant="caption" tone="textMuted" testID="rec-empty">
-          No {selected?.label.toLowerCase()} found within {radiusKm} km. Try a larger distance.
+          No {selected?.label.toLowerCase()} found within {radiusKm} km. Try a larger distance or another category.
         </AppText>
       ) : (
         <View style={styles.list}>
           {recs.map((rec) => (
             <RecommendationCard key={rec.place.providerPlaceId} rec={rec} onAdd={() => setAdding(rec.place)} />
           ))}
+          {current_?.nextPageToken ? (
+            <Button label="Show more places" icon="chevron-down" variant="secondary" size="sm" loading={loadingMore} onPress={() => void loadMore()} testID="rec-more" />
+          ) : null}
+          {moreError ? <Notice tone="warning" title={moreError} testID="rec-more-error" /> : null}
         </View>
       )}
       {recs.length > 0 ? (
         <AppText variant="caption" tone="textMuted">
-          {placesProvider.source && !placesProvider.source.name.startsWith('Google')
+          {!googleContent
             ? 'Adding a place saves its name and location in your plan. Map data credits: Profile → Data sources.'
             : 'Data, ratings and photos © Google. Shown live; only a place’s name, ID and location are saved when you add it.'}
         </AppText>
@@ -286,21 +323,6 @@ export function Recommendations({ tripId, plan, nodeId }: { tripId: string; plan
       />
     </View>
   );
-}
-
-function describeKind(kind: PlacesErrorKind): string {
-  switch (kind) {
-    case 'offline':
-    case 'network':
-      return 'You may be offline. Your plan still works; try again when connected.';
-    case 'quota':
-      return 'The places service is busy or over its daily limit. Try again later.';
-    case 'denied':
-    case 'not_configured':
-      return 'The places service refused the request. Its Google Cloud setup (API, billing or key) needs attention.';
-    default:
-      return 'Try again in a moment.';
-  }
 }
 
 const styles = StyleSheet.create({

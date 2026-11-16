@@ -83,7 +83,7 @@ const session = { context: null, page: null };
  * real services. `providers.offline = true` makes every call fail like a lost
  * connection; `providers.calls` records what the app asked for.
  */
-export const providers = { offline: false, calls: [] };
+export const providers = { offline: false, calls: [], urls: [] };
 const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 
 function providerFixture(url, body) {
@@ -164,6 +164,7 @@ export async function launch() {
   await context.route(/^https:\/\/(photon\.komoot\.io|overpass-api\.de|api\.open-meteo\.com|en\.wikipedia\.org|commons\.wikimedia\.org|upload\.wikimedia\.org|router\.project-osrm\.org)\//, async (route) => {
     const request = route.request();
     providers.calls.push(new URL(request.url()).host);
+    providers.urls.push(request.url());
     if (providers.offline) return route.abort('internetdisconnected');
     const fixture = providerFixture(request.url(), request.postData());
     if (!fixture) return route.abort();

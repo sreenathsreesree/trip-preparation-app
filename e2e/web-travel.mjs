@@ -111,6 +111,35 @@ await run('Travel experience test', async () => {
   await page.getByText('Add under Munnar').click();
   await byId(page, 'rec-added-Lakkam Waterfalls').waitFor();
   check((await byId(page, 'rec-add-Lakkam Waterfalls').count()) === 0, 'an added place cannot be added again');
+  await byId(page, 'rec-sort-distance').click();
+  await byId(page, 'rec-Attukad Waterfalls').waitFor();
+  const order = await page.evaluate(() => [...document.querySelectorAll('[data-testid^="rec-"]')].map((e) => e.getAttribute('data-testid')).filter((id) => /^rec-(Attukad|Lakkam|Distant)/.test(id)));
+  check(order[0] === 'rec-Attukad Waterfalls' && order[order.length - 1] === 'rec-Distant Falls', 'Nearest sorts by real distance');
+  providers.offline = true;
+  await byId(page, 'rec-cat-nature').click();
+  await byId(page, 'rec-error-offline').waitFor();
+  check(/offline/i.test(await text(page, 'rec-error-offline')), 'a failure is explained (not an empty list)');
+  providers.offline = false;
+  await byId(page, 'rec-error-offline').getByText('Retry').click();
+  await page.locator('[data-testid="recommendations"]').getByText('Live suggestions').or(byId(page, 'rec-empty')).first().waitFor();
+  check((await byId(page, 'rec-error-offline').count()) === 0, 'Retry loads again once back online');
+
+  setStep('Google Maps share: Plus Code address + short link');
+  await page.route(/^https:\/\/maps\.app\.goo\.gl\//, (route) => route.abort());
+  providers.urls.length = 0;
+  const shared = '3335+9GH Attukad Waterfalls, Attukad Waterfall Rd, Pallivasal, Keralam 685612\nhttps://maps.app.goo.gl/8zeE1LFGqptD1vu9A';
+  await page.goto(`${BASE}/share/place?text=${encodeURIComponent(shared)}`);
+  await byId(page, 'share-place-choose').waitFor({ timeout: 60_000 });
+  const searched = providers.urls.filter((c) => c.includes('photon.komoot.io/api')).map((c) => new URL(c).searchParams.get('q'));
+  check(searched.length > 0 && searched.every((q) => q === 'Attukad Waterfalls' || q === 'Attukad Waterfalls Pallivasal'), `searches the clean name, not the address or Plus Code (${searched.join(' | ')})`);
+  check(/Attukad Waterfalls/.test(await text(page, 'share-place-choose')), 'offers the shared place');
+  await byId(page, 'share-place-candidate').first().click();
+  await byId(page, 'share-place-preview').waitFor();
+  check(/10\.0534\d, 77\.0588\d/.test(await text(page, 'share-place')), 'the shared Plus Code gives the exact pin');
+  await byId(page, 'share-place-as-child').click();
+  await byId(page, 'share-place-save').click();
+  await byId(page, 'plan-place').waitFor();
+  check(/Attukad Waterfalls/.test(await text(page, 'plan-place')), 'added inside a destination with the existing Add to a trip flow');
 
   setStep('trip: cover, weather along the trip, packing ideas need approval');
   await page.goto(trip);
