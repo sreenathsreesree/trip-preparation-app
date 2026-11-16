@@ -8,7 +8,7 @@ import { colors, radii, spacing } from '@/theme';
 
 import { useInventoryStore } from '../../inventory/inventoryStore';
 import type { ChecklistOwner, ChecklistSection } from '../model';
-import { GROUP_LIMITS, supportsInventory, type ChecklistGroup } from '../sectionExtrasRepository';
+import { GROUP_LIMITS, isClothingSection, supportsInventory, type ChecklistGroup } from '../sectionExtrasRepository';
 import { useSectionExtras, useSectionExtrasStore } from '../sectionExtrasStore';
 
 /** The dedicated organiser for a category, when there is one (bags, quantities, shopping). */
@@ -16,8 +16,8 @@ export function CategoryShortcut({ tripId, section }: { tripId: string; section:
   const target =
     section.kind === 'packing'
       ? { label: 'Open the packing list (bags and quantities)', icon: 'bag-suitcase-outline' as const, go: () => router.push({ pathname: '/trips/[tripId]/packing', params: { tripId } }) }
-      : section.kind === 'custom' && /cloth|wear|outfit/i.test(section.title)
-        ? { label: 'Open Clothing & luggage (bags, packed, categories)', icon: 'tshirt-crew-outline' as const, go: () => router.push({ pathname: '/trips/[tripId]/clothing', params: { tripId } }) }
+      : isClothingSection(section)
+        ? { label: 'Bags and packed status (Clothing & luggage)', icon: 'tshirt-crew-outline' as const, go: () => router.push({ pathname: '/trips/[tripId]/clothing', params: { tripId } }) }
         : section.kind === 'shopping'
           ? { label: 'Open the shopping list', icon: 'cart-outline' as const, go: () => router.push('/inventory/shopping') }
           : null;
@@ -135,7 +135,7 @@ export function InventoryPicker({ owner, section, groupId, onDone }: { owner: Ch
     .filter((i) => !query.trim() || i.name.toLowerCase().includes(query.trim().toLowerCase()))
     .slice(0, 60);
   const count = Object.keys(chosen).length;
-  if (!supportsInventory(section.kind)) return null;
+  if (!supportsInventory(section.kind, section.title)) return null;
   return (
     <Card variant="outline" testID="section-inventory">
       <View style={styles.group}>

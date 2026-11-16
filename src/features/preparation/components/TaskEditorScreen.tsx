@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { goBackOrHome, ScreenHeader } from '@/components/layout/ScreenHeader';
@@ -19,7 +19,11 @@ import { toErrorMessage } from '@/lib/errors';
 import { successFeedback } from '@/lib/haptics';
 import { spacing } from '@/theme';
 
+import { getRepositories } from '@/db/repositories';
+
 import { useChecklistStore } from '../checklistStore';
+import type { TaskLink } from '../sectionExtrasRepository';
+import { useSectionExtras, useSectionExtrasStore } from '../sectionExtrasStore';
 import { useEnsureTemplatesLoaded, useOwner, useOwnerChecklist } from '../hooks';
 import {
   CHECKLIST_LIMITS,
@@ -64,13 +68,45 @@ function TaskForm({ owner, task }: { owner: ChecklistOwner; task: ChecklistTask 
   const isTrip = owner.type === 'trip';
   const patch = (value: Partial<TaskDraft>) => setDraft((current) => ({ ...current, ...value }));
 
+  // Group and Inventory source (trip checklists only). Moving to another section starts with no group.
+  const [link, setLink] = useState<(TaskLink & { inventoryItemName: string | null }) | null>(null);
+  const [groupId, setGroupId] = useState<string | null>(null);
+  const extras = useSectionExtras(isTrip ? sectionId : undefined);
+  useEffect(() => {
+    if (!isTrip) return;
+    let live = true;
+    void getRepositories()
+      .then(({ sectionExtras }) => sectionExtras.taskLink(task.id))
+      .then((l) => {
+        if (!live) return;
+        setLink(l);
+        setGroupId(l?.groupId ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [isTrip, task.id]);
+  useEffect(() => {
+    if (isTrip) void useSectionExtrasStore.getState().load(sectionId);
+  }, [isTrip, sectionId]);
+  const groupChoice = groupId && extras.groups.some((g) => g.id === groupId) ? groupId : null;
+
   async function save() {
     setRevealed(true);
     if (Object.keys(errors).length > 0) return;
     setSaving(true);
     setError(null);
     try {
+      if (isTrip && sectionId !== task.sectionId) {
+        const clash = await (await getRepositories()).sectionExtras.linkConflict(task.id, sectionId);
+        if (clash) throw new Error(`“${clash}” from your Inventory is already in that section.`);
+      }
       await updateTask(owner, task.id, draft, { sectionId });
+      if (isTrip && (sectionId !== task.sectionId || groupChoice !== (link?.groupId ?? null))) {
+        await useSectionExtrasStore.getState().setTaskGroup(sectionId, task.id, groupChoice);
+        if (sectionId !== task.sectionId) await useSectionExtrasStore.getState().load(task.sectionId);
+      }
       if (isTrip && isDone !== task.isDone) await toggleTask(owner, task.id);
       successFeedback();
       goBackOrHome();
@@ -159,11 +195,38 @@ function TaskForm({ owner, task }: { owner: ChecklistOwner; task: ChecklistTask 
                 label={section.title}
                 icon={SECTION_META[section.kind].icon}
                 selected={sectionId === section.id}
-                onPress={() => setSectionId(section.id)}
+                onPress={() => {
+                  if (section.id !== sectionId) setGroupId(null);
+                  setSectionId(section.id);
+                }}
               />
             ))}
           </View>
         </View>
+      ) : null}
+
+      {isTrip && extras.groups.length > 0 ? (
+        <View style={styles.group} testID="task-group-picker">
+          <AppText variant="label" tone="textSecondary">
+            Group
+          </AppText>
+          <View style={styles.chips} accessibilityRole="radiogroup" accessibilityLabel="Group">
+            <OptionTile layout="chip" label="No group" icon="tray" selected={groupChoice === null} onPress={() => setGroupId(null)} testID="task-group-none" />
+            {extras.groups.map((g) => (
+              <OptionTile key={g.id} layout="chip" label={g.title} icon="folder-outline" selected={groupChoice === g.id} onPress={() => setGroupId(g.id)} testID={`task-group-${g.title}`} />
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {isTrip && link?.inventoryItemId ? (
+        <Notice
+          tone="info"
+          icon="archive-outline"
+          title={`From your Inventory: ${link.inventoryItemName ?? 'an item'} · ×${link.quantity}`}
+          message="Linked to the original Inventory item. Editing, moving or deleting this task never changes or deletes it."
+          testID="task-inventory-source"
+        />
       ) : null}
 
       {isTrip ? (

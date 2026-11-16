@@ -29,7 +29,7 @@ import { useOwner, useOwnerChecklist } from '../hooks';
 import { emptyTaskDraft, SECTION_META, sortByPosition, type ChecklistTask } from '../model';
 import { completionPercent, computeStats, openCount } from '../readiness';
 import { AddItemBar } from './AddItemBar';
-import { supportsInventory } from '../sectionExtrasRepository';
+import { isClothingSection, supportsInventory } from '../sectionExtrasRepository';
 import { useSectionExtras, useSectionExtrasStore } from '../sectionExtrasStore';
 import { CategoryShortcut, GroupChips, GroupsManager, InventoryPicker } from './SectionTools';
 import { TaskRow } from './TaskRow';
@@ -211,7 +211,7 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
               return g ? useSectionExtrasStore.getState().addManual(owner, sectionId, g, title, priority) : addTask(owner, sectionId, { ...emptyTaskDraft(priority), title });
             }}
           />
-          {section && supportsInventory(section.kind) ? (
+          {section && supportsInventory(section.kind, section.title) ? (
             <Button
               label={picking ? 'Close Inventory' : 'Add from Inventory'}
               icon="archive-arrow-down-outline"
@@ -234,7 +234,14 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
             />
           ) : null}
           {message ? <Notice tone="success" title={message} testID="section-message" /> : null}
-          <Collapsible title="Groups in this section" icon="folder-multiple-outline" summary={extras.groups.length ? extras.groups.map((g) => g.title).join(', ') : 'Organise tasks into groups, e.g. Tops and Footwear'} testID="section-groups-section">
+          <Collapsible
+            title="Groups in this section"
+            icon="folder-multiple-outline"
+            summary={extras.groups.length ? extras.groups.map((g) => g.title).join(', ') : 'Create groups such as Tops, Trousers or Footwear'}
+            initiallyOpen={Boolean(section && isClothingSection(section) && extras.status === 'ready' && extras.groups.length === 0)}
+            key={`groups-${extras.status}`}
+            testID="section-groups-section"
+          >
             <GroupsManager sectionId={sectionId} />
           </Collapsible>
         </View>
@@ -250,7 +257,7 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
         <EmptyState
           icon={meta.icon}
           title="Nothing here yet"
-          message={section && supportsInventory(section.kind) ? 'Add a task above, or add things you own with Add from Inventory.' : 'Add your first task using the field above.'}
+          message={section && supportsInventory(section.kind, section.title) ? 'Add a task above, or add things you own with Add from Inventory.' : 'Add your first task using the field above.'}
         />
       ) : reordering ? (
         <View style={styles.group}>
