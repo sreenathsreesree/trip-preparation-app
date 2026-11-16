@@ -31,6 +31,7 @@ describe('migrate', () => {
         'travel_experience',
         'group_workspace',
         'memories_clothing_covers',
+        'checklist_groups_inventory',
       ],
     });
     expect(await getSchemaVersion(db)).toBe(migrations.length);
@@ -42,7 +43,9 @@ describe('migrate', () => {
     expect(tables.map((t) => t.name)).toEqual([
       'auto_cover_thumbs',
         'auto_covers',
-      'checklist_sections',
+      'checklist_groups',
+        'checklist_sections',
+        'checklist_task_links',
       'checklist_tasks',
       'checklist_templates',
       'clothing_categories',

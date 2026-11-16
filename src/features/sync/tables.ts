@@ -144,6 +144,9 @@ export const SYNC_TABLES: readonly SyncTable[] = [
 
 /** Local tables that never sync, with the reason. */
 export const LOCAL_ONLY_TABLES: Readonly<Record<string, string>> = {
+  // Checklist groups and Inventory links (local schema v15).
+  checklist_groups: 'Groups inside checklist sections (local v15); the tasks themselves sync as before.',
+  checklist_task_links: 'A checklist task’s group and linked Inventory item (local v15); Inventory items sync as before.',
   // Memories gallery and Clothing organizer (local schema v14). Personal; never part of a shared trip.
   auto_cover_thumbs: 'Small variants of automatic covers (local v14), re-chosen on each device.',
   memory_albums: 'The user’s Memories albums (local v14); the photos themselves sync and upload to Drive as before.',

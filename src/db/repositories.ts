@@ -10,6 +10,7 @@ import { createRecommendationRepository } from '@/features/packing/recommendatio
 import { createPlannerRepository } from '@/features/planner/plannerRepository';
 import { createCompanionRepository } from '@/features/planner/companionRepository';
 import { createChecklistRepository } from '@/features/preparation/checklistRepository';
+import { createSectionExtrasRepository } from '@/features/preparation/sectionExtrasRepository';
 import { createTemplateRepository } from '@/features/preparation/templateRepository';
 import { createTripRepository } from '@/features/trips/tripRepository';
 import { createId } from '@/lib/id';
@@ -34,9 +35,11 @@ import { getSchemaVersion } from './migrate';
  */
 export async function getRepositories(partition?: Partition) {
   const db = partition ? await getPartitionDatabase(partition) : await getDatabase();
+  const checklists = createChecklistRepository(db, { createId });
   return {
     trips: createTripRepository(db, { createId }),
-    checklists: createChecklistRepository(db, { createId }),
+    checklists,
+    sectionExtras: createSectionExtrasRepository(db, { createId, checklists }),
     templates: createTemplateRepository(db, { createId }),
     inventory: createInventoryRepository(db, { createId }),
     clothing: createClothingRepository(db, { createId }),
