@@ -46,3 +46,6 @@ coverage/
 # build outputs (EAS local builds, downloaded APKs)
 *.apk
 *.aab
+
+# Wrangler local secrets
+.dev.vars

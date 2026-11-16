@@ -1,6 +1,53 @@
-# Trip Prep places proxy (Cloudflare Workers). NOT deployed — see README.md.
-# The Google key is a secret (`wrangler secret put GOOGLE_PLACES_KEY`), never in this file.
+# Trip Prep places proxy (Cloudflare Workers). NOT deployed — see README.md (Stage B needs the owner's approval).
+# Secrets are never in this file:
+#   GOOGLE_PLACES_KEY  — restricted server key for Places API (New)      (wrangler secret put)
+#   ADMIN_TOKEN        — long random token for GET /admin/usage           (wrangler secret put)
 name = "trip-prep-places"
 main = "worker.mjs"
 compatibility_date = "2025-10-01"
 workers_dev = true
+
+# The budget ledger: one strongly consistent Durable Object (SQLite-backed; free plan compatible).
+[[durable_objects.bindings]]
+name = "PLACES_BUDGET"
+class_name = "PlacesBudget"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PlacesBudget"]
+
+[vars]
+# Master switch. Google is called only when this is exactly "true".
+GOOGLE_PLACES_ENABLED = "false"
+# Google endpoints allowed in this rollout (Nearby, Text Search and Photos stay off).
+GOOGLE_ENDPOINTS = "autocomplete,details"
+# Internal monthly budget (INR). The allowance is the hard application-side block;
+# the reserve is never spent by the proxy. allowance + reserve must not exceed the total.
+BUDGET_TOTAL_INR = "100"
+BUDGET_ALLOWANCE_INR = "70"
+BUDGET_RESERVE_INR = "30"
+# Month and day boundaries (Google Cloud Billing reports in US Pacific time).
+BILLING_TIMEZONE = "America/Los_Angeles"
+# Proxy-side daily request limits (Google Cloud quotas are a separate, additional limit).
+DAILY_LIMITS = '{"autocomplete_request": 120, "details": 30}'
+# Prices per 1,000 requests (USD), conservative. Google calls are REFUSED until `verifiedOn`
+# is set to the date the owner checked these against Google's official price list
+# for this billing account (global or India list). Free monthly usage is not subtracted.
+PLACES_PRICING = '''
+{
+  "verifiedOn": null,
+  "priceList": "global (conservative; check the India list for an Indian billing account)",
+  "source": "https://developers.google.com/maps/billing-and-pricing/pricing",
+  "usdPer1000": {
+    "autocomplete_request": 2.83,
+    "place_details_ids_only": 0,
+    "place_details_essentials": 5.0,
+    "place_details_pro": 17.0,
+    "place_details_enterprise": 20.0,
+    "place_details_enterprise_atmosphere": 25.0
+  },
+  "usdToInr": 90,
+  "fxBufferPct": 10,
+  "taxPct": 18
+}
+'''
