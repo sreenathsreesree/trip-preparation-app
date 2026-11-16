@@ -287,6 +287,34 @@ await run('Packing categories test', async () => {
   await within(page, 'inventory-screen', '3 items · 7 units', { exact: false }).waitFor();
   check(true, 'inventory has the 2 original items and the bought shampoo; removing entries deleted nothing');
 
+  setStep('checklist section: groups, add manually and from Inventory');
+  await page.goto(tripB);
+  await byId(page, 'section-card-packing').click();
+  await byId(page, 'section-screen-packing').waitFor();
+  await byId(page, 'section-groups-section-toggle').click();
+  await byId(page, 'section-group-input').fill('Tops');
+  await byId(page, 'section-group-add').click();
+  await byId(page, 'section-group-rename-Tops').waitFor();
+  await byId(page, 'section-group-input').fill('Gadgets');
+  await byId(page, 'section-group-add').click();
+  await byId(page, 'section-add-to-Tops').click();
+  await byId(page, 'section-add-from-inventory').click();
+  await byId(page, 'section-inventory-item-Merino T-shirt').click();
+  await byId(page, 'section-inventory-add').click();
+  await byId(page, 'section-message').waitFor();
+  check(/1 added from Inventory/.test(await text(page, 'section-message')), 'added from Inventory into the chosen group');
+  check(/From Inventory · ×1/.test(await text(page, 'section-group-block-Tops')), 'the task shows it is linked to Inventory');
+  await byId(page, 'section-add-from-inventory').click();
+  check(/Already in this section/.test(await text(page, 'section-inventory-item-Merino T-shirt')), 'an item is not added twice');
+  await byId(page, 'section-add-from-inventory').click();
+  await byId(page, 'section-group-delete-Tops').click();
+  await page.getByText('Move them to Gadgets').click();
+  await page.waitForTimeout(300);
+  check(/Merino T-shirt/.test(await text(page, 'section-group-block-Gadgets')), 'deleting a group moved its tasks, none were deleted');
+  await page.goto(`${BASE}/inventory`);
+  await page.getByText('Merino T-shirt').first().waitFor();
+  check(true, 'the Inventory item is still there');
+
   setStep('offline: packing keeps working');
   await page.goto(`${tripB}/packing`);
   await byId(page, 'items-tab').waitFor();
