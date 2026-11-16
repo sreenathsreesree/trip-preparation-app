@@ -8,7 +8,7 @@ import type { TripSummary } from '../trips/model';
 import { AutoCover } from './AutoCover';
 
 /** The trip's cover: a representative photo of its first main destination (chosen automatically, with credit). */
-export function TripCover({ trip, style, creditAtTop = false }: { trip: TripSummary; style?: StyleProp<ViewStyle>; creditAtTop?: boolean }) {
+export function TripCover({ trip, style, creditAtTop = false, hideWhenMissing = false }: { trip: TripSummary; style?: StyleProp<ViewStyle>; creditAtTop?: boolean; hideWhenMissing?: boolean }) {
   const { plan } = useTripPlan(trip.id);
   const nodes = plan?.nodes ?? [];
   const main = nodes.filter((n) => n.parentId === null).sort((a, b) => a.position - b.position)[0] ?? null;
@@ -23,6 +23,7 @@ export function TripCover({ trip, style, creditAtTop = false }: { trip: TripSumm
       style={style ?? styles.cover}
       label={`Cover of ${trip.name}`}
       creditAtTop={creditAtTop}
+      hideWhenMissing={hideWhenMissing}
       testID="trip-cover"
     />
   );

@@ -20,6 +20,7 @@ export function AutoCover({
   label,
   compact = false,
   creditAtTop = false,
+  hideWhenMissing = false,
   testID,
 }: {
   subject: { type: 'trip' | 'node'; id: string };
@@ -29,11 +30,14 @@ export function AutoCover({
   compact?: boolean;
   /** Put the credit line at the top (when the bottom of the picture carries a title). */
   creditAtTop?: boolean;
+  /** Render nothing (no placeholder or retry panel) until a photo is found; the caller shows its own backdrop. */
+  hideWhenMissing?: boolean;
   testID?: string;
 }) {
   const { state, refresh, retry, busy } = useAutoCover(subject, query);
   const cover = state.status === 'ready' ? state.cover : null;
   const uri = state.status === 'ready' ? state.uri : null;
+  if (hideWhenMissing && !(cover?.status === 'found' && uri)) return null;
   return (
     <View style={[styles.frame, style]} testID={testID}>
       {cover?.status === 'found' && uri ? (

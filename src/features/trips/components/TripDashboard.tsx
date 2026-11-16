@@ -1,49 +1,22 @@
-import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import { router } from 'expo-router';
+import { useState } from 'react';
 
 import { Screen } from '@/components/layout/Screen';
 import { ScreenHeader } from '@/components/layout/ScreenHeader';
-import {
-  AppText,
-  Button,
-  Collapsible,
-  EmptyState,
-  ErrorState,
-  IconButton,
-  LoadingState,
-  Notice,
-  SectionHeader,
-} from '@/components/ui';
+import { Collapsible, EmptyState, ErrorState, IconButton, LoadingState, Notice } from '@/components/ui';
 import { formatDate } from '@/lib/dates';
 import { toErrorMessage } from '@/lib/errors';
-import { colors, radii, spacing } from '@/theme';
 
-import { packingProgress } from '../../packing/model';
-import { usePackingStore, useTripPacking } from '../../packing/packingStore';
 import { PlanSummaryCard } from '../../planner/components/PlanSummaryCard';
 import { TripWeatherCard } from '../../weather/components/TripWeatherCard';
-import { useChecklistStore } from '../../preparation/checklistStore';
-import { ReadinessPanel } from '../../preparation/components/ReadinessPanel';
-import { SectionCard } from '../../preparation/components/SectionCard';
-import { useOwner, useOwnerChecklist } from '../../preparation/hooks';
-import { groupTasksBySection, type ChecklistTask } from '../../preparation/model';
-import { buildStarterSection } from '../../preparation/starter';
 import { useToday, useTrip } from '../hooks';
-import {
-  describeTripTiming,
-  getTripLifecycle,
-  getTripPhase,
-  TRANSPORT_MODE_META,
-  type TripSummary,
-} from '../model';
+import { describeTripTiming, getTripLifecycle, getTripPhase, type TripSummary } from '../model';
 import { useTripsStore } from '../tripsStore';
 import { useTripActions } from './TripActions';
 import { JourneyButton } from './dashboard/JourneyButton';
 import { QuickLinks } from './dashboard/QuickLinks';
+import { ReadinessSummary } from './dashboard/ReadinessSummary';
 import { TripHero } from './dashboard/TripHero';
-import { TripMetaTags } from './TripMetaTags';
 
 function LifecycleNotice({ trip, today }: { trip: TripSummary; today: string }) {
   const lifecycle = getTripLifecycle(trip);
@@ -97,51 +70,20 @@ function LifecycleNotice({ trip, today }: { trip: TripSummary; today: string }) 
 
 function DashboardBody({ trip, justCreated }: { trip: TripSummary; justCreated: boolean }) {
   const today = useToday();
-  const owner = useOwner('trip', trip.id);
-  const checklist = useOwnerChecklist(owner);
-  const { load, toggleTask, deleteTask, applyPlan } = useChecklistStore.getState();
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [addingVehicle, setAddingVehicle] = useState(false);
   const [showCreated, setShowCreated] = useState(justCreated);
   const { openActions, sheet, error: tripActionError } = useTripActions(trip, {
     onDeleted: () => router.replace('/trips'),
   });
-  const packing = useTripPacking(trip.id);
-  useFocusEffect(
-    useCallback(() => {
-      void usePackingStore.getState().load(trip.id);
-    }, [trip.id]),
-  );
-  const packed = packing.status === 'ready' ? packingProgress(packing.entries) : null;
 
-  if (!owner) return null;
-  const grouped = groupTasksBySection(checklist.tasks);
-  const needsVehicle =
-    TRANSPORT_MODE_META[trip.transportMode].needsVehicleReadiness &&
-    checklist.status === 'ready' &&
-    !checklist.sections.some((section) => section.kind === 'vehicle');
-
-  const run = (fn: () => Promise<unknown>, fallback: string) => {
-    setActionError(null);
-    fn().catch((error: unknown) => setActionError(toErrorMessage(error, fallback)));
-  };
-  const onToggle = (task: ChecklistTask) => run(() => toggleTask(owner, task.id), 'Could not update the task.');
-  const onDelete = (task: ChecklistTask) => run(() => deleteTask(owner, task.id), 'Could not delete the task.');
-
+  // The travel command centre: an overview of the journey. Preparation tasks, sections and
+  // checklist tools live only in the Checklist tab (opened from the readiness card).
   return (
-    <Screen testID="trip-dashboard" onRefresh={() => void load(owner)} bottomInset>
+    <Screen testID="trip-dashboard" bottomInset>
       <ScreenHeader
         showBack
         eyebrow={describeTripTiming(trip, today)}
         title={trip.name}
-        trailing={
-          <IconButton
-            icon="dots-horizontal"
-            accessibilityLabel="Trip actions"
-            onPress={openActions}
-            testID="trip-actions"
-          />
-        }
+        trailing={<IconButton icon="dots-horizontal" accessibilityLabel="Trip actions" onPress={openActions} testID="trip-actions" />}
       />
 
       {showCreated ? (
@@ -170,123 +112,14 @@ function DashboardBody({ trip, justCreated }: { trip: TripSummary; justCreated: 
       {tripActionError ? <Notice tone="danger" title="Action failed" message={tripActionError} /> : null}
 
       <TripHero trip={trip} />
-      <TripMetaTags trip={trip} />
-
       <PlanSummaryCard trip={trip} />
+      <ReadinessSummary tripId={trip.id} />
       <JourneyButton trip={trip} today={today} />
-
-      <View style={styles.hero}>
-        <View style={styles.heroContent}>
-          {checklist.status === 'ready' ? (
-            <ReadinessPanel
-              tripId={trip.id}
-              sections={checklist.sections}
-              tasks={checklist.tasks}
-              onToggle={onToggle}
-              onDelete={onDelete}
-              packing={packed}
-            />
-          ) : (
-            <LoadingState label="Loading preparation…" />
-          )}
-        </View>
-      </View>
-
-      {actionError ? <Notice tone="danger" title="Something went wrong" message={actionError} /> : null}
-
       <QuickLinks tripId={trip.id} />
 
       <Collapsible title="Weather" icon="weather-partly-cloudy" summary="Forecast along your destinations — tap to show" testID="trip-weather-section">
         <TripWeatherCard trip={trip} />
       </Collapsible>
-
-      {needsVehicle ? (
-        <Notice
-          tone="warning"
-          icon="car-wrench"
-          title="Driving on this trip?"
-          message="There is no vehicle readiness section yet. Add the recommended vehicle checks."
-          action={{
-            label: 'Add vehicle checks',
-            icon: 'plus',
-            loading: addingVehicle,
-            onPress: () => {
-              setAddingVehicle(true);
-              run(
-                () =>
-                  applyPlan(owner, buildStarterSection('vehicle', trip)).finally(() => setAddingVehicle(false)),
-                'Could not add vehicle checks.',
-              );
-            },
-          }}
-          testID="vehicle-suggestion"
-        />
-      ) : null}
-
-      <SectionHeader
-        eyebrow="Mission control"
-        title="Preparation areas"
-        trailing={
-          <Button
-            label="Manage"
-            icon="tune-variant"
-            variant="ghost"
-            size="sm"
-            onPress={() => router.push({ pathname: '/trips/[tripId]/sections', params: { tripId: trip.id } })}
-            testID="manage-sections"
-          />
-        }
-      />
-
-      {checklist.status === 'error' ? (
-        <ErrorState message={checklist.error ?? 'Could not load this checklist.'} onRetry={() => void load(owner)} />
-      ) : checklist.status !== 'ready' ? (
-        <LoadingState label="Loading checklist…" />
-      ) : checklist.sections.length === 0 ? (
-        <EmptyState
-          icon="clipboard-plus-outline"
-          title="No checklist sections"
-          message="Add a section or copy tasks from a template."
-          action={{
-            label: 'Add a section',
-            icon: 'plus',
-            onPress: () => router.push({ pathname: '/trips/[tripId]/sections', params: { tripId: trip.id } }),
-          }}
-        />
-      ) : (
-        <View style={styles.sections}>
-          {checklist.sections.map((section, index) => (
-            <Animated.View key={section.id} entering={FadeInDown.delay(index * 40).duration(240)}>
-              <SectionCard tripId={trip.id} section={section} tasks={grouped.get(section.id) ?? []} />
-            </Animated.View>
-          ))}
-        </View>
-      )}
-
-      <View style={styles.tools}>
-        <AppText variant="label" tone="textMuted">
-          Checklist tools
-        </AppText>
-        <View style={styles.toolRow}>
-          <Button
-            label="Add from template"
-            icon="playlist-plus"
-            variant="secondary"
-            size="sm"
-            onPress={() => router.push({ pathname: '/trips/[tripId]/templates', params: { tripId: trip.id } })}
-            testID="apply-templates"
-          />
-          <Button
-            label="Save as template"
-            icon="content-save-all-outline"
-            variant="secondary"
-            size="sm"
-            disabled={checklist.tasks.length === 0}
-            onPress={() => router.push({ pathname: '/trips/[tripId]/save-template', params: { tripId: trip.id } })}
-            testID="save-as-template"
-          />
-        </View>
-      </View>
 
       {sheet}
     </Screen>
@@ -317,32 +150,3 @@ export function TripDashboard({ tripId, justCreated = false }: { tripId: string 
   );
 }
 
-const styles = StyleSheet.create({
-  spaces: { flexDirection: 'row', gap: spacing.sm },
-  space: { flex: 1 },
-  hero: {
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.backgroundElevated,
-    overflow: 'hidden',
-  },
-  heroContent: {
-    padding: spacing.xl,
-    gap: spacing.lg,
-  },
-  sections: {
-    gap: spacing.md,
-  },
-  tools: {
-    gap: spacing.sm,
-    paddingTop: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  toolRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-});

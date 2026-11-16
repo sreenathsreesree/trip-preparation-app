@@ -9,6 +9,7 @@ import { DestinationThumb } from '../../covers/DestinationThumb';
 import type { TripSummary } from '../../trips/model';
 import { routeNodes } from '../model';
 import { usePlannerStore, useTripPlan } from '../plannerStore';
+import { tripDays } from '../../trips/model';
 
 /**
  * The dashboard's main action: plan where the trip goes. Shows how many main
@@ -29,6 +30,7 @@ export function PlanSummaryCard({ trip }: { trip: TripSummary }) {
   const route = plan ? routeNodes(plan).filter((n) => n.parentId === null) : [];
   const routeText = route.length > 0 ? route.map((n) => n.name).join(' → ') : null;
   const count = mains.length || trip.destinations.length;
+  const days = tripDays(trip);
   return (
     <Card variant="accent" testID="plan-summary">
       <View style={styles.header}>
@@ -36,7 +38,7 @@ export function PlanSummaryCard({ trip }: { trip: TripSummary }) {
           <Icon name="map-search-outline" tone="accent" size={26} />
         </View>
         <View style={styles.flex}>
-          <AppText variant="title">{empty ? 'Plan your destinations' : 'Destinations'}</AppText>
+          <AppText variant="title">{empty ? 'Plan your destinations' : 'Journey overview'}</AppText>
           <AppText variant="caption" tone="textSecondary" testID="plan-summary-counts">
             {empty
               ? 'Add main destinations, the places to see inside them, and the order you’ll travel.'
@@ -44,6 +46,7 @@ export function PlanSummaryCard({ trip }: { trip: TripSummary }) {
                   `${count} ${count === 1 ? 'destination' : 'destinations'}`,
                   inside > 0 ? `${inside} ${inside === 1 ? 'place' : 'places'} inside` : null,
                   route.length > 0 ? `${route.length} on the route` : 'No route yet',
+                  `${days} ${days === 1 ? 'day' : 'days'}`,
                 ]
                   .filter(Boolean)
                   .join(' · ')}
@@ -53,7 +56,7 @@ export function PlanSummaryCard({ trip }: { trip: TripSummary }) {
       {mains.length > 0 ? (
         <View style={styles.thumbs}>
           {mains.slice(0, 5).map((n) => (
-            <DestinationThumb key={n.id} tripId={trip.id} node={n} size={52} />
+            <DestinationThumb key={n.id} tripId={trip.id} node={n} size={44} />
           ))}
           {mains.length > 5 ? (
             <View style={styles.more}>
