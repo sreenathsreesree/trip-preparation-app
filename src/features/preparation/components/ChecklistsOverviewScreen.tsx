@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -11,103 +11,193 @@ import {
   EmptyState,
   ErrorState,
   Icon,
+  IconButton,
   LoadingState,
+  Notice,
   ProgressBar,
   SegmentedControl,
   Tag,
 } from '@/components/ui';
 import { formatDate, formatDateRange } from '@/lib/dates';
+import { toErrorMessage } from '@/lib/errors';
 import { colors, spacing } from '@/theme';
 
 import { useCurrentTrips, useEnsureTripsLoaded, useToday } from '../../trips/hooks';
-import { describeTripTiming, type TripSummary } from '../../trips/model';
+import { describeTripTiming, TRANSPORT_MODE_META, type TripSummary } from '../../trips/model';
 import { useTripsStore } from '../../trips/tripsStore';
 import { useChecklistStore } from '../checklistStore';
 import { useEnsureTemplatesLoaded, useOwner, useOwnerChecklist } from '../hooks';
 import { groupTasksBySection, SECTION_META, tripOwner } from '../model';
-import { completionPercent, computeStats, openCount, readinessPercent } from '../readiness';
+import { checklistProgress, completionPercent, computeStats, openCount } from '../readiness';
+import { buildStarterSection } from '../starter';
 import { useTemplatesStore } from '../templatesStore';
 
-function TripChecklistCard({ trip }: { trip: TripSummary }) {
+const sectionTestId = (section: { kind: string; title: string }) =>
+  `section-card-${section.kind === 'custom' ? section.title.toLowerCase().replace(/\s+/g, '-') : section.kind}`;
+
+/**
+ * One trip on the Checklist tab: compact by default (readiness, progress, counts); expanded,
+ * its sections with their real progress plus the checklist tools. The figures come from the
+ * same loaded checklist and the same calculation as the trip dashboard.
+ */
+function TripChecklistCard({ trip, expanded, onToggle }: { trip: TripSummary; expanded: boolean; onToggle: () => void }) {
   const today = useToday();
   const owner = useOwner('trip', trip.id);
   const checklist = useOwnerChecklist(owner);
   const grouped = groupTasksBySection(checklist.tasks);
+  const progress = checklistProgress(checklist.tasks);
+  const [addingVehicle, setAddingVehicle] = useState(false);
+  const [toolError, setToolError] = useState<string | null>(null);
+  const ready = checklist.status === 'ready';
+  const needsVehicle = TRANSPORT_MODE_META[trip.transportMode].needsVehicleReadiness && ready && !checklist.sections.some((section) => section.kind === 'vehicle');
 
   return (
     <Card padding="none" testID={`checklist-trip-${trip.id}`}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${trip.name} dashboard`}
-        onPress={() => router.push({ pathname: '/trips/[tripId]', params: { tripId: trip.id } })}
-        style={({ pressed }) => [styles.cardHeader, pressed && styles.pressed]}
-      >
-        <View style={styles.flex}>
-          <AppText variant="h3" numberOfLines={1}>
-            {trip.name}
-          </AppText>
-          <AppText variant="caption" tone="textMuted">
-            {formatDateRange(trip.startDate, trip.endDate)} · {describeTripTiming(trip, today)}
-          </AppText>
-        </View>
-        <AppText variant="captionStrong" tone="accent">
-          {readinessPercent(trip.readiness)}% ready
-        </AppText>
-      </Pressable>
-
-      {checklist.status === 'error' ? (
-        <AppText variant="caption" tone="danger" style={styles.message}>
-          {checklist.error}
-        </AppText>
-      ) : checklist.status !== 'ready' ? (
-        <AppText variant="caption" tone="textMuted" style={styles.message}>
-          Loading…
-        </AppText>
-      ) : (
-        checklist.sections.map((section) => {
-          const meta = SECTION_META[section.kind];
-          const stats = computeStats(grouped.get(section.id) ?? []);
-          const essentials = openCount(stats.essential);
-          return (
-            <Pressable
-              key={section.id}
-              accessibilityRole="button"
-              accessibilityLabel={`${trip.name}, ${section.title}: ${stats.done} of ${stats.total} done${
-                essentials > 0 ? `, ${essentials} essential open` : ''
-              }`}
-              onPress={() =>
-                router.push({
-                  pathname: '/trips/[tripId]/sections/[sectionId]',
-                  params: { tripId: trip.id, sectionId: section.id },
-                })
-              }
-              style={({ pressed }) => [styles.sectionRow, pressed && styles.pressed]}
-            >
-              <Icon name={meta.icon} color={meta.tint} size={18} />
-              <AppText variant="body" style={styles.sectionTitle} numberOfLines={1}>
-                {section.title}
+      <View style={styles.cardHeader}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          accessibilityLabel={`${trip.name}, ${progress.percent}% prepared, ${progress.done} of ${progress.total} tasks done${progress.essentialsOpen > 0 ? `, ${progress.essentialsOpen} essential open` : ''}. ${expanded ? 'Hide' : 'Show'} sections`}
+          onPress={onToggle}
+          style={({ pressed }) => [styles.toggle, pressed && styles.pressed]}
+          testID={`checklist-trip-toggle-${trip.id}`}
+        >
+          <View style={styles.titleRow}>
+            <View style={styles.flex}>
+              <AppText variant="title" numberOfLines={1}>
+                {trip.name}
               </AppText>
-              {essentials > 0 ? <Icon name="alert-decagram" size={16} color={colors.danger} /> : null}
-              <View style={styles.bar}>
-                <ProgressBar value={completionPercent(stats) / 100} color={meta.tint} height={4} />
+              <AppText variant="caption" tone="textMuted" numberOfLines={1}>
+                {formatDateRange(trip.startDate, trip.endDate)} · {describeTripTiming(trip, today)}
+              </AppText>
+            </View>
+            <AppText variant="h3" tone={progress.percent === 100 ? 'accent' : 'textPrimary'} testID={`checklist-trip-percent-${trip.id}`}>
+              {ready ? `${progress.percent}%` : '…'}
+            </AppText>
+            <Icon name={expanded ? 'chevron-up' : 'chevron-down'} tone="textMuted" />
+          </View>
+          <ProgressBar value={progress.percent / 100} height={4} />
+          <View style={styles.metaRow}>
+            <AppText variant="caption" tone="textSecondary" style={styles.flex} testID={`checklist-trip-count-${trip.id}`}>
+              {ready ? (progress.total === 0 ? 'No tasks yet' : `${progress.done}/${progress.total} tasks done`) : 'Loading…'}
+            </AppText>
+            {progress.essentialsOpen > 0 ? (
+              <View style={styles.essential} testID={`checklist-trip-essentials-${trip.id}`}>
+                <Icon name="alert-decagram" size={14} color={colors.danger} />
+                <AppText variant="caption" tone="danger">
+                  {progress.essentialsOpen} essential open
+                </AppText>
               </View>
-              <AppText variant="caption" tone="textMuted" style={styles.count}>
-                {stats.done}/{stats.total}
-              </AppText>
-            </Pressable>
-          );
-        })
-      )}
+            ) : null}
+            <AppText variant="captionStrong" tone="info">
+              {expanded ? 'Hide sections' : 'Show sections'}
+            </AppText>
+          </View>
+        </Pressable>
+        <IconButton icon="open-in-new" size="sm" variant="plain" accessibilityLabel={`Open the ${trip.name} dashboard`} onPress={() => router.push({ pathname: '/trips/[tripId]', params: { tripId: trip.id } })} testID={`checklist-open-trip-${trip.id}`} />
+      </View>
+
+      {expanded ? (
+        <View style={styles.expanded} testID={`checklist-trip-sections-${trip.id}`}>
+          {checklist.status === 'error' ? (
+            <AppText variant="caption" tone="danger" style={styles.message}>
+              {checklist.error}
+            </AppText>
+          ) : !ready ? (
+            <AppText variant="caption" tone="textMuted" style={styles.message}>
+              Loading…
+            </AppText>
+          ) : checklist.sections.length === 0 ? (
+            <AppText variant="caption" tone="textMuted" style={styles.message}>
+              No sections yet. Add one with Manage sections, or copy a template.
+            </AppText>
+          ) : (
+            checklist.sections.map((section) => {
+              const meta = SECTION_META[section.kind];
+              const stats = computeStats(grouped.get(section.id) ?? []);
+              const essentials = openCount(stats.essential);
+              return (
+                <Pressable
+                  key={section.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${trip.name}, ${section.title}: ${stats.done} of ${stats.total} done${essentials > 0 ? `, ${essentials} essential open` : ''}`}
+                  onPress={() => router.push({ pathname: '/trips/[tripId]/sections/[sectionId]', params: { tripId: trip.id, sectionId: section.id } })}
+                  style={({ pressed }) => [styles.sectionRow, pressed && styles.pressed]}
+                  testID={sectionTestId(section)}
+                >
+                  <Icon name={meta.icon} color={meta.tint} size={18} />
+                  <AppText variant="body" style={styles.sectionTitle} numberOfLines={1}>
+                    {section.title}
+                  </AppText>
+                  {essentials > 0 ? <Icon name="alert-decagram" size={16} color={colors.danger} /> : null}
+                  <View style={styles.bar}>
+                    <ProgressBar value={completionPercent(stats) / 100} color={meta.tint} height={4} />
+                  </View>
+                  <AppText variant="caption" tone="textMuted" style={styles.count}>
+                    {stats.done}/{stats.total}
+                  </AppText>
+                  <Icon name="chevron-right" size={18} tone="textMuted" />
+                </Pressable>
+              );
+            })
+          )}
+
+          {needsVehicle && owner ? (
+            <View style={styles.message}>
+              <Notice
+                tone="warning"
+                icon="car-wrench"
+                title="Driving on this trip?"
+                message="There is no vehicle readiness section yet. Add the recommended vehicle checks."
+                action={{
+                  label: 'Add vehicle checks',
+                  icon: 'plus',
+                  loading: addingVehicle,
+                  onPress: () => {
+                    setAddingVehicle(true);
+                    setToolError(null);
+                    useChecklistStore
+                      .getState()
+                      .applyPlan(owner, buildStarterSection('vehicle', trip))
+                      .catch((e: unknown) => setToolError(toErrorMessage(e, 'Could not add vehicle checks.')))
+                      .finally(() => setAddingVehicle(false));
+                  },
+                }}
+                testID="vehicle-suggestion"
+              />
+            </View>
+          ) : null}
+          {toolError ? <AppText variant="caption" tone="danger" style={styles.message}>{toolError}</AppText> : null}
+
+          <View style={styles.tools}>
+            <Button label="Manage sections" icon="tune-variant" variant="ghost" size="sm" onPress={() => router.push({ pathname: '/trips/[tripId]/sections', params: { tripId: trip.id } })} testID="manage-sections" />
+            <Button label="Add from template" icon="playlist-plus" variant="ghost" size="sm" onPress={() => router.push({ pathname: '/trips/[tripId]/templates', params: { tripId: trip.id } })} testID="apply-templates" />
+            <Button
+              label="Save as template"
+              icon="content-save-all-outline"
+              variant="ghost"
+              size="sm"
+              disabled={checklist.tasks.length === 0}
+              onPress={() => router.push({ pathname: '/trips/[tripId]/save-template', params: { tripId: trip.id } })}
+              testID="save-as-template"
+            />
+          </View>
+        </View>
+      ) : null}
     </Card>
   );
 }
 
-function TripsTab() {
+function TripsTab({ expandedId, setExpandedId, focusTripId }: { expandedId: string | null; setExpandedId: (id: string | null) => void; focusTripId: string | null }) {
   const today = useToday();
   const status = useTripsStore((state) => state.status);
   const error = useTripsStore((state) => state.error);
   const load = useTripsStore((state) => state.load);
-  const trips = useCurrentTrips(today);
+  const allTrips = useTripsStore((state) => state.trips);
+  const current = useCurrentTrips(today);
+  // A trip opened from its dashboard is listed even when it is not upcoming (e.g. ended).
+  const focused = focusTripId && !current.some((t) => t.id === focusTripId) ? (allTrips.find((t) => t.id === focusTripId) ?? null) : null;
+  const trips = focused ? [focused, ...current] : current;
   const loadChecklist = useChecklistStore((state) => state.load);
 
   const ids = trips.map((trip) => trip.id).join(',');
@@ -130,12 +220,12 @@ function TripsTab() {
     );
   }
   return (
-    <View style={styles.list}>
+    <View style={styles.list} testID="checklist-trips">
       <AppText variant="caption" tone="textMuted">
-        <Icon name="alert-decagram" size={12} color={colors.danger} /> marks sections with open essential tasks.
+        Tap a trip to see its sections. <Icon name="alert-decagram" size={12} color={colors.danger} /> marks open essential tasks.
       </AppText>
       {trips.map((trip) => (
-        <TripChecklistCard key={trip.id} trip={trip} />
+        <TripChecklistCard key={trip.id} trip={trip} expanded={expandedId === trip.id} onToggle={() => setExpandedId(expandedId === trip.id ? null : trip.id)} />
       ))}
     </View>
   );
@@ -213,7 +303,20 @@ type Tab = 'trips' | 'templates';
 
 export function ChecklistsOverviewScreen() {
   useEnsureTripsLoaded();
+  const params = useLocalSearchParams<{ trip?: string }>();
+  const focusTripId = typeof params.trip === 'string' && params.trip ? params.trip : null;
   const [tab, setTab] = useState<Tab>('trips');
+  // Which trip is open: one at a time, kept while this screen stays mounted (not stored).
+  const [expandedId, setExpandedId] = useState<string | null>(focusTripId);
+  // Opened again for another trip (e.g. from a different dashboard): show and expand that trip.
+  const [seenFocus, setSeenFocus] = useState(focusTripId);
+  if (focusTripId !== seenFocus) {
+    setSeenFocus(focusTripId);
+    if (focusTripId) {
+      setTab('trips');
+      setExpandedId(focusTripId);
+    }
+  }
   const loadTrips = useTripsStore((state) => state.load);
   const loadTemplates = useTemplatesStore((state) => state.load);
 
@@ -232,7 +335,7 @@ export function ChecklistsOverviewScreen() {
           { value: 'templates', label: 'Templates' },
         ]}
       />
-      {tab === 'trips' ? <TripsTab /> : <TemplatesTab />}
+      {tab === 'trips' ? <TripsTab expandedId={expandedId} setExpandedId={setExpandedId} focusTripId={focusTripId} /> : <TemplatesTab />}
     </Screen>
   );
 }
@@ -246,11 +349,43 @@ const styles = StyleSheet.create({
   },
   cardHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    paddingRight: spacing.xs,
+  },
+  toggle: {
+    flex: 1,
+    gap: spacing.sm,
     padding: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    minHeight: 48,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  essential: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xxs,
+  },
+  expanded: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  tools: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    padding: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
   message: {
     padding: spacing.lg,
