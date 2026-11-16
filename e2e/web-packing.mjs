@@ -312,8 +312,10 @@ await run('Packing categories test', async () => {
   await page.waitForTimeout(300);
   check(/Merino T-shirt/.test(await text(page, 'section-group-block-Gadgets')), 'deleting a group moved its tasks, none were deleted');
   await page.goto(`${BASE}/inventory`);
-  await page.getByText('Merino T-shirt').first().waitFor();
-  check(true, 'the Inventory item is still there');
+  await byId(page, 'inventory-screen').waitFor();
+  await byId(page, 'segment-list').click();
+  await page.locator('[data-testid^="item-row-"]', { hasText: 'Merino T-shirt' }).first().waitFor();
+  check((await page.locator('[data-testid^="item-row-"]', { hasText: 'Merino T-shirt' }).count()) === 1, 'the Inventory item is still there, once (not duplicated)');
 
   setStep('offline: packing keeps working');
   await page.goto(`${tripB}/packing`);
