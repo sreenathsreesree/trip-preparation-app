@@ -1,4 +1,5 @@
 import type { GeoPoint } from '../planner/model';
+import { CoverLookupError } from './coverErrors';
 
 /**
  * Representative images from Wikipedia / Wikimedia Commons: free, keyless, no
@@ -205,9 +206,53 @@ export function parseImageInfo(body: unknown, pageTitle: string): CoverImage | n
 const PHOTO_FILE = /\.(?:jpe?g|png|webp)$/i;
 const NOT_A_PHOTO = /\b(?:map|locator|logo|flag|seal|emblem|coat of arms|diagram|plan|sign|icon)\b/i;
 
-/** Alternative spellings of a place name to try: as typed, without brackets, before a comma. */
-export function nameVariants(name: string): string[] {
-  const out = [name.trim(), name.replace(/\s*\([^)]*\)/g, '').trim(), name.split(',')[0]?.trim() ?? ''];
+/** Common alternate or former names of Indian destinations (both directions are tried). */
+export const PLACE_ALIASES: readonly (readonly string[])[] = [
+  ['Kochi', 'Cochin'],
+  ['Alappuzha', 'Alleppey'],
+  ['Thiruvananthapuram', 'Trivandrum'],
+  ['Kozhikode', 'Calicut'],
+  ['Thrissur', 'Trichur'],
+  ['Kannur', 'Cannanore'],
+  ['Puducherry', 'Pondicherry'],
+  ['Ooty', 'Udhagamandalam'],
+  ['Kodagu', 'Coorg'],
+  ['Mysuru', 'Mysore'],
+  ['Bengaluru', 'Bangalore'],
+  ['Mumbai', 'Bombay'],
+  ['Chennai', 'Madras'],
+  ['Kolkata', 'Calcutta'],
+  ['Varanasi', 'Benares', 'Banaras', 'Kashi'],
+  ['Prayagraj', 'Allahabad'],
+  ['Gurugram', 'Gurgaon'],
+  ['Mangaluru', 'Mangalore'],
+  ['Kanyakumari', 'Cape Comorin'],
+  ['Thekkady', 'Periyar National Park'],
+  ['Kovalam', 'Kovalam Beach'],
+  ['Varkala', 'Varkala Beach'],
+  ['Wayanad', 'Wayanad district'],
+  ['Leh', 'Leh Ladakh'],
+  ['McLeod Ganj', 'Mcleodganj'],
+  ['Rishikesh', 'Hrishikesh'],
+  ['Shimla', 'Simla'],
+  ['Darjeeling', 'Darjiling'],
+];
+
+const aliasesOf = (name: string): string[] => {
+  const n = norm(name);
+  const group = PLACE_ALIASES.find((g) => g.some((a) => norm(a) === n));
+  return group ? group.filter((a) => norm(a) !== n) : [];
+};
+
+/**
+ * Names of a place to try: as typed, without brackets, before a comma, known
+ * alternate names, and with its town or state ("Echo Point, Munnar") for
+ * common names that need context.
+ */
+export function nameVariants(name: string, context = ''): string[] {
+  const base = [name.trim(), name.replace(/\s*\([^)]*\)/g, '').trim(), name.split(',')[0]?.trim() ?? ''];
+  const first = context.split(',').map((c) => c.trim()).find((c) => c && norm(c) !== norm(name));
+  const out = [...base, ...aliasesOf(base[1] ?? name), ...(first ? [`${base[1]}, ${first}`] : [])];
   return [...new Set(out.filter((n) => n.length > 1))];
 }
 
@@ -220,6 +265,8 @@ export function nameVariants(name: string): string[] {
 export async function findCover(q: CoverQuery, deps: { fetchImpl: typeof fetch; skip?: readonly string[] }): Promise<(CoverImage & { imageFile: string }) | null> {
   const json = async (url: string) => {
     const r = await deps.fetchImpl(url, { headers: { Accept: 'application/json' } });
+    // Temporary failures must not look like "no photo exists": they are retried, never saved.
+    if (r.status === 403 || r.status === 429 || r.status >= 500) throw new CoverLookupError(`Image search failed (${r.status}).`, r.status);
     if (!r.ok) throw new Error(`Image search failed (${r.status}).`);
     return r.json();
   };
@@ -239,7 +286,7 @@ export async function findCover(q: CoverQuery, deps: { fetchImpl: typeof fetch; 
     if (found) return found;
   }
   const plain = { ...q, wikipedia: null };
-  for (const name of nameVariants(q.name)) {
+  for (const name of nameVariants(q.name, q.context)) {
     const variant = { ...plain, name };
     for (const strategy of ['title', 'context', 'name'] as const) {
       if (strategy === 'name' && !variant.context) continue;

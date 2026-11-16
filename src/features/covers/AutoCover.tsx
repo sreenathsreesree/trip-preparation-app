@@ -1,10 +1,11 @@
 import { Image } from 'expo-image';
 import { Linking, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-import { AppText, Icon, IconButton } from '@/components/ui';
+import { AppText, Button, Icon, IconButton } from '@/components/ui';
 import { colors, spacing } from '@/theme';
 
 import { useAutoCover } from './useAutoCover';
+import { imageSource } from './wikimediaClient';
 import type { CoverQuery } from './wikimedia';
 
 /**
@@ -30,14 +31,14 @@ export function AutoCover({
   creditAtTop?: boolean;
   testID?: string;
 }) {
-  const { state, refresh, busy } = useAutoCover(subject, query);
+  const { state, refresh, retry, busy } = useAutoCover(subject, query);
   const cover = state.status === 'ready' ? state.cover : null;
   const uri = state.status === 'ready' ? state.uri : null;
   return (
     <View style={[styles.frame, style]} testID={testID}>
       {cover?.status === 'found' && uri ? (
         <>
-          <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={`${label}: ${cover.title}`} cachePolicy="memory-disk" transition={150} />
+          <Image source={imageSource(uri)} style={StyleSheet.absoluteFill} contentFit="cover" accessibilityLabel={`${label}: ${cover.title}`} cachePolicy="memory-disk" transition={150} />
           <View style={[styles.credit, creditAtTop && styles.creditTop]}>
             <AppText variant="caption" style={styles.creditText} numberOfLines={1} onPress={() => void Linking.openURL(cover.sourceUrl)} testID={testID ? `${testID}-credit` : undefined}>
               {cover.title} · {cover.credit} · {cover.license} · Wikimedia Commons
@@ -48,12 +49,29 @@ export function AutoCover({
           </View>
         </>
       ) : (
-        <View style={styles.placeholder} testID={testID ? `${testID}-${state.status === 'loading' ? 'loading' : 'none'}` : undefined}>
-          <Icon name="image-filter-hdr" size={compact ? 24 : 40} color={colors.textMuted} />
+        <View style={styles.placeholder} testID={testID ? `${testID}-${state.status === 'loading' ? 'loading' : state.status === 'error' ? 'error' : 'none'}` : undefined}>
+          <Icon name={state.status === 'error' ? 'image-off-outline' : 'image-filter-hdr'} size={compact ? 24 : 40} color={colors.textMuted} />
           {!compact ? (
-            <AppText variant="caption" tone="textMuted">
-              {state.status === 'loading' ? 'Finding a photo of this place…' : 'No suitable free photo found — add your own'}
-            </AppText>
+            <>
+              <AppText variant="caption" tone="textMuted" align="center">
+                {state.status === 'loading'
+                  ? 'Finding a photo of this place…'
+                  : state.status === 'error'
+                    ? 'Couldn’t load a photo right now (offline or the photo service is busy).'
+                    : 'No free photo of this place was found. Add your own, or search again later.'}
+              </AppText>
+              {state.status !== 'loading' ? (
+                <Button
+                  label={state.status === 'error' ? 'Retry' : 'Search again'}
+                  icon="refresh"
+                  size="sm"
+                  variant="secondary"
+                  loading={busy}
+                  onPress={() => void retry()}
+                  testID={testID ? `${testID}-retry` : undefined}
+                />
+              ) : null}
+            </>
           ) : null}
         </View>
       )}
@@ -63,7 +81,7 @@ export function AutoCover({
 
 const styles = StyleSheet.create({
   frame: { overflow: 'hidden', backgroundColor: colors.surfaceRaised },
-  placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
+  placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg },
   credit: {
     position: 'absolute',
     left: 0,

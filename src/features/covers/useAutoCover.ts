@@ -5,13 +5,16 @@ import { imageExists, saveImageBytes } from '@/lib/imageStore';
 
 import type { AutoCover } from './coverRepository';
 import { ensureAutoCover } from './coverService';
+import { wikimediaFetch } from './wikimediaClient';
 import type { CoverQuery } from './wikimedia';
 
 const IMAGE_MAX_BYTES = 4 * 1024 * 1024;
 
 /** Downloads one (already size-limited) Commons image; refuses anything that isn't an image or is unexpectedly large. */
 async function download(url: string): Promise<string | null> {
-  const r = await fetch(url);
+  // Identified request (Wikimedia blocks Android's default okhttp User-Agent); refusals and
+  // rate limits throw CoverLookupError (retry later), a missing or bad file returns null.
+  const r = await wikimediaFetch()(url);
   if (!r.ok) return null;
   const type = r.headers.get('Content-Type') ?? 'image/jpeg';
   if (!type.startsWith('image/')) return null;
@@ -51,10 +54,10 @@ export function useAutoCover(subject: { type: 'trip' | 'node'; id: string }, que
   const key = query ? `${subject.type}:${subject.id}:${query.wikipedia ?? ''}:${query.name}:${query.context}` : null;
 
   const run = useCallback(
-    async (refresh: boolean) => {
+    async (refresh: boolean, again = false) => {
       if (!query || !key) return;
       const { covers } = await getRepositories();
-      const cover = await limited(() => ensureAutoCover({ type: subject.type, id: subject.id }, query, { repo: covers, fetchImpl: (...a) => fetch(...a), download, exists: imageExists }, { refresh }));
+      const cover = await limited(() => ensureAutoCover({ type: subject.type, id: subject.id }, query, { repo: covers, fetchImpl: wikimediaFetch(), download, exists: imageExists }, { refresh, again }));
       setState({ key, value: { status: 'ready', cover, ...uris(cover) } });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -86,6 +89,20 @@ export function useAutoCover(subject: { type: 'trip' | 'node'; id: string }, que
     }
   }, [run]);
 
+  /** Searches again now: after a temporary failure, or when nothing suitable was found earlier. */
+  const retry = useCallback(async () => {
+    if (!key) return;
+    setBusy(true);
+    setState({ key, value: { status: 'loading' } });
+    try {
+      await run(false, true);
+    } catch {
+      setState({ key, value: { status: 'error' } });
+    } finally {
+      setBusy(false);
+    }
+  }, [key, run]);
+
   const current: CoverState = key && state?.key === key ? state.value : { status: 'loading' };
-  return { state: current, refresh, busy };
+  return { state: current, refresh, retry, busy };
 }

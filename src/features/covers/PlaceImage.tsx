@@ -9,6 +9,7 @@ import { colors, spacing } from '@/theme';
 import type { GeoPoint } from '../planner/model';
 import { cachedFetch } from '../remote/remoteCacheRepository';
 import { findCover, thumbVariant, type CoverImage } from './wikimedia';
+import { imageSource, wikimediaFetch } from './wikimediaClient';
 
 const MONTH_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -25,7 +26,7 @@ export function PlaceImage({ wikipedia, name, location }: { wikipedia: string; n
     void getRepositories()
       .then(({ remoteCache }) =>
         cachedFetch(remoteCache, { key: `placeimage:${wikipedia}`, kind: 'cover', source: 'Wikimedia Commons', maxAgeMs: MONTH_MS, now: new Date() }, () =>
-          findCover({ name, context: '', location, wikipedia }, { fetchImpl: (...a) => fetch(...a) }),
+          findCover({ name, context: '', location, wikipedia }, { fetchImpl: wikimediaFetch() }),
         ),
       )
       .then((r) => live && setImage({ key: wikipedia, value: r.payload }))
@@ -38,7 +39,7 @@ export function PlaceImage({ wikipedia, name, location }: { wikipedia: string; n
   if (!value) return null;
   return (
     <View>
-      <Image source={{ uri: thumbVariant(value.imageUrl, 500) }} style={styles.photo} contentFit="cover" accessibilityLabel={`Photo of ${name}`} cachePolicy="memory-disk" />
+      <Image source={imageSource(thumbVariant(value.imageUrl, 500))} style={styles.photo} contentFit="cover" accessibilityLabel={`Photo of ${name}`} cachePolicy="memory-disk" />
       <AppText variant="caption" tone="textMuted" style={styles.credit} numberOfLines={1}>
         Photo: {value.credit} · {value.license} · Wikimedia Commons
       </AppText>

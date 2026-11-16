@@ -9,6 +9,7 @@ import type { PlanNode } from '../planner/model';
 import { useTripPlan } from '../planner/plannerStore';
 import { nodeCoverQuery } from './coverQuery';
 import { useAutoCover } from './useAutoCover';
+import { imageSource } from './wikimediaClient';
 
 /**
  * A small picture of a destination for cards, route stops and lists. The
@@ -34,7 +35,7 @@ export function DestinationThumb({ tripId, node, size = 56, style, testID }: { t
   return (
     <View style={box} testID={testID}>
       {uri ? (
-        <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" recyclingKey={node.id} transition={120} accessibilityLabel={`Photo of ${node.name}`} />
+        <Image source={imageSource(uri)} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" recyclingKey={node.id} transition={120} accessibilityLabel={`Photo of ${node.name}`} />
       ) : (
         <View style={styles.placeholder}>
           <Icon name="image-filter-hdr" size={Math.round(size * 0.4)} color={colors.textMuted} />

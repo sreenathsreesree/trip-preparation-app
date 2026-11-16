@@ -104,7 +104,7 @@ describe('automatic covers', () => {
   it('never touches an own cover photo: those live in the destination profile, not here', async () => {
     const r = await setupRepositories();
     const repo = createCoverRepository(r.database);
-    await ensureAutoCover({ type: 'node', id: 'n1' }, q, { repo, fetchImpl: fakeWiki().fetchImpl, download: async () => null });
+    await ensureAutoCover({ type: 'node', id: 'n1' }, q, { repo, fetchImpl: fakeWiki().fetchImpl, download: async (u: string) => `file:///${u.length}.jpg` });
     const cols = (await r.database.getAllAsync<{ name: string }>("PRAGMA table_info('auto_covers')", [])).map((c) => c.name);
     expect(cols).not.toContain('cover_image_uri');
   });
