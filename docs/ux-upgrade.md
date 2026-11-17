@@ -141,3 +141,24 @@ this phase; nothing was deployed.
   Future sync path: add matching cloud tables (owner-scoped, RLS like `packing_entries`) and list
   them in the personal backup registry; until then a second device shows default priorities and
   offers old tasks again (converting there is still safe: the task is gone once synced).
+
+## Unified Packing and Checklist — phase 2: sections managed inline
+
+- **No Manage sections screen in the flow:** the expanded trip card on the Checklist tab lists the
+  sections with a drag handle (reorder by drag-and-drop) and a ⋮ menu: *Rename, icon and
+  settings*, *Move up*, *Move down* (keyboard / screen-reader fallback), *Delete section*
+  (confirmed; says how many tasks go; linked Inventory items are never touched). The old route
+  still works for deep links.
+- **Add section:** name (unique per trip, case-insensitive, max 60), icon, description, *Holds
+  physical items* (offers Add from Inventory) and optional starter tasks.
+- **From Inventory category:** pick a category → it becomes a section (or reuses the section
+  already linked to it, or one with the same name) and the Inventory picker opens filtered to
+  that category; items already in the section cannot be added twice. The picker also browses by
+  category and searches; quantities per item.
+- **Eligibility for Inventory** comes from the section's setting first, then its kind
+  (`holdsItems`). Old Packing / Clothing sections no longer offer it — packing lives in Packing.
+- **Local schema v18** (create-only): `checklist_section_settings` (icon, description,
+  holds-items, linked Inventory category). **Device-only**: sections themselves, their names and
+  order sync as before; the settings stay on this device. Future sync path: a cloud table keyed
+  by section id with the section's RLS, listed in the personal backup registry. Until then a
+  second device shows the default icon and kind-based Inventory eligibility.

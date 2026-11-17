@@ -1,7 +1,9 @@
 import type { Database } from '@/db/types';
 
 import type { ChecklistRepository } from './checklistRepository';
-import { emptyTaskDraft, type SectionKind } from './model';
+import type { IconName } from '@/theme/icons';
+
+import { emptyTaskDraft, type ChecklistOwner, type SectionKind } from './model';
 
 export interface ChecklistGroup {
   id: string;
@@ -19,6 +21,38 @@ export interface TaskLink {
 export const GROUP_LIMITS = { titleMax: 40, groupsPerSection: 30 } as const;
 
 export class SectionExtrasError extends Error {}
+
+/** A section's own settings (device-only, local v18). Missing values fall back to defaults. */
+export interface SectionSettings {
+  icon: IconName | null;
+  description: string;
+  /** Whether the section holds physical items (offers Add from Inventory). Null = default. */
+  holdsItems: boolean | null;
+  inventoryCategoryId: string | null;
+}
+
+export const EMPTY_SETTINGS: SectionSettings = { icon: null, description: '', holdsItems: null, inventoryCategoryId: null };
+
+/**
+ * Whether Add from Inventory is offered in a section: its own setting first; otherwise the
+ * default by kind (Packing and the user's own sections, except old packing sections whose items
+ * now belong in the Packing list, and own sections clearly about paperwork or errands).
+ */
+export function holdsItems(section: { kind: SectionKind; title: string }, settings?: Pick<SectionSettings, 'holdsItems'> | null): boolean {
+  if (settings && settings.holdsItems !== null) return settings.holdsItems;
+  if (isOldPackingSection(section)) return false;
+  return supportsInventory(section.kind, section.title);
+}
+
+export interface NewSectionInput {
+  title: string;
+  icon?: IconName | null;
+  description?: string;
+  holdsItems?: boolean | null;
+  inventoryCategoryId?: string | null;
+  /** Starter tasks, one per entry (empty ones are ignored). */
+  starterTasks?: readonly string[];
+}
 
 /**
  * Which checklist sections can hold Inventory items: packing lists and the
@@ -100,7 +134,110 @@ export function createSectionExtrasRepository(db: Database, deps: { createId: ()
     );
   }
 
+  async function settingsRow(sectionId: string): Promise<SectionSettings | null> {
+    const r = await db.getFirstAsync<{ icon: string | null; description: string; holds_items: number | null; inventory_category_id: string | null }>(
+      'SELECT icon, description, holds_items, inventory_category_id FROM checklist_section_settings WHERE section_id = ?',
+      [sectionId],
+    );
+    return r ? { icon: (r.icon as IconName | null) ?? null, description: r.description, holdsItems: r.holds_items === null ? null : r.holds_items === 1, inventoryCategoryId: r.inventory_category_id } : null;
+  }
+
+  async function tripSections(tripId: string) {
+    return db.getAllAsync<{ id: string; title: string; kind: SectionKind; position: number }>('SELECT id, title, kind, position FROM checklist_sections WHERE trip_id = ? ORDER BY position, created_at', [tripId]);
+  }
+
+  async function assertUniqueTitle(tripId: string, title: string, selfId?: string) {
+    const clean = title.trim().replace(/\s+/g, ' ');
+    if (!clean) throw new SectionExtrasError('Give the section a name.');
+    if (clean.length > 60) throw new SectionExtrasError('Keep the name under 60 characters.');
+    if ((await tripSections(tripId)).some((s) => s.id !== selfId && s.title.trim().toLowerCase() === clean.toLowerCase())) {
+      throw new SectionExtrasError('This trip already has a section with that name.');
+    }
+    return clean;
+  }
+
+  const api = {
+    /** Settings for the given sections (missing ones are not included). */
+    async settings(sectionIds: readonly string[]): Promise<Record<string, SectionSettings>> {
+      const out: Record<string, SectionSettings> = {};
+      for (const id of sectionIds) {
+        const row = await settingsRow(id);
+        if (row) out[id] = row;
+      }
+      return out;
+    },
+
+    async saveSettings(sectionId: string, patch: Partial<SectionSettings>): Promise<void> {
+      const current = (await settingsRow(sectionId)) ?? EMPTY_SETTINGS;
+      const next = { ...current, ...patch, description: (patch.description ?? current.description).trim().slice(0, 200) };
+      await db.runAsync(
+        `INSERT INTO checklist_section_settings (section_id, icon, description, holds_items, inventory_category_id, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (section_id) DO UPDATE SET icon = excluded.icon, description = excluded.description, holds_items = excluded.holds_items,
+           inventory_category_id = excluded.inventory_category_id, updated_at = excluded.updated_at`,
+        [sectionId, next.icon, next.description, next.holdsItems === null ? null : next.holdsItems ? 1 : 0, next.inventoryCategoryId, stamp()],
+      );
+    },
+
+    /** A new section (name, icon, description, whether it holds items, Inventory source, starter tasks). */
+    async createSection(owner: ChecklistOwner, input: NewSectionInput): Promise<string> {
+      if (owner.type !== 'trip') throw new SectionExtrasError('Sections with settings are for trips.');
+      const title = await assertUniqueTitle(owner.id, input.title);
+      const section = await deps.checklists.addSection(owner, title);
+      await api.saveSettings(section.id, {
+        icon: input.icon ?? null,
+        description: input.description ?? '',
+        holdsItems: input.holdsItems ?? null,
+        inventoryCategoryId: input.inventoryCategoryId ?? null,
+      });
+      for (const raw of input.starterTasks ?? []) {
+        const t = raw.trim();
+        if (t) await deps.checklists.addTask(section.id, { ...emptyTaskDraft('recommended'), title: t.slice(0, 120) });
+      }
+      return section.id;
+    },
+
+    async renameSection(tripId: string, sectionId: string, title: string): Promise<void> {
+      const clean = await assertUniqueTitle(tripId, title, sectionId);
+      await deps.checklists.renameSection(sectionId, clean);
+    },
+
+    /** Saves the order of a trip's sections (all of them, in the given order). */
+    async reorderSections(tripId: string, orderedIds: readonly string[]): Promise<void> {
+      const current = await tripSections(tripId);
+      const known = new Set(current.map((s) => s.id));
+      if (orderedIds.length !== current.length || orderedIds.some((id) => !known.has(id))) throw new SectionExtrasError('The sections changed; try again.');
+      const t = stamp();
+      await db.withTransactionAsync(async () => {
+        for (const [i, id] of orderedIds.entries()) await db.runAsync('UPDATE checklist_sections SET position = ?, updated_at = ? WHERE id = ? AND position <> ?', [i, t, id, i]);
+      });
+    },
+
+    /**
+     * The section for an Inventory category: one already linked to it, or with the same name,
+     * else a new one (holding items, with the category's icon). Adds nothing by itself.
+     */
+    async sectionForInventoryCategory(owner: ChecklistOwner, categoryId: string): Promise<{ sectionId: string; created: boolean }> {
+      if (owner.type !== 'trip') throw new SectionExtrasError('Sections with settings are for trips.');
+      const category = await db.getFirstAsync<{ name: string; icon: string }>('SELECT name, icon FROM inventory_categories WHERE id = ?', [categoryId]);
+      if (!category) throw new SectionExtrasError('That Inventory category no longer exists.');
+      const linked = await db.getFirstAsync<{ id: string }>(
+        `SELECT s.id FROM checklist_sections s JOIN checklist_section_settings x ON x.section_id = s.id WHERE s.trip_id = ? AND x.inventory_category_id = ?`,
+        [owner.id, categoryId],
+      );
+      if (linked) return { sectionId: linked.id, created: false };
+      const same = (await tripSections(owner.id)).find((s) => s.title.trim().toLowerCase() === category.name.trim().toLowerCase());
+      if (same) {
+        const own = await settingsRow(same.id);
+        await api.saveSettings(same.id, { inventoryCategoryId: categoryId, holdsItems: own?.holdsItems ?? true });
+        return { sectionId: same.id, created: false };
+      }
+      const sectionId = await api.createSection(owner, { title: category.name, icon: category.icon as IconName, holdsItems: true, inventoryCategoryId: categoryId });
+      return { sectionId, created: true };
+    },
+  };
+
   return {
+    ...api,
     groups,
 
     /** Group, Inventory item and quantity for every task of the section that has any. */
@@ -200,7 +337,9 @@ export function createSectionExtrasRepository(db: Database, deps: { createId: ()
     async addFromInventory(sectionId: string, groupId: string | null, items: readonly { itemId: string; quantity?: number }[]): Promise<{ added: number; skipped: number }> {
       const section = await db.getFirstAsync<{ kind: SectionKind; title: string }>('SELECT kind, title FROM checklist_sections WHERE id = ?', [sectionId]);
       if (!section) throw new SectionExtrasError('That section no longer exists.');
-      if (!supportsInventory(section.kind, section.title)) throw new SectionExtrasError('Inventory items can’t be added to this section.');
+      const own = await settingsRow(sectionId);
+      const allowed = own && own.holdsItems !== null ? own.holdsItems : supportsInventory(section.kind, section.title);
+      if (!allowed) throw new SectionExtrasError('Inventory items can’t be added to this section.');
       if (groupId) {
         const g = await db.getFirstAsync<{ section_id: string }>('SELECT section_id FROM checklist_groups WHERE id = ?', [groupId]);
         if (!g || g.section_id !== sectionId) throw new SectionExtrasError('Choose a group of this section.');

@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ActionSheet, AppText, Button, Card, Icon, IconButton, MiniStepper, Notice, OptionTile, SearchField, TextField } from '@/components/ui';
 import { toErrorMessage } from '@/lib/errors';
@@ -8,7 +8,8 @@ import { colors, radii, spacing } from '@/theme';
 
 import { useInventoryStore } from '../../inventory/inventoryStore';
 import type { ChecklistOwner, ChecklistSection } from '../model';
-import { GROUP_LIMITS, isClothingSection, supportsInventory, type ChecklistGroup } from '../sectionExtrasRepository';
+import { GROUP_LIMITS, holdsItems, isClothingSection, type ChecklistGroup } from '../sectionExtrasRepository';
+import { useSectionSettingsStore } from '../sectionSettingsStore';
 import { useSectionExtras, useSectionExtrasStore } from '../sectionExtrasStore';
 
 /** The dedicated organiser for a category, when there is one (bags, quantities, shopping). */
@@ -118,8 +119,24 @@ export function GroupsManager({ sectionId }: { sectionId: string }) {
  * records (nothing is copied into Inventory). Items already in this section
  * are shown as added.
  */
-export function InventoryPicker({ owner, section, groupId, onDone }: { owner: ChecklistOwner; section: ChecklistSection; groupId: string | null; onDone: (message: string) => void }) {
+export function InventoryPicker({
+  owner,
+  section,
+  groupId,
+  categoryId = null,
+  onDone,
+}: {
+  owner: ChecklistOwner;
+  section: ChecklistSection;
+  groupId: string | null;
+  /** Start browsing in this Inventory category. */
+  categoryId?: string | null;
+  onDone: (message: string) => void;
+}) {
   const items = useInventoryStore((s) => s.items);
+  const categories = useInventoryStore((s) => s.categories);
+  const settings = useSectionSettingsStore((s) => s.bySection[section.id] ?? null);
+  const [browse, setBrowse] = useState<string | null>(categoryId);
   const status = useInventoryStore((s) => s.status);
   const { links } = useSectionExtras(section.id);
   const [query, setQuery] = useState('');
@@ -132,10 +149,12 @@ export function InventoryPicker({ owner, section, groupId, onDone }: { owner: Ch
   const linked = new Set(Object.values(links).flatMap((l) => (l.inventoryItemId ? [l.inventoryItemId] : [])));
   const visible = items
     .filter((i) => !i.archivedAt)
+    .filter((i) => !browse || i.categoryId === browse || i.subcategoryId === browse)
     .filter((i) => !query.trim() || i.name.toLowerCase().includes(query.trim().toLowerCase()))
     .slice(0, 60);
   const count = Object.keys(chosen).length;
-  if (!supportsInventory(section.kind, section.title)) return null;
+  if (!holdsItems(section, settings)) return null;
+  const categoryName = (id: string | null) => (id ? (categories.find((c) => c.id === id)?.name ?? null) : null);
   return (
     <Card variant="outline" testID="section-inventory">
       <View style={styles.group}>
@@ -143,6 +162,14 @@ export function InventoryPicker({ owner, section, groupId, onDone }: { owner: Ch
           Add from Inventory
         </AppText>
         <SearchField value={query} onChangeText={setQuery} placeholder="Search your inventory" testID="section-inventory-search" />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          <OptionTile layout="chip" role="radio" label="All" icon="archive-outline" selected={browse === null} onPress={() => setBrowse(null)} testID="section-inventory-category-all" />
+          {categories
+            .filter((c) => !c.parentId)
+            .map((c) => (
+              <OptionTile key={c.id} layout="chip" role="radio" label={c.name} icon={c.icon} selected={browse === c.id} onPress={() => setBrowse(c.id)} testID={`section-inventory-category-${c.name}`} />
+            ))}
+        </ScrollView>
         {status !== 'ready' && items.length === 0 ? (
           <AppText variant="caption" tone="textMuted">
             Loading your inventory…
@@ -181,7 +208,7 @@ export function InventoryPicker({ owner, section, groupId, onDone }: { owner: Ch
                     {i.name}
                   </AppText>
                   <AppText variant="caption" tone="textMuted">
-                    {already ? 'Already in this section' : `You have ${i.quantity}`}
+                    {already ? 'Already in this section' : [`You have ${i.quantity}`, categoryName(i.subcategoryId) ?? categoryName(i.categoryId)].filter(Boolean).join(' · ')}
                   </AppText>
                 </View>
                 {qty !== undefined ? <MiniStepper label={`Quantity of ${i.name}`} value={qty} min={1} max={99} onChange={(v) => setChosen((c) => ({ ...c, [i.id]: v }))} /> : null}

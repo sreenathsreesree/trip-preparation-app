@@ -34,6 +34,7 @@ describe('migrate', () => {
         'checklist_groups_inventory',
         'calculator_history_expense_places',
         'unified_packing',
+        'checklist_section_settings',
       ],
     });
     expect(await getSchemaVersion(db)).toBe(migrations.length);
@@ -47,7 +48,8 @@ describe('migrate', () => {
         'auto_covers',
       'calculator_history',
       'checklist_groups',
-        'checklist_sections',
+        'checklist_section_settings',
+      'checklist_sections',
         'checklist_task_links',
       'checklist_task_resolutions',
       'checklist_tasks',

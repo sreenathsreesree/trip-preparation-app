@@ -144,6 +144,8 @@ export const SYNC_TABLES: readonly SyncTable[] = [
 
 /** Local tables that never sync, with the reason. */
 export const LOCAL_ONLY_TABLES: Readonly<Record<string, string>> = {
+  // Unified Checklist (local schema v18).
+  checklist_section_settings: 'Section icon, description, “holds items” and source Inventory category (local v18); sections themselves sync as before.',
   // Unified Packing (local schema v17).
   packing_entry_meta: 'A packing item’s priority (local v17); the packing items themselves sync as before.',
   checklist_task_resolutions: 'Decisions on old Packing checklist tasks (kept / moved / removed) (local v17).',

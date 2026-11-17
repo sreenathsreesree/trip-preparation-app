@@ -27,15 +27,13 @@ import { describeTripTiming, TRANSPORT_MODE_META, type TripSummary } from '../..
 import { useTripsStore } from '../../trips/tripsStore';
 import { useChecklistStore } from '../checklistStore';
 import { useEnsureTemplatesLoaded, useOwner, useOwnerChecklist } from '../hooks';
-import { groupTasksBySection, SECTION_META, tripOwner } from '../model';
-import { completionPercent, computeStats, openCount, preparationProgress } from '../readiness';
+import { groupTasksBySection, tripOwner } from '../model';
+import { preparationProgress } from '../readiness';
 import { isOldPackingSection } from '../sectionExtrasRepository';
 import { usePackingStore, useTripPacking } from '../../packing/packingStore';
 import { buildStarterSection } from '../starter';
 import { useTemplatesStore } from '../templatesStore';
-
-const sectionTestId = (section: { kind: string; title: string }) =>
-  `section-card-${section.kind === 'custom' ? section.title.toLowerCase().replace(/\s+/g, '-') : section.kind}`;
+import { SectionsPanel } from './SectionsPanel';
 
 /**
  * One trip on the Checklist tab: compact by default (readiness, progress, counts); expanded,
@@ -134,36 +132,9 @@ function TripChecklistCard({ trip, expanded, onToggle }: { trip: TripSummary; ex
                 </AppText>
                 <Icon name="chevron-right" size={18} tone="textMuted" />
               </Pressable>,
-              ...sections.map((section) => {
-              const meta = SECTION_META[section.kind];
-              const stats = computeStats(grouped.get(section.id) ?? []);
-              const essentials = openCount(stats.essential);
-              return (
-                <Pressable
-                  key={section.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${trip.name}, ${section.title}: ${stats.done} of ${stats.total} done${essentials > 0 ? `, ${essentials} essential open` : ''}`}
-                  onPress={() => router.push({ pathname: '/trips/[tripId]/sections/[sectionId]', params: { tripId: trip.id, sectionId: section.id } })}
-                  style={({ pressed }) => [styles.sectionRow, pressed && styles.pressed]}
-                  testID={sectionTestId(section)}
-                >
-                  <Icon name={meta.icon} color={meta.tint} size={18} />
-                  <AppText variant="body" style={styles.sectionTitle} numberOfLines={1}>
-                    {section.title}
-                  </AppText>
-                  {essentials > 0 ? <Icon name="alert-decagram" size={16} color={colors.danger} /> : null}
-                  <View style={styles.bar}>
-                    <ProgressBar value={completionPercent(stats) / 100} color={meta.tint} height={4} />
-                  </View>
-                  <AppText variant="caption" tone="textMuted" style={styles.count}>
-                    {stats.done}/{stats.total}
-                  </AppText>
-                  <Icon name="chevron-right" size={18} tone="textMuted" />
-                </Pressable>
-              );
-            }),
             ]
           )}
+          {ready && owner ? <SectionsPanel tripId={trip.id} owner={owner} sections={sections} allSectionIds={checklist.sections.map((x) => x.id)} grouped={grouped} /> : null}
 
           {needsVehicle && owner ? (
             <View style={styles.message}>
@@ -193,7 +164,6 @@ function TripChecklistCard({ trip, expanded, onToggle }: { trip: TripSummary; ex
           {toolError ? <AppText variant="caption" tone="danger" style={styles.message}>{toolError}</AppText> : null}
 
           <View style={styles.tools}>
-            <Button label="Manage sections" icon="tune-variant" variant="ghost" size="sm" onPress={() => router.push({ pathname: '/trips/[tripId]/sections', params: { tripId: trip.id } })} testID="manage-sections" />
             <Button label="Add from template" icon="playlist-plus" variant="ghost" size="sm" onPress={() => router.push({ pathname: '/trips/[tripId]/templates', params: { tripId: trip.id } })} testID="apply-templates" />
             <Button
               label="Save as template"

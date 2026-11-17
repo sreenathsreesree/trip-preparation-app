@@ -16,6 +16,7 @@ import { memoriesClothingCovers } from './0014_memories_clothing_covers';
 import { checklistGroupsInventory } from './0015_checklist_groups_inventory';
 import { calculatorHistoryExpensePlaces } from './0016_calculator_history_expense_places';
 import { unifiedPacking } from './0017_unified_packing';
+import { checklistSectionSettings } from './0018_checklist_section_settings';
 
 /**
  * Ordered list of schema migrations.
@@ -42,4 +43,5 @@ export const migrations: readonly Migration[] = [
   checklistGroupsInventory,
   calculatorHistoryExpensePlaces,
   unifiedPacking,
+  checklistSectionSettings,
 ];

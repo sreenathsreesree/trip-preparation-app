@@ -6,6 +6,15 @@
 
 import { BASE, byId, check, iso, launch, run, setStep, shot, text, waitText, within } from './harness.mjs';
 
+async function waitFor(fn, timeout = 15_000) {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) {
+    if (await fn()) return;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error('condition not met in time');
+}
+
 const now = new Date();
 const day = (d) => new Date(now.getFullYear(), now.getMonth() + 1, d);
 
@@ -354,7 +363,7 @@ await run('Packing categories test', async () => {
   check(true, 'the moved task is now a Clothing packing item');
   await page.goto(`${BASE}/checklists`);
   await byId(page, `checklist-trip-toggle-${tripBId}`).click();
-  const kept = page.getByRole('button', { name: /^Gokarna, Clothing:/ });
+  const kept = byId(page, `checklist-trip-sections-${tripBId}`).getByRole('button', { name: /^Clothing:/ });
   await kept.first().waitFor();
   check(/1 essential|0 of 1|of 1 done/.test((await kept.first().getAttribute('aria-label')) ?? '') || (await kept.count()) === 1, 'the old Clothing section stays while it still has a (kept) task');
   await kept.first().click();
@@ -381,6 +390,63 @@ await run('Packing categories test', async () => {
   await byId(page, `checklist-trip-sections-${tripAId}`).locator('[data-testid="section-card-documents"]').click();
   await byId(page, 'section-screen-documents').waitFor();
   check(page.url().includes(tripAId), 'a section opens for the right trip');
+
+  setStep('Checklist: sections managed inline (add, rename, reorder, delete, from Inventory)');
+  await page.goto(`${BASE}/checklists`);
+  await byId(page, `checklist-trip-toggle-${tripAId}`).waitFor({ timeout: 60_000 });
+  await byId(page, `checklist-trip-toggle-${tripAId}`).click();
+  const panel = byId(page, `sections-panel-${tripAId}`);
+  await panel.waitFor();
+  check((await byId(page, 'manage-sections').count()) === 0, 'no separate Manage sections button');
+  const order = async () => (await panel.locator('[data-testid^="section-card-"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid'))));
+  await byId(page, 'section-add-open').click();
+  await byId(page, 'section-form-name').fill('Camera kit');
+  await byId(page, 'section-form-description').fill('Lenses and batteries');
+  await byId(page, 'section-form-starter').fill('Charge batteries\nClean lens');
+  await byId(page, 'section-form-save').click();
+  await byId(page, 'section-card-camera-kit').waitFor();
+  check((await text(page, 'section-card-camera-kit')).includes('0/2'), 'new section with its two starter tasks');
+  await byId(page, 'section-add-open').click();
+  await byId(page, 'section-form-name').fill('camera KIT');
+  await byId(page, 'section-form-save').click();
+  await byId(page, 'section-form-error').waitFor();
+  check(true, 'a duplicate section name is refused');
+  await byId(page, 'section-form').getByRole('button', { name: 'Cancel' }).click();
+  await byId(page, 'section-menu-Camera kit').click();
+  await byId(page, 'sheet-action-edit').click();
+  await byId(page, 'section-form-name').fill('Camera gear');
+  await byId(page, 'section-form-save').click();
+  await byId(page, 'section-card-camera-gear').waitFor();
+  check(true, 'section renamed inline');
+  const before = await order();
+  await byId(page, 'section-menu-Camera gear').click();
+  await byId(page, 'sheet-action-up').click();
+  await waitFor(async () => (await order()).indexOf('section-card-camera-gear') === before.indexOf('section-card-camera-gear') - 1);
+  check(true, 'Move up reorders the sections');
+  await page.reload();
+  await byId(page, `checklist-trip-toggle-${tripAId}`).waitFor({ timeout: 60_000 });
+  await byId(page, `checklist-trip-toggle-${tripAId}`).click();
+  await panel.waitFor();
+  check((await order()).indexOf('section-card-camera-gear') === before.indexOf('section-card-camera-gear') - 1, 'the new order survives a reload');
+  await byId(page, 'section-from-category').click();
+  await byId(page, 'section-category-Electronics').click();
+  await byId(page, 'section-inventory').waitFor();
+  await byId(page, 'section-inventory-item-Phone charger').click();
+  await byId(page, 'section-inventory-add').click();
+  await waitText(page, 'sections-message', (v) => v.includes('1 added from Inventory'));
+  check(true, 'an Inventory category becomes a section with the chosen item');
+  await byId(page, 'section-card-electronics').waitFor();
+  check((await text(page, 'section-card-electronics')).includes('0/1'), 'the Electronics section holds the item');
+  await byId(page, 'section-from-category').click();
+  await byId(page, 'section-category-Electronics').click();
+  await byId(page, 'section-inventory').waitFor();
+  check(await byId(page, 'section-inventory-item-Phone charger').isDisabled(), 'the same category reuses its section; linked items cannot be added twice');
+  await panel.getByRole('button', { name: 'Done' }).last().click();
+  const dialogsBefore = dialogs.length;
+  await byId(page, 'section-menu-Camera gear').click();
+  await byId(page, 'sheet-action-delete').click();
+  await waitFor(async () => (await byId(page, 'section-card-camera-gear').count()) === 0);
+  check(dialogs.length > dialogsBefore && dialogs.at(-1).includes('Camera gear'), 'deleting a section asks first');
 
   setStep('Dashboard 2.0: overview only, six shortcuts, weather folded');
   await page.goto(tripA);

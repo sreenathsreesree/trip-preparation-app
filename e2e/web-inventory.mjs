@@ -227,7 +227,7 @@ await run('Inventory & packing test', async () => {
   await page.getByRole('checkbox', { name: 'Camera packed' }).click();
   await waitText(page, 'category-progress', (v) => v.includes('1 of 1 packed'));
   await byId(page, 'packing-category-screen').getByTestId('header-back').click();
-  await waitText(page, 'packing-screen', (v) => v.includes('1 of 3 items packed'));
+  await waitText(page, 'packing-screen', (v) => v.includes('1 of 3 packed'));
   check(true, 'packing progress counts items across categories');
 
   setStep('confirm trip A (reserves)');

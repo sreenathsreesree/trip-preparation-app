@@ -29,7 +29,8 @@ import { useOwner, useOwnerChecklist } from '../hooks';
 import { emptyTaskDraft, SECTION_META, sortByPosition, type ChecklistTask } from '../model';
 import { completionPercent, computeStats, openCount } from '../readiness';
 import { AddItemBar } from './AddItemBar';
-import { isClothingSection, isOldPackingSection, supportsInventory } from '../sectionExtrasRepository';
+import { holdsItems, isClothingSection, isOldPackingSection } from '../sectionExtrasRepository';
+import { useSectionSettingsStore } from '../sectionSettingsStore';
 import { useSectionExtras, useSectionExtrasStore } from '../sectionExtrasStore';
 import { CategoryShortcut, GroupChips, GroupsManager, InventoryPicker } from './SectionTools';
 import { TaskRow } from './TaskRow';
@@ -45,8 +46,10 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
   const [picking, setPicking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [moving, setMoving] = useState<ChecklistTask | null>(null);
+  const ownSettings = useSectionSettingsStore((s) => s.bySection[sectionId] ?? null);
   useEffect(() => {
     void useSectionExtrasStore.getState().load(sectionId);
+    void useSectionSettingsStore.getState().load([sectionId]);
   }, [sectionId]);
 
   const section = checklist.sections.find((s) => s.id === sectionId);
@@ -222,7 +225,7 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
               return g ? useSectionExtrasStore.getState().addManual(owner, sectionId, g, title, priority) : addTask(owner, sectionId, { ...emptyTaskDraft(priority), title });
             }}
           />
-          {section && supportsInventory(section.kind, section.title) ? (
+          {section && holdsItems(section, ownSettings) ? (
             <Button
               label={picking ? 'Close Inventory' : 'Add from Inventory'}
               icon="archive-arrow-down-outline"
@@ -268,7 +271,7 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
         <EmptyState
           icon={meta.icon}
           title="Nothing here yet"
-          message={section && supportsInventory(section.kind, section.title) ? 'Add a task above, or add things you own with Add from Inventory.' : 'Add your first task using the field above.'}
+          message={section && holdsItems(section, ownSettings) ? 'Add a task above, or add things you own with Add from Inventory.' : 'Add your first task using the field above.'}
         />
       ) : reordering ? (
         <View style={styles.group}>
