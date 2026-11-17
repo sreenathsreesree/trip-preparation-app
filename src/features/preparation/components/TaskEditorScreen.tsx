@@ -9,8 +9,10 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  MiniStepper,
   Notice,
   OptionTile,
+  SearchField,
   TextField,
   ToggleRow,
 } from '@/components/ui';
@@ -22,7 +24,10 @@ import { spacing } from '@/theme';
 import { getRepositories } from '@/db/repositories';
 
 import { useChecklistStore } from '../checklistStore';
-import type { TaskLink } from '../sectionExtrasRepository';
+import { holdsItems, isOldPackingSection, type TaskLink } from '../sectionExtrasRepository';
+import { useSectionSettingsStore } from '../sectionSettingsStore';
+import { useEnsureInventoryLoaded } from '../../inventory/hooks';
+import { useInventoryStore } from '../../inventory/inventoryStore';
 import { useSectionExtras, useSectionExtrasStore } from '../sectionExtrasStore';
 import { useEnsureTemplatesLoaded, useOwner, useOwnerChecklist } from '../hooks';
 import {
@@ -92,6 +97,25 @@ function TaskForm({ owner, task }: { owner: ChecklistOwner; task: ChecklistTask 
   }, [isTrip, sectionId]);
   const groupChoice = groupId && extras.groups.some((g) => g.id === groupId) ? groupId : null;
 
+  // Inventory source and quantity (trip checklists; sections that hold items).
+  useEnsureInventoryLoaded();
+  const inventory = useInventoryStore((s) => s.items);
+  const [itemId, setItemId] = useState<string | null | undefined>(undefined);
+  const [quantity, setQuantity] = useState<number | null>(null);
+  const [itemQuery, setItemQuery] = useState('');
+  const chosenItem = itemId !== undefined ? itemId : (link?.inventoryItemId ?? null);
+  const chosenQty = quantity ?? link?.quantity ?? 1;
+  const targetSection = checklist.sections.find((s) => s.id === sectionId);
+  const targetSettings = useSectionSettingsStore((s) => s.bySection[sectionId] ?? null);
+  useEffect(() => {
+    if (isTrip) void useSectionSettingsStore.getState().load([sectionId]);
+  }, [isTrip, sectionId]);
+  const canHoldItems = Boolean(isTrip && targetSection && holdsItems(targetSection, targetSettings));
+  const itemName = (id: string | null) => (id ? (inventory.find((i) => i.id === id)?.name ?? link?.inventoryItemName ?? 'an item') : null);
+  const itemMatches = itemQuery.trim()
+    ? inventory.filter((i) => !i.archivedAt && i.name.toLowerCase().includes(itemQuery.trim().toLowerCase())).slice(0, 8)
+    : [];
+
   async function save() {
     setRevealed(true);
     if (Object.keys(errors).length > 0) return;
@@ -107,6 +131,8 @@ function TaskForm({ owner, task }: { owner: ChecklistOwner; task: ChecklistTask 
         await useSectionExtrasStore.getState().setTaskGroup(sectionId, task.id, groupChoice);
         if (sectionId !== task.sectionId) await useSectionExtrasStore.getState().load(task.sectionId);
       }
+      if (isTrip && chosenItem !== (link?.inventoryItemId ?? null)) await useSectionExtrasStore.getState().setInventoryLink(sectionId, task.id, chosenItem);
+      if (isTrip && chosenItem && chosenQty !== (link?.quantity ?? 1)) await useSectionExtrasStore.getState().setQuantity(sectionId, task.id, chosenQty);
       if (isTrip && isDone !== task.isDone) await toggleTask(owner, task.id);
       successFeedback();
       goBackOrHome();
@@ -188,7 +214,7 @@ function TaskForm({ owner, task }: { owner: ChecklistOwner; task: ChecklistTask 
             Section
           </AppText>
           <View style={styles.chips} accessibilityRole="radiogroup" accessibilityLabel="Section">
-            {checklist.sections.map((section) => (
+            {checklist.sections.filter((section) => section.id === task.sectionId || !isOldPackingSection(section)).map((section) => (
               <OptionTile
                 key={section.id}
                 layout="chip"
@@ -219,14 +245,35 @@ function TaskForm({ owner, task }: { owner: ChecklistOwner; task: ChecklistTask 
         </View>
       ) : null}
 
-      {isTrip && link?.inventoryItemId ? (
-        <Notice
-          tone="info"
-          icon="archive-outline"
-          title={`From your Inventory: ${link.inventoryItemName ?? 'an item'} · ×${link.quantity}`}
-          message="Linked to the original Inventory item. Editing, moving or deleting this task never changes or deletes it."
-          testID="task-inventory-source"
-        />
+      {isTrip && chosenItem ? (
+        <View style={styles.group}>
+          <Notice
+            tone="info"
+            icon="archive-outline"
+            title={`From your Inventory: ${itemName(chosenItem)} · ×${chosenQty}`}
+            message="Linked to the original Inventory item. Editing, moving or deleting this task never changes or deletes it."
+            testID="task-inventory-source"
+          />
+          <View style={styles.row}>
+            <AppText variant="label" tone="textSecondary" style={styles.flex}>
+              Quantity to take
+            </AppText>
+            <MiniStepper label="Quantity to take" value={chosenQty} min={1} max={99} onChange={setQuantity} testID="task-quantity" />
+          </View>
+          <Button label="Unlink from Inventory" icon="link-off" variant="ghost" size="sm" onPress={() => setItemId(null)} style={styles.left} testID="task-inventory-unlink" />
+        </View>
+      ) : canHoldItems ? (
+        <View style={styles.group} testID="task-inventory-link">
+          <AppText variant="label" tone="textSecondary">
+            Inventory item (optional)
+          </AppText>
+          <SearchField value={itemQuery} onChangeText={setItemQuery} placeholder="Link to something you own" testID="task-inventory-search" />
+          <View style={styles.chips}>
+            {itemMatches.map((i) => (
+              <OptionTile key={i.id} layout="chip" label={i.name} icon="archive-outline" selected={false} onPress={() => { setItemId(i.id); setItemQuery(''); }} testID={`task-inventory-option-${i.name}`} />
+            ))}
+          </View>
+        </View>
       ) : null}
 
       {isTrip ? (
@@ -304,5 +351,16 @@ const styles = StyleSheet.create({
   },
   delete: {
     alignSelf: 'flex-start',
+  },
+  left: {
+    alignSelf: 'flex-start',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  flex: {
+    flex: 1,
   },
 });

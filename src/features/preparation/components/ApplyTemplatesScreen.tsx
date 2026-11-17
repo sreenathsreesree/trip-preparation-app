@@ -5,6 +5,8 @@ import { StyleSheet, View } from 'react-native';
 import { goBackOrHome, ScreenHeader } from '@/components/layout/ScreenHeader';
 import { Screen } from '@/components/layout/Screen';
 import { Button, EmptyState, ErrorState, LoadingState, Notice } from '@/components/ui';
+import { getRepositories } from '@/db/repositories';
+import { confirmAction } from '@/lib/confirm';
 import { toErrorMessage } from '@/lib/errors';
 import { successFeedback } from '@/lib/haptics';
 import { spacing } from '@/theme';
@@ -12,6 +14,9 @@ import { spacing } from '@/theme';
 import { useTrip } from '../../trips/hooks';
 import { useChecklistStore, type ApplyResult } from '../checklistStore';
 import { useEnsureTemplatesLoaded } from '../hooks';
+import { mergePlans, tripOwner } from '../model';
+import { splitTemplatePlan } from '../sectionExtrasRepository';
+import { useUnifiedPackingStore } from '../../packing/unifiedPackingStore';
 import { useTemplatesStore } from '../templatesStore';
 import { TemplatePicker } from './TemplatePicker';
 
@@ -27,16 +32,33 @@ export function ApplyTemplatesScreen({ tripId }: { tripId: string | undefined })
   const [selected, setSelected] = useState<string[]>([]);
   const [applying, setApplying] = useState(false);
   const [result, setResult] = useState<ApplyResult | null>(null);
+  const [packingResult, setPackingResult] = useState<{ added: number; skipped: number; declined: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function apply() {
     if (!tripId || selected.length === 0) return;
     setApplying(true);
     setError(null);
+    setPackingResult(null);
     try {
-      const outcome = await useChecklistStore.getState().applyTemplates(tripId, selected);
+      const { templates: repo } = await getRepositories();
+      const plan = mergePlans(...(await Promise.all(selected.map((id) => repo.toPlan(id)))));
+      const { checklist, packing } = splitTemplatePlan(plan);
+      // Packing lives in the Packing list: the template's packing sections become packing items, if approved.
+      let packed: { added: number; skipped: number; declined: number } | null = null;
+      if (packing.length > 0) {
+        const ok = await confirmAction({
+          title: 'Add the packing items to Packing?',
+          message: `The template has ${plural(packing.length, 'packing item')}. They go to this trip’s Packing list (clothes to Clothing, the rest to Miscellaneous), not into the checklist. Items already on the list are skipped.`,
+          confirmLabel: 'Add to Packing',
+        });
+        packed = ok ? { ...(await useUnifiedPackingStore.getState().addTemplateItems(tripId, packing)), declined: 0 } : { added: 0, skipped: 0, declined: packing.length };
+      }
+      const outcome = checklist.sections.length > 0 ? await useChecklistStore.getState().applyPlan(tripOwner(tripId), checklist) : { added: 0, skipped: 0, sectionsAdded: 0 };
       successFeedback();
-      setResult(outcome);
+      // With only packing sections, the checklist line would read “Nothing new to add”: show the packing one alone.
+      setResult(checklist.sections.length > 0 || !packed ? outcome : null);
+      setPackingResult(packed);
       setSelected([]);
     } catch (err) {
       setError(toErrorMessage(err, 'Could not add tasks from the templates.'));
@@ -51,7 +73,7 @@ export function ApplyTemplatesScreen({ tripId }: { tripId: string | undefined })
       footer={
         templates.length > 0 ? (
           <View style={styles.footer}>
-            <Button label={result ? 'Back to trip' : 'Cancel'} variant="secondary" onPress={goBackOrHome} />
+            <Button label={result || packingResult ? 'Back to trip' : 'Cancel'} variant="secondary" onPress={goBackOrHome} />
             <Button
               label={selected.length > 1 ? `Add from ${selected.length} templates` : 'Add tasks'}
               icon="playlist-plus"
@@ -70,7 +92,7 @@ export function ApplyTemplatesScreen({ tripId }: { tripId: string | undefined })
         backIcon="close"
         eyebrow={trip?.name}
         title="Add from template"
-        subtitle="Copies tasks into this trip. Nothing already on the trip is changed, removed or unticked."
+        subtitle="Copies tasks into this trip; packing items go to the Packing list. Nothing already on the trip is changed, removed or unticked."
       />
 
       {result ? (
@@ -86,6 +108,22 @@ export function ApplyTemplatesScreen({ tripId }: { tripId: string | undefined })
             .filter(Boolean)
             .join(' ')}
           testID="apply-result"
+        />
+      ) : null}
+      {packingResult ? (
+        <Notice
+          tone={packingResult.declined ? 'info' : 'success'}
+          icon="bag-suitcase-outline"
+          title={
+            packingResult.declined
+              ? `${plural(packingResult.declined, 'packing item')} not added`
+              : packingResult.added > 0
+                ? `Added ${plural(packingResult.added, 'packing item')} to Packing`
+                : 'Those packing items are already on the list'
+          }
+          message={packingResult.skipped > 0 ? `${plural(packingResult.skipped, 'item')} already on the Packing list ${packingResult.skipped === 1 ? 'was' : 'were'} skipped.` : undefined}
+          action={tripId ? { label: 'Open Packing', icon: 'bag-suitcase-outline', onPress: () => router.push({ pathname: '/trips/[tripId]/packing', params: { tripId } }) } : undefined}
+          testID="apply-packing-result"
         />
       ) : null}
       {error ? <Notice tone="danger" title="Not added" message={error} /> : null}

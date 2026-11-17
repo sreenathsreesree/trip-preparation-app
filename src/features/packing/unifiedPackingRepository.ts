@@ -268,6 +268,38 @@ export function createUnifiedPackingRepository(
       return { entryId: entry.id };
     },
 
+    /**
+     * Template packing sections (approved by the user) become packing items instead of checklist
+     * tasks: Clothing-type sections go to Clothing, others to Miscellaneous. An item whose name is
+     * already on the trip's packing list is skipped, so applying a template twice adds nothing twice.
+     */
+    async addTemplateItems(
+      tripId: string,
+      items: readonly { title: string; priority: Priority; description?: string; notes?: string; clothing: boolean }[],
+    ): Promise<{ added: number; skipped: number }> {
+      const existing = new Set(
+        (await db.getAllAsync<{ name: string }>('SELECT name FROM packing_entries WHERE trip_id = ?', [tripId])).map((r) => r.name.trim().toLowerCase()),
+      );
+      const clothing = await categoryBySystemKey('clothing');
+      const misc = await categoryBySystemKey('misc');
+      let added = 0;
+      let skipped = 0;
+      for (const item of items) {
+        const name = item.title.trim().slice(0, 80);
+        const key = name.toLowerCase();
+        if (!name || existing.has(key)) {
+          skipped += 1;
+          continue;
+        }
+        const notes = [item.description ?? '', item.notes ?? ''].map((x) => x.trim()).filter(Boolean).join('\n').slice(0, 300);
+        const entry = await deps.packing.addEntry(tripId, { name, quantity: 1, categoryId: item.clothing ? clothing : misc, inventoryItemId: null, notes, source: 'manual' });
+        await repo.setPriority(entry.id, item.priority);
+        existing.add(key);
+        added += 1;
+      }
+      return { added, skipped };
+    },
+
     /** "Remove from trip": deletes the checklist task only (a linked Inventory item is never touched). */
     async removeTask(tripId: string, taskId: string): Promise<void> {
       const previous = await repo.decision(taskId);

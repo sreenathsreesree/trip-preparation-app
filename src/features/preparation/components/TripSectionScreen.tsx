@@ -18,7 +18,10 @@ import {
   Notice,
   ProgressBar,
   Tag,
+  type SheetAction,
 } from '@/components/ui';
+import { getRepositories } from '@/db/repositories';
+import { confirmAction } from '@/lib/confirm';
 import { toErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing } from '@/theme';
 
@@ -31,6 +34,7 @@ import { completionPercent, computeStats, openCount } from '../readiness';
 import { AddItemBar } from './AddItemBar';
 import { holdsItems, isClothingSection, isOldPackingSection } from '../sectionExtrasRepository';
 import { useSectionSettingsStore } from '../sectionSettingsStore';
+import { SectionArrangeList, type TaskReorder } from './SectionArrangeList';
 import { useSectionExtras, useSectionExtrasStore } from '../sectionExtrasStore';
 import { CategoryShortcut, GroupChips, GroupsManager, InventoryPicker } from './SectionTools';
 import { TaskRow } from './TaskRow';
@@ -38,7 +42,7 @@ import { TaskRow } from './TaskRow';
 function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string }) {
   const owner = useOwner('trip', trip.id);
   const checklist = useOwnerChecklist(owner);
-  const { load, addTask, toggleTask, deleteTask, moveTask } = useChecklistStore.getState();
+  const { load, addTask, toggleTask, deleteTask } = useChecklistStore.getState();
   const [actionError, setActionError] = useState<string | null>(null);
   const [reordering, setReordering] = useState(false);
   const extras = useSectionExtras(sectionId);
@@ -46,6 +50,8 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
   const [picking, setPicking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [moving, setMoving] = useState<ChecklistTask | null>(null);
+  const [menuFor, setMenuFor] = useState<ChecklistTask | null>(null);
+  const [relocating, setRelocating] = useState<ChecklistTask | null>(null);
   const ownSettings = useSectionSettingsStore((s) => s.bySection[sectionId] ?? null);
   useEffect(() => {
     void useSectionExtrasStore.getState().load(sectionId);
@@ -92,7 +98,7 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
     const g = extras.links[task.id]?.groupId ?? null;
     return g && groupIds.has(g) ? g : null;
   };
-  const row = (task: ChecklistTask, index?: number) => {
+  const row = (task: ChecklistTask, reorder?: TaskReorder) => {
     const link = extras.links[task.id];
     const fromInventory = Boolean(link?.inventoryItemId);
     return (
@@ -105,26 +111,49 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
             onToggle={(t) => run(() => toggleTask(owner, t.id), 'Could not update the task.')}
             onOpen={openTask}
             onDelete={(t) => run(() => deleteTask(owner, t.id), 'Could not delete the task.')}
-            reorder={
-              reordering && index !== undefined
-                ? {
-                    canMoveUp: index > 0,
-                    canMoveDown: index < tasks.length - 1,
-                    onMove: (direction) => run(() => moveTask(owner, task.id, direction), 'Could not move the task.'),
-                  }
-                : undefined
-            }
+            reorder={reordering ? reorder : undefined}
           />
         </View>
         {!reordering && fromInventory ? (
           <MiniStepper label={`Quantity of ${task.title}`} value={link?.quantity ?? 1} min={1} max={99} onChange={(q) => run(() => useSectionExtrasStore.getState().setQuantity(sectionId, task.id, q), 'Could not change the quantity.')} testID={`task-qty-${task.title}`} />
         ) : null}
-        {!reordering && extras.groups.length > 0 ? (
-          <IconButton icon="folder-move-outline" size="sm" variant="plain" accessibilityLabel={`Move ${task.title} to another group`} onPress={() => setMoving(task)} testID={`task-move-${task.title}`} />
+        {!reordering ? (
+          <IconButton icon="dots-vertical" size="sm" variant="plain" accessibilityLabel={`${task.title} options`} onPress={() => setMenuFor(task)} testID={`task-menu-${task.title}`} />
         ) : null}
       </View>
     );
   };
+
+  const otherSections = checklist.sections.filter((s) => s.id !== sectionId && !isOldPackingSection(s));
+
+  async function moveToSection(task: ChecklistTask, targetId: string) {
+    const { sectionExtras } = await getRepositories();
+    const clash = await sectionExtras.linkConflict(task.id, targetId);
+    if (clash) throw new Error(`“${clash}” from your Inventory is already in that section.`);
+    await useChecklistStore.getState().updateTask(owner!, task.id, { title: task.title, description: task.description, notes: task.notes, priority: task.priority }, { sectionId: targetId });
+    // It arrives outside any group of the new section.
+    await useSectionExtrasStore.getState().setTaskGroup(targetId, task.id, null);
+    await useSectionExtrasStore.getState().load(sectionId);
+    const target = checklist.sections.find((s) => s.id === targetId);
+    setMessage(`Moved “${task.title}” to ${target?.title ?? 'the other section'}.`);
+  }
+
+  async function removeTask(task: ChecklistTask) {
+    const ok = await confirmAction({
+      title: 'Remove this task from the trip?',
+      message: `“${task.title}” is deleted from this checklist.${extras.links[task.id]?.inventoryItemId ? ' The Inventory item it came from is not touched.' : ''}`,
+      confirmLabel: 'Remove task',
+      destructive: true,
+    });
+    if (ok) run(() => deleteTask(owner!, task.id), 'Could not delete the task.');
+  }
+
+  const taskMenu = (task: ChecklistTask): SheetAction[] => [
+    { key: 'edit', label: 'Edit details', icon: 'pencil-outline', onPress: () => { setMenuFor(null); openTask(task); } },
+    ...(extras.groups.length > 0 ? [{ key: 'group', label: 'Move to a group', icon: 'folder-move-outline' as const, onPress: () => { setMenuFor(null); setMoving(task); } }] : []),
+    ...(otherSections.length > 0 ? [{ key: 'section', label: 'Move to another section', icon: 'arrow-right' as const, onPress: () => { setMenuFor(null); setRelocating(task); } }] : []),
+    { key: 'delete', label: 'Remove from this trip', icon: 'trash-can-outline', destructive: true, onPress: () => { setMenuFor(null); void removeTask(task); } },
+  ];
 
   /** Open and done tasks under one heading. */
   const block = (key: string, title: string | null, list: ChecklistTask[]) => {
@@ -170,9 +199,9 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
         title={section?.title ?? 'Checklist'}
         subtitle={section && section.kind !== 'custom' ? meta.description : undefined}
         trailing={
-          tasks.length > 1 ? (
+          tasks.length > 1 || extras.groups.length > 1 ? (
             <Button
-              label={reordering ? 'Done' : 'Reorder'}
+              label={reordering ? 'Done' : 'Arrange'}
               icon={reordering ? 'check' : 'swap-vertical'}
               variant={reordering ? 'primary' : 'secondary'}
               size="sm"
@@ -274,12 +303,13 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
           message={section && holdsItems(section, ownSettings) ? 'Add a task above, or add things you own with Add from Inventory.' : 'Add your first task using the field above.'}
         />
       ) : reordering ? (
-        <View style={styles.group}>
-          <AppText variant="label" tone="textMuted">
-            Use the arrows to change the order
-          </AppText>
-          {tasks.map((task, index) => row(task, index))}
-        </View>
+        <SectionArrangeList
+          groups={extras.groups}
+          tasks={tasks}
+          groupOf={groupOf}
+          onArrange={(layout) => run(() => useSectionExtrasStore.getState().arrangeSection(owner, sectionId, layout), 'Could not move it.')}
+          renderTask={(task, reorder) => row(task, reorder)}
+        />
       ) : (
         <View style={styles.groups}>
           {extras.groups.length > 0 ? (
@@ -328,6 +358,29 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
         ]}
         onClose={() => setMoving(null)}
         testID="task-move-sheet"
+      />
+      <ActionSheet
+        visible={menuFor !== null}
+        title={menuFor?.title ?? ''}
+        actions={menuFor ? taskMenu(menuFor) : []}
+        onClose={() => setMenuFor(null)}
+        testID="task-menu-sheet"
+      />
+      <ActionSheet
+        visible={relocating !== null}
+        title={relocating ? `Move “${relocating.title}” to another section` : ''}
+        actions={otherSections.map((target) => ({
+          key: target.id,
+          label: target.title,
+          icon: 'arrow-right' as const,
+          onPress: () => {
+            const t = relocating;
+            setRelocating(null);
+            if (t) run(() => moveToSection(t, target.id), 'Could not move it.');
+          },
+        }))}
+        onClose={() => setRelocating(null)}
+        testID="task-section-sheet"
       />
     </Screen>
   );

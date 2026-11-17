@@ -177,12 +177,20 @@ export async function launch() {
   page.on('pageerror', (error) => errors.push(error.message));
   // Confirmation dialogs (delete, remove) are accepted; the message is recorded.
   const dialogs = [];
+  // `dismissNext()` declines the next confirmation instead (to test the "no" path).
+  let dismiss = 0;
   page.on('dialog', (dialog) => {
     dialogs.push(dialog.message());
-    void dialog.accept();
+    if (dismiss > 0) {
+      dismiss -= 1;
+      void dialog.dismiss();
+    } else void dialog.accept();
   });
+  const dismissNext = () => {
+    dismiss += 1;
+  };
   session.page = page;
-  return { context, page, errors, dialogs };
+  return { context, page, errors, dialogs, dismissNext };
 }
 
 export async function shot(page, name) {

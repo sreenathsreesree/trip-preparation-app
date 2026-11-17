@@ -3,7 +3,7 @@ import type { Database } from '@/db/types';
 import type { ChecklistRepository } from './checklistRepository';
 import type { IconName } from '@/theme/icons';
 
-import { emptyTaskDraft, type ChecklistOwner, type SectionKind } from './model';
+import { emptyTaskDraft, type ChecklistOwner, type ChecklistPlan, type Priority, type SectionKind } from './model';
 
 export interface ChecklistGroup {
   id: string;
@@ -81,6 +81,20 @@ export function isClothingSection(section: { kind: SectionKind; title: string })
  * Packing section and the Clothing section. Its remaining tasks are resolved from Packing; it is
  * shown only while it still has tasks.
  */
+/**
+ * Splits a template plan: packing sections (Packing, Clothing) become packing items for the
+ * Packing list; every other section stays a checklist section.
+ */
+export function splitTemplatePlan(plan: ChecklistPlan): {
+  checklist: ChecklistPlan;
+  packing: { title: string; priority: Priority; description?: string; notes?: string; clothing: boolean }[];
+} {
+  const packing = plan.sections
+    .filter(isOldPackingSection)
+    .flatMap((section) => section.tasks.map((t) => ({ title: t.title, priority: t.priority, description: t.description, notes: t.notes, clothing: isClothingSection(section) })));
+  return { checklist: { sections: plan.sections.filter((s) => !isOldPackingSection(s)) }, packing };
+}
+
 export function isOldPackingSection(section: { kind: SectionKind; title: string }): boolean {
   return section.kind === 'packing' || isClothingSection(section);
 }
@@ -316,6 +330,56 @@ export function createSectionExtrasRepository(db: Database, deps: { createId: ()
         if (!g || g.section_id !== sectionId) throw new SectionExtrasError('Choose a group of the same section.');
       }
       await setLink(taskId, { groupId });
+    },
+
+    /**
+     * Saves a section's whole arrangement after a drag or Move up / down: the order of its groups
+     * and, in display order, every task with its group (null = not in a group). Refused when the
+     * section changed meanwhile, so a stale drag never loses or duplicates a task.
+     */
+    async arrangeSection(sectionId: string, layout: { groupIds: readonly string[]; tasks: readonly { id: string; groupId: string | null }[] }): Promise<void> {
+      const currentGroups = await groups(sectionId);
+      const currentTasks = await db.getAllAsync<{ id: string; position: number; group_id: string | null }>(
+        'SELECT t.id, t.position, l.group_id FROM checklist_tasks t LEFT JOIN checklist_task_links l ON l.task_id = t.id WHERE t.section_id = ?',
+        [sectionId],
+      );
+      const groupSet = new Set(currentGroups.map((g) => g.id));
+      const taskMap = new Map(currentTasks.map((t) => [t.id, t]));
+      const sameGroups = layout.groupIds.length === groupSet.size && layout.groupIds.every((id) => groupSet.has(id)) && new Set(layout.groupIds).size === groupSet.size;
+      const sameTasks = layout.tasks.length === taskMap.size && layout.tasks.every((t) => taskMap.has(t.id)) && new Set(layout.tasks.map((t) => t.id)).size === taskMap.size;
+      if (!sameGroups || !sameTasks) throw new SectionExtrasError('This section changed meanwhile; try again.');
+      if (layout.tasks.some((t) => t.groupId !== null && !groupSet.has(t.groupId))) throw new SectionExtrasError('Choose a group of the same section.');
+      const t = stamp();
+      await db.withTransactionAsync(async () => {
+        for (const [i, id] of layout.groupIds.entries()) await db.runAsync('UPDATE checklist_groups SET position = ?, updated_at = ? WHERE id = ? AND position <> ?', [i, t, id, i]);
+        for (const [i, task] of layout.tasks.entries()) {
+          const before = taskMap.get(task.id);
+          if (before && before.position !== i) await db.runAsync('UPDATE checklist_tasks SET position = ?, updated_at = ? WHERE id = ?', [i, t, task.id]);
+          const groupBefore = before?.group_id && groupSet.has(before.group_id) ? before.group_id : null;
+          if (groupBefore !== task.groupId) await setLink(task.id, { groupId: task.groupId });
+        }
+      });
+    },
+
+    /**
+     * Links a task to an Inventory item (or unlinks it with null). The item is referenced, never
+     * copied or changed; an item already linked to another task of the same section is refused.
+     */
+    async setInventoryLink(taskId: string, itemId: string | null): Promise<void> {
+      const sectionId = await sectionOfTask(taskId);
+      if (!sectionId) throw new SectionExtrasError('That task no longer exists.');
+      if (itemId) {
+        const item = await db.getFirstAsync<{ id: string }>('SELECT id FROM inventory_items WHERE id = ?', [itemId]);
+        if (!item) throw new SectionExtrasError('That Inventory item no longer exists.');
+        const section = await db.getFirstAsync<{ kind: SectionKind; title: string }>('SELECT kind, title FROM checklist_sections WHERE id = ?', [sectionId]);
+        if (section && !holdsItems(section, await settingsRow(sectionId))) throw new SectionExtrasError('This section does not hold Inventory items.');
+        const taken = await db.getFirstAsync<{ id: string }>(
+          'SELECT l.task_id AS id FROM checklist_task_links l JOIN checklist_tasks t ON t.id = l.task_id WHERE t.section_id = ? AND l.inventory_item_id = ? AND l.task_id <> ?',
+          [sectionId, itemId, taskId],
+        );
+        if (taken) throw new SectionExtrasError('That Inventory item is already in this section.');
+      }
+      await setLink(taskId, { inventoryItemId: itemId });
     },
 
     async setQuantity(taskId: string, quantity: number): Promise<void> {

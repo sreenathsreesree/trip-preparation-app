@@ -4,7 +4,7 @@
 //   npx expo export --platform web --output-dir dist && npm run e2e:packing
 //   SCREENSHOT_DIR=/tmp/shots npm run e2e:packing
 
-import { BASE, byId, check, iso, launch, run, setStep, shot, text, waitText, within } from './harness.mjs';
+import { BASE, byId, check, dragElement, expand, iso, launch, run, setStep, shot, text, waitText, within } from './harness.mjs';
 
 async function waitFor(fn, timeout = 15_000) {
   const end = Date.now() + timeout;
@@ -49,7 +49,7 @@ const categoryRow = (page, name) =>
   byId(page, 'items-tab').locator('[data-testid^="packing-category-"]', { hasText: name }).first();
 
 await run('Packing categories test', async () => {
-  const { context, page, errors, dialogs } = await launch();
+  const { context, page, errors, dialogs, dismissNext } = await launch();
 
   setStep('inventory');
   await addInventoryItem(page, 'Merino T-shirt', 'Clothing', 5);
@@ -327,8 +327,7 @@ await run('Packing categories test', async () => {
   await page.waitForTimeout(400);
   check((await byId(page, 'category-group-Nightwear').count()) === 0 && (await within(page, 'packing-category-screen', 'Merino T-shirt').count()) > 0, 'deleting a group keeps its items');
 
-  setStep('From your old checklist: move or keep, each confirmed');
-  // An old-style Clothing checklist section, as earlier versions created it.
+  setStep('Templates: packing sections become packing items, with approval');
   await page.goto(`${BASE}/checklists`);
   await byId(page, 'segment-templates').click();
   await byId(page, 'templates-new').click();
@@ -342,33 +341,59 @@ await run('Packing categories test', async () => {
     await byId(page, 'add-task-Clothing-button').click();
     await within(page, 'template-editor', task).waitFor();
   }
-  await page.goto(tripB);
-  await byId(page, 'open-checklist').click();
-  await byId(page, 'apply-templates').click();
-  await page.locator('[data-testid^="template-option-"]').first().click();
-  await byId(page, 'apply-templates-confirm').click();
-  await byId(page, 'apply-result').waitFor();
+  const applyOldClothes = async () => {
+    await page.goto(tripB);
+    await byId(page, 'open-checklist').click();
+    await byId(page, `checklist-trip-sections-${tripBId}`).waitFor({ timeout: 60_000 });
+    await byId(page, 'apply-templates').click();
+    await page.locator('[data-testid^="template-option-"]').first().click();
+    await byId(page, 'apply-templates-confirm').click();
+    await byId(page, 'apply-packing-result').waitFor();
+    return text(page, 'apply-packing-result');
+  };
+  let asked = dialogs.length;
+  dismissNext();
+  check(/2 packing items not added/.test(await applyOldClothes()) && dialogs.length > asked && /Add the packing items to Packing/.test(dialogs.at(-1) ?? ''), 'applying asks first; declining adds nothing');
+  check((await byId(page, 'apply-result').count()) === 0, 'no checklist tasks were created from the packing section');
+  check(/Added 2 packing items to Packing/.test(await applyOldClothes()), 'approving adds them to Packing');
+  check(/already on the list/.test(await applyOldClothes()), 'applying again adds no duplicates');
   await page.goto(`${tripB}/packing`);
-  await byId(page, 'old-checklist').waitFor({ timeout: 60_000 });
-  const asked = dialogs.length;
-  await byId(page, 'old-task-move-Rain jacket').click();
-  await byId(page, 'old-checklist-message').waitFor();
-  check(dialogs.length > asked && /Move “Rain jacket” to the packing list/.test(dialogs.at(-1) ?? ''), 'moving asks for confirmation first');
-  check((await byId(page, 'old-task-Rain jacket').count()) === 0, 'the moved task is no longer offered');
-  await byId(page, 'old-task-keep-Sun hat').click();
-  await page.waitForTimeout(400);
-  check((await byId(page, 'old-checklist').count()) === 0 || (await byId(page, 'old-task-Sun hat').count()) === 0, 'a kept task is not offered again');
+  await byId(page, 'items-tab').waitFor({ timeout: 60_000 });
   await categoryRow(page, 'Clothing').click();
   await within(page, 'packing-category-screen', 'Rain jacket').waitFor();
+  check((await within(page, 'packing-category-screen', 'Sun hat').count()) > 0, 'the template’s clothes are Clothing packing items');
+
+  setStep('From your old checklist: move or keep, each confirmed');
+  // An old-style Clothing checklist section with tasks, as earlier versions created it.
+  await page.goto(`${BASE}/checklists`);
+  await byId(page, `checklist-trip-toggle-${tripBId}`).waitFor({ timeout: 60_000 });
+  if ((await byId(page, `checklist-trip-sections-${tripBId}`).count()) === 0) await byId(page, `checklist-trip-toggle-${tripBId}`).click();
+  await byId(page, 'section-add-open').click();
+  await byId(page, 'section-form-name').fill('Clothing');
+  await byId(page, 'section-form-starter').fill('Wool scarf\nSun cap');
+  await byId(page, 'section-form-save').click();
+  await byId(page, `checklist-trip-sections-${tripBId}`).getByTestId('section-card-clothing').waitFor();
+  await page.goto(`${tripB}/packing`);
+  await byId(page, 'old-checklist').waitFor({ timeout: 60_000 });
+  asked = dialogs.length;
+  await byId(page, 'old-task-move-Wool scarf').click();
+  await byId(page, 'old-checklist-message').waitFor();
+  check(dialogs.length > asked && /Move “Wool scarf” to the packing list/.test(dialogs.at(-1) ?? ''), 'moving asks for confirmation first');
+  check((await byId(page, 'old-task-Wool scarf').count()) === 0, 'the moved task is no longer offered');
+  await byId(page, 'old-task-keep-Sun cap').click();
+  await page.waitForTimeout(400);
+  check((await byId(page, 'old-checklist').count()) === 0 || (await byId(page, 'old-task-Sun cap').count()) === 0, 'a kept task is not offered again');
+  await categoryRow(page, 'Clothing').click();
+  await within(page, 'packing-category-screen', 'Wool scarf').waitFor();
   check(true, 'the moved task is now a Clothing packing item');
   await page.goto(`${BASE}/checklists`);
   await byId(page, `checklist-trip-toggle-${tripBId}`).click();
   const kept = byId(page, `checklist-trip-sections-${tripBId}`).getByRole('button', { name: /^Clothing:/ });
   await kept.first().waitFor();
-  check(/1 essential|0 of 1|of 1 done/.test((await kept.first().getAttribute('aria-label')) ?? '') || (await kept.count()) === 1, 'the old Clothing section stays while it still has a (kept) task');
+  check((await kept.count()) === 1, 'the old Clothing section stays while it still has a (kept) task');
   await kept.first().click();
   await byId(page, 'section-old-packing').waitFor();
-  check(/Sun hat/.test(await text(page, 'section-screen-custom')) && !/Rain jacket/.test(await text(page, 'section-screen-custom')), 'the kept task is still in the checklist; the moved one is not');
+  check(/Sun cap/.test(await text(page, 'section-screen-custom')) && !/Wool scarf/.test(await text(page, 'section-screen-custom')), 'the kept task is still in the checklist; the moved one is not');
 
   setStep('Checklist: compact trip cards, one open at a time');
   const tripAId = new URL(tripA).pathname.split('/').pop();
@@ -447,6 +472,92 @@ await run('Packing categories test', async () => {
   await byId(page, 'sheet-action-delete').click();
   await waitFor(async () => (await byId(page, 'section-card-camera-gear').count()) === 0);
   check(dialogs.length > dialogsBefore && dialogs.at(-1).includes('Camera gear'), 'deleting a section asks first');
+
+  setStep('Checklist: sections reorder by drag-and-drop');
+  await page.goto(`${BASE}/checklists`);
+  await byId(page, `checklist-trip-toggle-${tripAId}`).waitFor({ timeout: 60_000 });
+  await byId(page, `checklist-trip-toggle-${tripAId}`).click();
+  await panel.waitFor();
+  const firstRow = panel.locator('[data-testid^="section-row-"]').first();
+  const firstName = (await firstRow.getAttribute('data-testid')).slice('section-row-'.length);
+  await dragElement(page, byId(page, 'section-row-Electronics').locator('[data-testid^="drag-"]'), byId(page, `section-row-${firstName}`), 'before');
+  await waitFor(async () => (await order())[0] === 'section-card-electronics');
+  check(true, 'dragging a section moves it to the top');
+
+  setStep('Section screen: arrange groups and tasks, menus, unified editor');
+  await byId(page, 'section-card-electronics').click();
+  const sectionScreen = byId(page, 'section-screen-custom');
+  await sectionScreen.waitFor();
+  for (const title of ['Travel adapter', 'Power bank']) {
+    await byId(page, 'add-item-input').fill(title);
+    await byId(page, 'add-item-button').click();
+    await within(page, 'section-screen-custom', title).waitFor();
+  }
+  await expand(page, 'section-groups-section');
+  for (const g of ['Cables', 'Batteries']) {
+    await byId(page, 'section-group-input').fill(g);
+    await byId(page, 'section-group-add').click();
+    await byId(page, `section-group-block-${g}`).waitFor();
+  }
+  await byId(page, 'toggle-reorder').click();
+  await byId(page, 'section-arrange').waitFor();
+  await dragElement(page, byId(page, 'arrange-task-Power bank').locator('[data-testid^="drag-"]'), byId(page, 'arrange-group-Batteries'), 'inside');
+  const arranged = async () => page.evaluate(() => [...document.querySelectorAll('[data-testid^="arrange-group-"], [data-testid^="arrange-task-"]')].map((e) => e.getAttribute('data-testid').replace(/^arrange-(group|task)-/, '')));
+  await waitFor(async () => { const o = await arranged(); return o.indexOf('Power bank') === o.indexOf('Batteries') + 1; });
+  check(true, 'a task dragged onto a group moves into it');
+  await byId(page, 'arrange-down-Cables').click();
+  await waitFor(async () => { const o = await arranged(); return o.indexOf('Batteries') < o.indexOf('Cables'); });
+  check(true, 'Move down reorders the groups');
+  await dragElement(page, byId(page, 'arrange-task-Power bank').locator('[data-testid^="drag-"]'), byId(page, 'arrange-task-Travel adapter'), 'after');
+  await waitFor(async () => { const o = await arranged(); return o.indexOf('Power bank') > o.indexOf('Travel adapter') && o.indexOf('Travel adapter') > o.indexOf('Cables'); });
+  check(true, 'a task dragged below the groups leaves its group');
+  await byId(page, 'toggle-reorder').click();
+  await waitFor(async () => (await byId(page, 'section-group-block-Not in a group').count()) > 0 && /Power bank/.test(await text(page, 'section-group-block-Not in a group')));
+  check(true, 'it shows under “Not in a group”');
+
+  await byId(page, 'task-menu-Travel adapter').click();
+  check((await byId(page, 'task-menu-sheet').innerText()).includes('Move to another section'), 'the task menu says what each action does');
+  await byId(page, 'sheet-action-group').click();
+  await byId(page, 'task-move-sheet').getByText('Cables', { exact: true }).click();
+  await waitFor(async () => /Travel adapter/.test(await text(page, 'section-group-block-Cables')));
+  check(true, 'Move to a group');
+  await byId(page, 'task-menu-Travel adapter').click();
+  await byId(page, 'sheet-action-section').click();
+  await byId(page, 'task-section-sheet').getByText('Documents', { exact: true }).click();
+  await waitText(page, 'section-message', (v) => v.includes('Moved “Travel adapter” to Documents'));
+  await waitFor(async () => (await page.getByRole('button', { name: 'Travel adapter. Edit task' }).count()) === 0);
+  check(true, 'Move to another section');
+
+  await page.getByRole('button', { name: 'Phone charger. Edit task' }).click();
+  await byId(page, 'task-editor').waitFor();
+  await byId(page, 'task-inventory-source').waitFor();
+  await byId(page, 'task-quantity-plus').click();
+  check((await text(page, 'task-quantity-value')) === '2', 'the editor changes the quantity');
+  await byId(page, 'task-save').click();
+  await sectionScreen.waitFor();
+  await waitFor(async () => (await text(page, 'task-qty-Phone charger-value')) === '2');
+  check(true, 'the new quantity shows on the row');
+  await page.getByRole('button', { name: 'Power bank. Edit task' }).click();
+  await byId(page, 'task-editor').waitFor();
+  await byId(page, 'task-inventory-search').fill('Merino');
+  await byId(page, 'task-inventory-option-Merino T-shirt').click();
+  await byId(page, 'task-inventory-source').waitFor();
+  await byId(page, 'task-save').click();
+  await sectionScreen.waitFor();
+  await within(page, 'section-screen-custom', 'From Inventory · ×1').first().waitFor();
+  check((await byId(page, 'task-qty-Power bank-value').count()) === 1, 'a task can be linked to an Inventory item in the editor');
+  await page.getByRole('button', { name: 'Power bank. Edit task' }).click();
+  await byId(page, 'task-inventory-unlink').click();
+  await byId(page, 'task-save').click();
+  await sectionScreen.waitFor();
+  await waitFor(async () => (await byId(page, 'task-qty-Power bank-value').count()) === 0);
+  check(true, 'and unlinked again (the Inventory item is untouched)');
+
+  const before3 = dialogs.length;
+  await byId(page, 'task-menu-Power bank').click();
+  await byId(page, 'sheet-action-delete').click();
+  await waitFor(async () => (await page.getByRole('button', { name: 'Power bank. Edit task' }).count()) === 0);
+  check(dialogs.length > before3 && /Remove this task from the trip/.test(dialogs.at(-1) ?? ''), 'removing a task asks first');
 
   setStep('Dashboard 2.0: overview only, six shortcuts, weather folded');
   await page.goto(tripA);

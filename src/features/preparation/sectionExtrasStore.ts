@@ -23,6 +23,8 @@ interface State {
   deleteGroup: (sectionId: string, id: string, moveTo: string | null) => Promise<void>;
   setTaskGroup: (sectionId: string, taskId: string, groupId: string | null) => Promise<void>;
   setQuantity: (sectionId: string, taskId: string, quantity: number) => Promise<void>;
+  setInventoryLink: (sectionId: string, taskId: string, itemId: string | null) => Promise<void>;
+  arrangeSection: (owner: ChecklistOwner, sectionId: string, layout: { groupIds: string[]; tasks: { id: string; groupId: string | null }[] }) => Promise<void>;
   addManual: (owner: ChecklistOwner, sectionId: string, groupId: string | null, title: string, priority: Priority) => Promise<void>;
   addFromInventory: (owner: ChecklistOwner, sectionId: string, groupId: string | null, items: { itemId: string; quantity?: number }[]) => Promise<{ added: number; skipped: number }>;
   /** The trip's Clothing checklist section, created (once) when the trip has none. */
@@ -67,6 +69,18 @@ export const useSectionExtrasStore = accountScoped(
       },
       async setTaskGroup(sectionId, taskId, groupId) {
         await (await getRepositories()).sectionExtras.setTaskGroup(taskId, groupId);
+        await after(sectionId);
+      },
+      async arrangeSection(owner, sectionId, layout) {
+        try {
+          await (await getRepositories()).sectionExtras.arrangeSection(sectionId, layout);
+        } finally {
+          // Reload either way, so a refused (stale) arrangement shows the real order again.
+          await after(sectionId, owner);
+        }
+      },
+      async setInventoryLink(sectionId, taskId, itemId) {
+        await (await getRepositories()).sectionExtras.setInventoryLink(taskId, itemId);
         await after(sectionId);
       },
       async setQuantity(sectionId, taskId, quantity) {

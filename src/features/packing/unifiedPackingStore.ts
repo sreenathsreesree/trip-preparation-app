@@ -7,7 +7,7 @@ import { useInventoryStore } from '../inventory/inventoryStore';
 import { useChecklistStore } from '../preparation/checklistStore';
 import { tripOwner, type Priority } from '../preparation/model';
 import { usePackingStore } from './packingStore';
-import type { OldChecklistTask } from './unifiedPackingRepository';
+import type { OldChecklistTask, UnifiedPackingRepository } from './unifiedPackingRepository';
 
 interface TripExtras {
   status: 'idle' | 'loading' | 'ready' | 'error';
@@ -22,6 +22,7 @@ interface State {
   setPriority: (tripId: string, entryId: string, priority: Priority | null) => Promise<void>;
   convertTask: (tripId: string, taskId: string) => Promise<void>;
   keepTask: (tripId: string, taskId: string) => Promise<void>;
+  addTemplateItems: (tripId: string, items: Parameters<UnifiedPackingRepository['addTemplateItems']>[1]) => Promise<{ added: number; skipped: number }>;
   removeTask: (tripId: string, taskId: string) => Promise<void>;
   deleteCategoryMoving: (tripId: string | null, categoryId: string, moveTo: string | null) => Promise<void>;
 }
@@ -60,6 +61,11 @@ export const useUnifiedPackingStore = accountScoped(
       async convertTask(tripId, taskId) {
         await (await getRepositories()).unifiedPacking.convertTask(tripId, taskId);
         await afterTaskChange(tripId);
+      },
+      async addTemplateItems(tripId, items) {
+        const result = await (await getRepositories()).unifiedPacking.addTemplateItems(tripId, items);
+        await afterTaskChange(tripId);
+        return result;
       },
       async keepTask(tripId, taskId) {
         await (await getRepositories()).unifiedPacking.keepTask(tripId, taskId);

@@ -115,7 +115,7 @@ export function SectionsPanel({
           const stats = computeStats(grouped.get(section.id) ?? []);
           const essentials = openCount(stats.essential);
           return (
-            <View style={[styles.row, context.isDragging && styles.dragging]}>
+            <View style={[styles.row, context.isDragging && styles.dragging]} testID={`section-row-${section.title}`}>
               {context.handle}
               <Pressable
                 accessibilityRole="button"

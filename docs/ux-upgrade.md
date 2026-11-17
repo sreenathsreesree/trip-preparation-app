@@ -162,3 +162,26 @@ this phase; nothing was deployed.
   order sync as before; the settings stay on this device. Future sync path: a cloud table keyed
   by section id with the section's RLS, listed in the personal backup registry. Until then a
   second device shows the default icon and kind-based Inventory eligibility.
+
+## Unified Packing and Checklist — phase 3: the section screen
+
+- **Arrange** (header button): groups and tasks in one list. Drag a group's handle to reorder
+  groups; drag a task within its group, onto another group (moves it there) or below the groups
+  (out of any group). Every row also has Move up / Move down arrows, and the drag handle offers
+  the same moves (plus "Move out of its parent") to screen readers. The whole arrangement is saved
+  in one transaction (`arrangeSection`) and refused if the section changed meanwhile.
+- **Task ⋮ menu:** *Edit details*, *Move to a group*, *Move to another section* (refused when its
+  Inventory item is already there), *Remove from this trip* (confirmed; a linked Inventory item is
+  never touched). Swipe-to-delete stays.
+- **One task editor:** title, priority, description, notes, section, group, Inventory source
+  (search and link one item, change the quantity to take, or unlink), done, delete. An item already
+  linked in the same section cannot be linked twice; sections that do not hold items offer no link.
+  Old Packing / Clothing sections are not offered as move targets.
+- **Inventory picker** (Add from Inventory): browse by category or search, choose several with a
+  quantity each; items already in the section are shown and cannot be added again.
+- **Templates:** applying a template whose sections include Packing or Clothing asks first; on
+  approval those tasks become packing items (clothes → Clothing, the rest → Miscellaneous, with
+  their priority and notes; names already on the list are skipped), never checklist tasks.
+  Declining adds none of them; the other sections are applied as before.
+- No schema change in this phase. Group order and links stay device-only as in phase 2; task
+  order and section changes sync as before.
