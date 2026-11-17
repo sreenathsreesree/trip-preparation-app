@@ -15,6 +15,9 @@ export interface CollapsibleProps {
   /** Optional trailing element in the header (shown open or closed). */
   trailing?: ReactNode;
   initiallyOpen?: boolean;
+  /** Controlled open state (optional); `onOpenChange` reports the user's toggles. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   children: ReactNode;
   testID?: string;
 }
@@ -23,8 +26,14 @@ export interface CollapsibleProps {
  * A titled section that opens and closes. Content stays mounted only while
  * open, so long pages stay short and quick to scan.
  */
-export function Collapsible({ title, icon, summary, trailing, initiallyOpen = false, children, testID }: CollapsibleProps) {
-  const [open, setOpen] = useState(initiallyOpen);
+export function Collapsible({ title, icon, summary, trailing, initiallyOpen = false, open: controlled, onOpenChange, children, testID }: CollapsibleProps) {
+  const [own, setOwn] = useState(initiallyOpen);
+  const open = controlled ?? own;
+  const setOpen = (next: (v: boolean) => boolean) => {
+    const value = next(open);
+    if (controlled === undefined) setOwn(value);
+    onOpenChange?.(value);
+  };
   return (
     <View style={styles.box} testID={testID}>
       <Pressable

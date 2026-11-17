@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ActionSheet, AppText, Button, Card, Icon, IconButton, MiniStepper, Notice, OptionTile, SearchField, TextField } from '@/components/ui';
+import { confirmAction } from '@/lib/confirm';
 import { toErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing } from '@/theme';
 
@@ -42,9 +43,13 @@ export function GroupChips({ groups, value, onChange }: { groups: ChecklistGroup
   );
 }
 
-/** Create, rename and delete the section's groups. Deleting asks where its tasks go. */
+/**
+ * Create, rename, reorder (Move up / down) and delete the section's groups. Deleting an empty
+ * group asks first; deleting one with tasks asks where its tasks go — they are never deleted.
+ */
 export function GroupsManager({ sectionId }: { sectionId: string }) {
-  const { groups } = useSectionExtras(sectionId);
+  const { groups, links } = useSectionExtras(sectionId);
+  const countIn = (groupId: string) => Object.values(links).filter((l) => l.groupId === groupId).length;
   const [title, setTitle] = useState('');
   const [editing, setEditing] = useState<{ id: string; title: string } | null>(null);
   const [deleting, setDeleting] = useState<ChecklistGroup | null>(null);
@@ -63,7 +68,7 @@ export function GroupsManager({ sectionId }: { sectionId: string }) {
     );
   return (
     <View style={styles.group} testID="section-groups">
-      {groups.map((g) =>
+      {groups.map((g, i) =>
         editing?.id === g.id ? (
           <View key={g.id} style={styles.row}>
             <View style={styles.flex}>
@@ -77,8 +82,28 @@ export function GroupsManager({ sectionId }: { sectionId: string }) {
             <AppText variant="body" style={styles.flex}>
               {g.title}
             </AppText>
+            <AppText variant="caption" tone="textMuted">
+              {countIn(g.id)}
+            </AppText>
+            <IconButton icon="arrow-up" size="sm" variant="plain" accessibilityLabel={`Move ${g.title} up`} disabled={i === 0} onPress={() => void run(() => store().moveGroup(sectionId, g.id, -1), 'Could not move it.')} testID={`section-group-up-${g.title}`} />
+            <IconButton icon="arrow-down" size="sm" variant="plain" accessibilityLabel={`Move ${g.title} down`} disabled={i === groups.length - 1} onPress={() => void run(() => store().moveGroup(sectionId, g.id, 1), 'Could not move it.')} testID={`section-group-down-${g.title}`} />
             <IconButton icon="pencil-outline" size="sm" variant="plain" accessibilityLabel={`Rename ${g.title}`} onPress={() => setEditing({ id: g.id, title: g.title })} testID={`section-group-rename-${g.title}`} />
-            <IconButton icon="trash-can-outline" size="sm" variant="plain" accessibilityLabel={`Delete ${g.title}`} onPress={() => setDeleting(g)} testID={`section-group-delete-${g.title}`} />
+            <IconButton
+              icon="trash-can-outline"
+              size="sm"
+              variant="plain"
+              accessibilityLabel={`Delete ${g.title}`}
+              onPress={() => {
+                if (countIn(g.id) > 0) {
+                  setDeleting(g);
+                  return;
+                }
+                void confirmAction({ title: `Delete the empty group “${g.title}”?`, message: 'It has no tasks. Nothing else changes.', confirmLabel: 'Delete group', destructive: true }).then(
+                  (ok) => ok && run(() => store().deleteGroup(sectionId, g.id, null), 'Could not delete it.'),
+                );
+              }}
+              testID={`section-group-delete-${g.title}`}
+            />
           </View>
         ),
       )}
@@ -100,7 +125,7 @@ export function GroupsManager({ sectionId }: { sectionId: string }) {
       <ActionSheet
         visible={deleting !== null}
         title={deleting ? `Delete the group “${deleting.title}”?` : ''}
-        subtitle="Its tasks are kept. Where should they go?"
+        subtitle={deleting ? `It has ${countIn(deleting.id)} ${countIn(deleting.id) === 1 ? 'task' : 'tasks'}. They are kept — where should they go?` : ''}
         actions={[
           ...groups
             .filter((g) => g.id !== deleting?.id)

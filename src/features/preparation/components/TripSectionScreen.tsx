@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Screen } from '@/components/layout/Screen';
 import { ScreenHeader } from '@/components/layout/ScreenHeader';
@@ -22,6 +22,7 @@ import {
 } from '@/components/ui';
 import { getRepositories } from '@/db/repositories';
 import { confirmAction } from '@/lib/confirm';
+import { useTransientMessage } from '@/lib/useTransientMessage';
 import { toErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing } from '@/theme';
 
@@ -39,6 +40,24 @@ import { useSectionExtras, useSectionExtrasStore } from '../sectionExtrasStore';
 import { CategoryShortcut, GroupChips, GroupsManager, InventoryPicker } from './SectionTools';
 import { TaskRow } from './TaskRow';
 
+/** Example groups for the section's kind, shown while it has none. */
+function groupHint(kind: string | undefined): string {
+  switch (kind) {
+    case 'documents':
+      return 'e.g. Identity documents, Tickets and bookings, Insurance and permits';
+    case 'vehicle':
+      return 'e.g. Vehicle documents, Maintenance, Emergency equipment';
+    case 'tasks':
+      return 'e.g. Before departure, During the trip';
+    case 'shopping':
+      return 'e.g. Groceries, Pharmacy, Gear';
+    case 'home':
+      return 'e.g. Lock up, Appliances, Plants and pets';
+    default:
+      return 'e.g. Tops, Footwear, Chargers';
+  }
+}
+
 function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string }) {
   const owner = useOwner('trip', trip.id);
   const checklist = useOwnerChecklist(owner);
@@ -48,10 +67,13 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
   const extras = useSectionExtras(sectionId);
   const [addGroup, setAddGroup] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, notify] = useTransientMessage();
+  const setMessage = (text: string) => notify.show(text);
   const [moving, setMoving] = useState<ChecklistTask | null>(null);
   const [menuFor, setMenuFor] = useState<ChecklistTask | null>(null);
   const [relocating, setRelocating] = useState<ChecklistTask | null>(null);
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [groupsOpen, setGroupsOpen] = useState<boolean | null>(null);
   const ownSettings = useSectionSettingsStore((s) => s.bySection[sectionId] ?? null);
   useEffect(() => {
     void useSectionExtrasStore.getState().load(sectionId);
@@ -87,7 +109,11 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
 
   const run = (fn: () => Promise<unknown>, fallback: string) => {
     setActionError(null);
-    fn().catch((error: unknown) => setActionError(toErrorMessage(error, fallback)));
+    fn().catch((error: unknown) => {
+      // A failure never leaves an earlier success message on screen.
+      notify.dismiss();
+      setActionError(toErrorMessage(error, fallback));
+    });
   };
 
   const openTask = (task: ChecklistTask) =>
@@ -155,23 +181,60 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
     { key: 'delete', label: 'Remove from this trip', icon: 'trash-can-outline', destructive: true, onPress: () => { setMenuFor(null); void removeTask(task); } },
   ];
 
-  /** Open and done tasks under one heading. */
-  const block = (key: string, title: string | null, list: ChecklistTask[]) => {
+  /** Open and done tasks under one heading; a group's heading folds it and shows its progress. */
+  const block = (key: string, title: string | null, list: ChecklistTask[], groupId: string | null = null) => {
     const openList = list.filter((t) => !t.isDone);
     const doneList = list.filter((t) => t.isDone);
+    const isCollapsed = collapsed.has(key);
+    const toggle = () =>
+      setCollapsed((current) => {
+        const next = new Set(current);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
     return (
       <View key={key} style={styles.group} testID={`section-group-block-${title ?? 'none'}`}>
         {title ? (
-          <AppText variant="title" numberOfLines={1}>
-            {title}
-          </AppText>
+          <View style={styles.groupHeader}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: !isCollapsed }}
+              aria-expanded={!isCollapsed}
+              accessibilityLabel={`${title}: ${doneList.length} of ${list.length} done. ${isCollapsed ? 'Show' : 'Hide'} its tasks`}
+              onPress={toggle}
+              style={styles.groupToggle}
+              testID={`section-group-toggle-${title}`}
+            >
+              <Icon name={isCollapsed ? 'chevron-right' : 'chevron-down'} tone="textMuted" />
+              <AppText variant="title" numberOfLines={1} style={styles.flex}>
+                {title}
+              </AppText>
+              <AppText variant="caption" tone="textMuted" testID={`section-group-count-${title}`}>
+                {doneList.length}/{list.length}
+              </AppText>
+              <View style={styles.groupBar}>
+                <ProgressBar value={list.length ? doneList.length / list.length : 0} color={meta.tint} height={4} />
+              </View>
+            </Pressable>
+            {!(section && isOldPackingSection(section)) ? (
+              <IconButton
+                icon="plus"
+                size="sm"
+                variant="plain"
+                accessibilityLabel={groupId ? `Add a task to ${title}` : 'Add a task without a group'}
+                onPress={() => setAddGroup(groupId)}
+                testID={`section-group-addhere-${title}`}
+              />
+            ) : null}
+          </View>
         ) : null}
-        {list.length === 0 ? (
+        {isCollapsed ? null : list.length === 0 ? (
           <AppText variant="caption" tone="textMuted">
             Nothing in this group yet.
           </AppText>
         ) : null}
-        {openList.length > 0 ? (
+        {!isCollapsed && openList.length > 0 ? (
           <View style={styles.group}>
             <AppText variant="label" tone="textMuted">
               To do · {openList.length}
@@ -179,7 +242,7 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
             {openList.map((task) => row(task))}
           </View>
         ) : null}
-        {doneList.length > 0 ? (
+        {!isCollapsed && doneList.length > 0 ? (
           <View style={styles.group}>
             <AppText variant="label" tone="textMuted">
               Done · {doneList.length}
@@ -265,6 +328,9 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
               testID="section-add-from-inventory"
             />
           ) : null}
+          {extras.groups.length === 0 && !groupsOpen ? (
+            <Button label="Add group" icon="folder-plus-outline" variant="ghost" size="sm" onPress={() => setGroupsOpen(true)} style={styles.left} testID="section-add-group" />
+          ) : null}
           {picking && section ? (
             <InventoryPicker
               owner={owner}
@@ -276,13 +342,13 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
               }}
             />
           ) : null}
-          {message ? <Notice tone="success" title={message} testID="section-message" /> : null}
+          {message ? <Notice tone="success" title={message} onDismiss={notify.dismiss} testID="section-message" /> : null}
           <Collapsible
-            title="Groups in this section"
+            title={extras.groups.length ? `Groups · ${extras.groups.length}` : 'Groups'}
             icon="folder-multiple-outline"
-            summary={extras.groups.length ? extras.groups.map((g) => g.title).join(', ') : 'Create groups such as Tops, Trousers or Footwear'}
-            initiallyOpen={Boolean(section && isClothingSection(section) && extras.status === 'ready' && extras.groups.length === 0)}
-            key={`groups-${extras.status}`}
+            summary={extras.groups.length ? extras.groups.map((g) => g.title).join(', ') : groupHint(section?.kind)}
+            open={groupsOpen ?? Boolean(section && isClothingSection(section) && extras.status === 'ready' && extras.groups.length === 0)}
+            onOpenChange={setGroupsOpen}
             testID="section-groups-section"
           >
             <GroupsManager sectionId={sectionId} />
@@ -314,8 +380,8 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
         <View style={styles.groups}>
           {extras.groups.length > 0 ? (
             <>
-              {extras.groups.map((g) => block(g.id, g.title, tasks.filter((t) => groupOf(t) === g.id)))}
-              {tasks.some((t) => groupOf(t) === null) ? block('none', 'Not in a group', tasks.filter((t) => groupOf(t) === null)) : null}
+              {extras.groups.map((g) => block(g.id, g.title, tasks.filter((t) => groupOf(t) === g.id), g.id))}
+              {tasks.some((t) => groupOf(t) === null) ? block('none', 'Not in a group', tasks.filter((t) => groupOf(t) === null), null) : null}
             </>
           ) : (
             <>
@@ -416,6 +482,9 @@ export function TripSectionScreen({
 }
 
 const styles = StyleSheet.create({
+  groupHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  groupToggle: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44 },
+  groupBar: { width: 56 },
   taskLine: {
     flexDirection: 'row',
     alignItems: 'center',

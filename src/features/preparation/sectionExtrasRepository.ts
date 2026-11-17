@@ -284,6 +284,19 @@ export function createSectionExtrasRepository(db: Database, deps: { createId: ()
       await db.runAsync('UPDATE checklist_groups SET title = ?, updated_at = ? WHERE id = ?', [title.trim(), stamp(), id]);
     },
 
+    /** Saves the order of a section's groups (all of them). Tasks and their groups are untouched. */
+    async reorderGroups(sectionId: string, orderedIds: readonly string[]): Promise<void> {
+      const current = await groups(sectionId);
+      const known = new Set(current.map((g) => g.id));
+      if (orderedIds.length !== current.length || new Set(orderedIds).size !== current.length || orderedIds.some((id) => !known.has(id))) {
+        throw new SectionExtrasError('The groups changed; try again.');
+      }
+      const t = stamp();
+      await db.withTransactionAsync(async () => {
+        for (const [i, id] of orderedIds.entries()) await db.runAsync('UPDATE checklist_groups SET position = ?, updated_at = ? WHERE id = ? AND position <> ?', [i, t, id, i]);
+      });
+    },
+
     /** Deletes a group; its tasks move to `moveTo` (another group of the section) or out of any group. Tasks are never deleted. */
     async deleteGroup(id: string, moveTo: string | null): Promise<void> {
       await db.withTransactionAsync(async () => {

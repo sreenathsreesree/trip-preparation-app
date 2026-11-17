@@ -21,6 +21,7 @@ interface State {
   addGroup: (sectionId: string, title: string) => Promise<void>;
   renameGroup: (sectionId: string, id: string, title: string) => Promise<void>;
   deleteGroup: (sectionId: string, id: string, moveTo: string | null) => Promise<void>;
+  moveGroup: (sectionId: string, id: string, direction: -1 | 1) => Promise<void>;
   setTaskGroup: (sectionId: string, taskId: string, groupId: string | null) => Promise<void>;
   setQuantity: (sectionId: string, taskId: string, quantity: number) => Promise<void>;
   setInventoryLink: (sectionId: string, taskId: string, itemId: string | null) => Promise<void>;
@@ -61,6 +62,17 @@ export const useSectionExtrasStore = accountScoped(
       },
       async renameGroup(sectionId, id, title) {
         await (await getRepositories()).sectionExtras.renameGroup(id, title);
+        await after(sectionId);
+      },
+      async moveGroup(sectionId, id, direction) {
+        const { sectionExtras } = await getRepositories();
+        const ids = (await sectionExtras.groups(sectionId)).map((g) => g.id);
+        const i = ids.indexOf(id);
+        const j = i + direction;
+        if (i >= 0 && j >= 0 && j < ids.length) {
+          [ids[i], ids[j]] = [ids[j] as string, ids[i] as string];
+          await sectionExtras.reorderGroups(sectionId, ids);
+        }
         await after(sectionId);
       },
       async deleteGroup(sectionId, id, moveTo) {
