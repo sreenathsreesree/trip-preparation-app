@@ -27,18 +27,23 @@ describe('getStandardSectionsFor', () => {
 });
 
 describe('buildStarterChecklist', () => {
-  it('covers every applicable standard section, in order', () => {
-    expect(kinds(base)).toEqual(getStandardSectionsFor('train'));
-    expect(kinds({ ...base, transportMode: 'car' })).toEqual(getStandardSectionsFor('car'));
+  it('covers every applicable standard section except Packing (packing lives in the Packing list), in order', () => {
+    expect(kinds(base)).toEqual(getStandardSectionsFor('train').filter((k) => k !== 'packing'));
+    expect(kinds({ ...base, transportMode: 'car' })).toEqual(getStandardSectionsFor('car').filter((k) => k !== 'packing'));
+    expect(kinds(base)).not.toContain('packing');
   });
 
   it('tailors tasks to transport, duration, category and travellers', () => {
-    expect(titles(base)).toContain('Clothes for 3 days');
+    // Packing starter tasks are no longer part of a new trip's checklist…
+    expect(titles(base)).not.toContain('Clothes for 3 days');
+    // …but the Packing section can still be built on request (e.g. by a template or an explicit add).
+    const packingTitles = (t: typeof base) => buildStarterSection('packing', t).sections[0]?.tasks.map((x) => x.title) ?? [];
+    expect(packingTitles(base)).toContain('Clothes for 3 days');
     expect(titles(base)).toContain('Train e-ticket and PNR saved offline');
     expect(titles({ ...base, transportMode: 'car' })).toContain('Top up FASTag balance');
     expect(titles({ ...base, transportMode: 'bike' })).toContain('Lubricate and adjust the chain');
-    expect(titles({ ...base, category: 'mountains' })).toContain('Warm layers and rain jacket');
-    expect(titles({ ...base, travellers: [...base.travellers, { name: 'C', kind: 'child' }] })).toContain(
+    expect(packingTitles({ ...base, category: 'mountains' })).toContain('Warm layers and rain jacket');
+    expect(packingTitles({ ...base, travellers: [...base.travellers, { name: 'C', kind: 'child' }] })).toContain(
       "Kids' clothes, snacks and comfort items",
     );
     expect(titles(base)).not.toContain('Driving licence');
@@ -47,7 +52,7 @@ describe('buildStarterChecklist', () => {
   it('assigns priorities: IDs and tickets are essential, extras optional', () => {
     expect(priorityOf(base, 'Government photo ID for every traveller (Aadhaar, PAN or passport)')).toBe('essential');
     expect(priorityOf(base, 'Train e-ticket and PNR saved offline')).toBe('essential');
-    expect(priorityOf(base, 'Toiletries kit')).toBe('recommended');
+    expect(buildStarterSection('packing', base).sections[0]?.tasks.find((t) => t.title === 'Toiletries kit')?.priority).toBe('recommended');
     expect(priorityOf(base, 'Snacks for the journey')).toBe('optional');
     expect(new Set(tasks(base).map((t) => t.priority))).toEqual(new Set(['essential', 'recommended', 'optional']));
   });

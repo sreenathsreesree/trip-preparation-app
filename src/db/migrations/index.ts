@@ -15,6 +15,7 @@ import { groupWorkspace } from './0013_group_workspace';
 import { memoriesClothingCovers } from './0014_memories_clothing_covers';
 import { checklistGroupsInventory } from './0015_checklist_groups_inventory';
 import { calculatorHistoryExpensePlaces } from './0016_calculator_history_expense_places';
+import { unifiedPacking } from './0017_unified_packing';
 
 /**
  * Ordered list of schema migrations.
@@ -40,4 +41,5 @@ export const migrations: readonly Migration[] = [
   memoriesClothingCovers,
   checklistGroupsInventory,
   calculatorHistoryExpensePlaces,
+  unifiedPacking,
 ];

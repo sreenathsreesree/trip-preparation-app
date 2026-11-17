@@ -171,10 +171,11 @@ describe('templates reused across trips', () => {
     const before = await checklists.load(tripOwner(trip.id));
 
     const result = await checklists.applyPlan(tripOwner(trip.id), await templates.toPlan(template.id));
-    expect(result).toEqual({ added: 3, skipped: 0, sectionsAdded: 1 });
+    // New trips have no Packing checklist section, so the template's Packing section is added too.
+    expect(result).toEqual({ added: 3, skipped: 0, sectionsAdded: 2 });
 
     const after = await checklists.load(tripOwner(trip.id));
-    expect(after.sections.map((s) => s.title)).toEqual([...before.sections.map((s) => s.title), 'Gear']);
+    expect(after.sections.map((s) => s.title).sort()).toEqual([...before.sections.map((s) => s.title), 'Gear', 'Packing'].sort());
     const packing = after.sections.find((s) => s.kind === 'packing');
     expect(after.tasks.filter((t) => t.sectionId === packing?.id).at(-1)?.title).toBe('Thermal layers');
     db.close();

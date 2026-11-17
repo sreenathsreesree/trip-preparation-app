@@ -213,7 +213,7 @@ describe('tripRepository: duplicate, lifecycle and delete', () => {
     expect(await trips.deletionImpact(gone.id)).toMatchObject({
       destinations: 2,
       travellers: 3,
-      sections: 6,
+      sections: 5,
       tasks: goneTasks,
     });
     expect(await trips.remove(gone.id)).toBe(true);

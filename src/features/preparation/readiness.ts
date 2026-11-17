@@ -171,3 +171,30 @@ export function checklistProgress(tasks: readonly Pick<ChecklistTask, 'priority'
   const stats = computeStats(tasks);
   return { percent: completionPercent(stats), done: stats.done, total: stats.total, essentialsOpen: openCount(stats.essential) };
 }
+
+export interface PreparationProgress extends ChecklistProgress {
+  tasks: { done: number; total: number };
+  packing: { done: number; total: number };
+}
+
+/**
+ * Overall trip preparation: checklist tasks plus packing items, each counted once (a packing
+ * item is never also a checklist task). Used by the trip dashboard and the Checklist tab.
+ */
+export function preparationProgress(
+  tasks: readonly Pick<ChecklistTask, 'priority' | 'isDone'>[],
+  entries: readonly { isPacked: boolean }[],
+): PreparationProgress {
+  const checklist = checklistProgress(tasks);
+  const packed = entries.filter((e) => e.isPacked).length;
+  const done = checklist.done + packed;
+  const total = checklist.total + entries.length;
+  return {
+    percent: percent(done, total),
+    done,
+    total,
+    essentialsOpen: checklist.essentialsOpen,
+    tasks: { done: checklist.done, total: checklist.total },
+    packing: { done: packed, total: entries.length },
+  };
+}

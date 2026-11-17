@@ -8,6 +8,7 @@ import { createPreferencesRepository } from '@/features/packing/preferencesRepos
 import { createPurchaseRepository } from '@/features/packing/purchaseRepository';
 import { createRecommendationRepository } from '@/features/packing/recommendationRepository';
 import { createPhotoUploadRepository } from '@/features/journal/drive/photoUploadRepository';
+import { createUnifiedPackingRepository } from '@/features/packing/unifiedPackingRepository';
 import { createCalculatorRepository } from '@/features/expenses/calculatorRepository';
 import { createExpenseRepository } from '@/features/expenses/expenseRepository';
 import { createJournalRepository } from '@/features/journal/journalRepository';
@@ -65,6 +66,7 @@ export async function setupRepositories(db: TestDatabase = openTestDatabase(), c
     templates: createTemplateRepository(shared, deps),
     inventory: createInventoryRepository(shared, deps),
     packing: createPackingRepository(shared, deps),
+    unifiedPacking: createUnifiedPackingRepository(shared, { packing: createPackingRepository(shared, deps), checklists: createChecklistRepository(shared, deps), now: () => deps.now().toISOString() }),
     recommendations: createRecommendationRepository(shared, deps),
     purchases: createPurchaseRepository(shared, deps),
     preferences: createPreferencesRepository(shared, deps),

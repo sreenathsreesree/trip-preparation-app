@@ -147,7 +147,7 @@ describe('checklist store', () => {
     const templateRef = { type: 'template' as const, id: template.id };
     const section = await useChecklistStore.getState().addSection(templateRef, 'Packing');
     await useChecklistStore.getState().addTask(templateRef, section.id, {
-      title: 'Toiletries kit', // already on the starter checklist
+      title: 'Toiletries kit', // new trips no longer have a Packing checklist section
       description: '',
       notes: '',
       priority: 'recommended',
@@ -161,7 +161,8 @@ describe('checklist store', () => {
 
     const before = tripIn(trip.id)?.readiness.total ?? 0;
     const result = await useChecklistStore.getState().applyTemplates(trip.id, [template.id]);
-    expect(result).toEqual({ added: 1, skipped: 1, sectionsAdded: 0 });
-    expect(tripIn(trip.id)?.readiness.total).toBe(before + 1);
+    // The template's Packing section arrives as its own section (resolved later from Packing).
+    expect(result).toEqual({ added: 2, skipped: 0, sectionsAdded: 1 });
+    expect(tripIn(trip.id)?.readiness.total).toBe(before + 2);
   });
 });

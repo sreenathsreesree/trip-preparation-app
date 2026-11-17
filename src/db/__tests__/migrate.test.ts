@@ -33,6 +33,7 @@ describe('migrate', () => {
         'memories_clothing_covers',
         'checklist_groups_inventory',
         'calculator_history_expense_places',
+        'unified_packing',
       ],
     });
     expect(await getSchemaVersion(db)).toBe(migrations.length);
@@ -48,6 +49,7 @@ describe('migrate', () => {
       'checklist_groups',
         'checklist_sections',
         'checklist_task_links',
+      'checklist_task_resolutions',
       'checklist_tasks',
       'checklist_templates',
       'clothing_categories',
@@ -75,6 +77,7 @@ describe('migrate', () => {
         'memory_photo_notes',
         'my_documents',
       'packing_entries',
+      'packing_entry_meta',
       'packing_recommendations',
       'pdf_imports',
       'places',

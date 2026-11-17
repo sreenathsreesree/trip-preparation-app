@@ -144,6 +144,9 @@ export const SYNC_TABLES: readonly SyncTable[] = [
 
 /** Local tables that never sync, with the reason. */
 export const LOCAL_ONLY_TABLES: Readonly<Record<string, string>> = {
+  // Unified Packing (local schema v17).
+  packing_entry_meta: 'A packing item’s priority (local v17); the packing items themselves sync as before.',
+  checklist_task_resolutions: 'Decisions on old Packing checklist tasks (kept / moved / removed) (local v17).',
   // Trip Calculator upgrade (local schema v16).
   calculator_history: 'Quick calculator history per trip (local v16); a calculation is never an expense until saved.',
   expense_places: 'An expense’s optional destination (local v16); the expenses themselves sync as before.',

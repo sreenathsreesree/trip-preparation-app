@@ -5,6 +5,7 @@ import { createJournalRepository } from '@/features/journal/journalRepository';
 import { createSharingRepository } from '@/features/sharing/sharingRepository';
 import { createInventoryRepository } from '@/features/inventory/inventoryRepository';
 import { createPackingRepository } from '@/features/packing/packingRepository';
+import { createUnifiedPackingRepository } from '@/features/packing/unifiedPackingRepository';
 import { createPreferencesRepository } from '@/features/packing/preferencesRepository';
 import { createPurchaseRepository } from '@/features/packing/purchaseRepository';
 import { createRecommendationRepository } from '@/features/packing/recommendationRepository';
@@ -37,6 +38,7 @@ import { getSchemaVersion } from './migrate';
 export async function getRepositories(partition?: Partition) {
   const db = partition ? await getPartitionDatabase(partition) : await getDatabase();
   const checklists = createChecklistRepository(db, { createId });
+  const packing = createPackingRepository(db, { createId });
   return {
     trips: createTripRepository(db, { createId }),
     checklists,
@@ -45,7 +47,8 @@ export async function getRepositories(partition?: Partition) {
     inventory: createInventoryRepository(db, { createId }),
     clothing: createClothingRepository(db, { createId }),
     memories: createMemoriesRepository(db, { createId }),
-    packing: createPackingRepository(db, { createId }),
+    packing,
+    unifiedPacking: createUnifiedPackingRepository(db, { packing, checklists }),
     recommendations: createRecommendationRepository(db, { createId }),
     purchases: createPurchaseRepository(db, { createId }),
     preferences: createPreferencesRepository(db),

@@ -106,7 +106,8 @@ function tasksFor(kind: StandardSectionKind, trip: TripInput): PlanTask[] {
  */
 export function buildStarterChecklist(trip: TripInput): ChecklistPlan {
   return {
-    sections: getStandardSectionsFor(trip.transportMode).map((kind) => ({
+    // Packing is managed in the dedicated Packing list (with its own suggestions), never as checklist tasks.
+    sections: getStandardSectionsFor(trip.transportMode).filter((kind) => kind !== 'packing').map((kind) => ({
       title: SECTION_META[kind].title,
       kind,
       tasks: tasksFor(kind, trip),
