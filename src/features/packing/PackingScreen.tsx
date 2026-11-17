@@ -15,22 +15,25 @@ import {
   ProgressBar,
   SegmentedControl,
   type SegmentOption,
+  Tag,
 } from '@/components/ui';
 import { confirmAction } from '@/lib/confirm';
 import { formatDateRange } from '@/lib/dates';
 import { toErrorMessage } from '@/lib/errors';
 import { successFeedback } from '@/lib/haptics';
-import { spacing } from '@/theme';
+import { colors, spacing } from '@/theme';
 
 import { useCategoryMaps, useEnsureInventoryLoaded } from '../inventory/hooks';
 import { useInventoryStore } from '../inventory/inventoryStore';
 import { useTrip } from '../trips/hooks';
-import { getTripLifecycle, type TripSummary } from '../trips/model';
+import { getTripLifecycle, tripDays, type TripSummary } from '../trips/model';
 import { BagsTab } from './components/BagsTab';
 import { BuyTab } from './components/BuyTab';
 import { ItemsTab } from './components/ItemsTab';
 import { PackingStatusLine } from './components/PackingParts';
 import { SuggestTab } from './components/SuggestTab';
+import { OldChecklistTasks } from './components/OldChecklistTasks';
+import { useUnifiedPackingStore } from './unifiedPackingStore';
 import { categoryProgress } from './categories';
 import { describeConflict, type ReservationConflict } from './model';
 import { usePackingStore, useTripPacking } from './packingStore';
@@ -136,6 +139,7 @@ function PackingBody({ trip, initialTab }: { trip: TripSummary; initialTab: Tab 
   useFocusEffect(
     useCallback(() => {
       void usePackingStore.getState().load(trip.id);
+      void useUnifiedPackingStore.getState().load(trip.id);
       void usePackingStore.getState().loadPreferences();
     }, [trip.id]),
   );
@@ -159,11 +163,11 @@ function PackingBody({ trip, initialTab }: { trip: TripSummary; initialTab: Tab 
         showBack
         eyebrow={trip.name}
         title="Packing"
-        subtitle={
+        subtitle={`${tripDays(trip)} ${tripDays(trip) === 1 ? 'day' : 'days'} · ${trip.travellers.length} ${trip.travellers.length === 1 ? 'traveller' : 'travellers'} · ${
           progress.total === 0
-            ? 'Nothing on the list yet'
-            : `${progress.packed} of ${progress.total} ${progress.total === 1 ? 'item' : 'items'} packed · ${progress.remaining} left`
-        }
+            ? 'nothing on the list yet'
+            : `${progress.packed} of ${progress.total} packed · ${progress.remaining} left`
+        }`}
       />
 
       {packing.status === 'error' ? (
@@ -186,6 +190,7 @@ function PackingBody({ trip, initialTab }: { trip: TripSummary; initialTab: Tab 
               <AppText variant="title" style={styles.flex}>
                 {progress.percent}% packed
               </AppText>
+              <View testID="packing-status"><Tag label={packing.state.confirmedAt ? 'Confirmed' : 'Draft'} icon={packing.state.confirmedAt ? 'check-decagram' : 'pencil-outline'} color={packing.state.confirmedAt ? colors.accent : colors.warning} /></View>
             </View>
             <ProgressBar
               value={progress.total === 0 ? 0 : progress.packed / progress.total}
@@ -195,6 +200,8 @@ function PackingBody({ trip, initialTab }: { trip: TripSummary; initialTab: Tab 
               <ConfirmPanel trip={trip} confirmed={Boolean(packing.state.confirmedAt)} entries={packing.entries.length} />
             </View>
           </Card>
+
+          <OldChecklistTasks tripId={trip.id} />
 
           <SegmentedControl options={options} value={tab} onChange={setTab} accessibilityLabel="Packing sections" />
           {pending > 0 && tab !== 'suggest' ? (

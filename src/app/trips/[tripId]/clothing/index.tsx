@@ -1,8 +1,9 @@
 import { useLocalSearchParams } from 'expo-router';
 
-import { ClothingScreen } from '@/features/clothing/ClothingScreen';
+import { ClothingSectionLauncher } from '@/features/preparation/components/ClothingSectionLauncher';
 
+/** Old Clothing organiser link: Clothing now lives in the trip's Packing list. */
 export default function ClothingRoute() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
-  return <ClothingScreen tripId={tripId} />;
+  return <ClothingSectionLauncher tripId={tripId} />;
 }

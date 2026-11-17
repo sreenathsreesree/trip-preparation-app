@@ -42,6 +42,15 @@ export function isClothingSection(section: { kind: SectionKind; title: string })
   return section.kind === 'custom' && CLOTHING_TITLE.test(section.title);
 }
 
+/**
+ * A checklist section that held packing items before Packing became its own list: the built-in
+ * Packing section and the Clothing section. Its remaining tasks are resolved from Packing; it is
+ * shown only while it still has tasks.
+ */
+export function isOldPackingSection(section: { kind: SectionKind; title: string }): boolean {
+  return section.kind === 'packing' || isClothingSection(section);
+}
+
 /** The trip's clothing section: one named exactly "Clothing" first, else any clothing-like custom section. */
 export function findClothingSection<S extends { kind: SectionKind; title: string; position: number }>(sections: readonly S[]): S | null {
   const own = sections.filter(isClothingSection).sort((a, b) => a.position - b.position);

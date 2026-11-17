@@ -9,6 +9,7 @@ import {
   AppText,
   Button,
   Card,
+  Collapsible,
   EmptyState,
   ErrorState,
   IconButton,
@@ -16,6 +17,7 @@ import {
   Notice,
   OptionTile,
   ProgressBar,
+  TextField,
   type SheetAction,
 } from '@/components/ui';
 import { confirmAction } from '@/lib/confirm';
@@ -32,6 +34,7 @@ import { addToPackingCategory } from './components/ItemsTab';
 import { EntryRow, openEntry, TravellerChips, type TravellerFilter } from './components/PackingParts';
 import type { PackingEntry, PurchaseItem } from './model';
 import { usePackingStore, useTripPacking } from './packingStore';
+import { useTripPackingExtras, useUnifiedPackingStore } from './unifiedPackingStore';
 
 function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; categoryKey: string; initialTraveller: TravellerFilter }) {
   const packing = useTripPacking(trip.id);
@@ -41,6 +44,12 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
   const [traveller, setTraveller] = useState<TravellerFilter>(initialTraveller);
   const [subId, setSubId] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<PackingEntry | null>(null);
+  const [status, setStatus] = useState<'all' | 'topack' | 'packed'>('all');
+  const [moving, setMoving] = useState<PackingEntry | null>(null);
+  const [newGroup, setNewGroup] = useState('');
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [deletingGroup, setDeletingGroup] = useState<{ id: string; name: string } | null>(null);
+  const extras = useTripPackingExtras(trip.id);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const store = usePackingStore.getState;
@@ -48,6 +57,7 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
   useFocusEffect(
     useCallback(() => {
       void usePackingStore.getState().load(trip.id);
+      void useUnifiedPackingStore.getState().load(trip.id);
     }, [trip.id]),
   );
 
@@ -61,7 +71,8 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
   const visible = inCategory.filter(
     (entry) =>
       (traveller === 'all' ? true : traveller === 'shared' ? !entry.travellerId : entry.travellerId === traveller) &&
-      (!subId || entry.categoryId === subId),
+      (!subId || entry.categoryId === subId) &&
+      (status === 'all' || (status === 'packed' ? entry.isPacked : !entry.isPacked)),
   );
   const progress = categoryProgress(visible);
 
@@ -79,7 +90,7 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
 
   const badgeFor = (entry: PackingEntry): { label: string; tone: 'warning' | 'accent' | 'info' } | undefined => {
     const purchase = purchaseByEntry.get(entry.id);
-    if (!purchase) return undefined;
+    if (!purchase) return extras.priorities[entry.id] === 'essential' && !entry.isPacked ? { label: 'Essential', tone: 'warning' } : undefined;
     switch (purchase.status) {
       case 'needed':
         return { label: 'To buy', tone: 'warning' };
@@ -169,6 +180,9 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
   const actions: SheetAction[] = menuFor
     ? [
         { key: 'edit', label: 'Edit', icon: 'pencil-outline', onPress: () => openEntry(trip.id, menuFor.id) },
+        ...(category && subcategories.length > 0
+          ? [{ key: 'move', label: 'Move to group', icon: 'folder-move-outline' as const, onPress: () => setMoving(menuFor) }]
+          : []),
         ...shoppingActions,
         {
           key: 'remove',
@@ -244,6 +258,80 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
         </View>
       ) : null}
 
+      <View style={styles.chips} testID="category-status-filter">
+        {(
+          [
+            ['all', 'All'],
+            ['topack', 'To pack'],
+            ['packed', 'Packed'],
+          ] as const
+        ).map(([value, label]) => (
+          <OptionTile key={value} layout="chip" role="radio" label={label} icon={value === 'packed' ? 'check' : value === 'topack' ? 'checkbox-blank-outline' : 'format-list-bulleted'} selected={status === value} onPress={() => setStatus(value)} testID={`category-filter-${value}`} />
+        ))}
+      </View>
+
+      {category ? (
+        <Collapsible title={`Groups in ${category.name}`} icon="folder-multiple-outline" summary={subcategories.length ? subcategories.map((g) => g.name).join(', ') : 'Create groups such as Tops, Bottoms or Sleepwear'} testID="category-groups">
+          <View style={styles.list}>
+            {subcategories.map((g, index) => (
+              <View key={g.id} style={styles.groupRow} testID={`category-group-${g.name}`}>
+                {renaming?.id === g.id ? (
+                  <>
+                    <View style={styles.flex}>
+                      <TextField label="Group name" value={renaming.name} onChangeText={(name) => setRenaming({ id: g.id, name })} maxLength={40} testID="category-group-rename-input" />
+                    </View>
+                    <Button
+                      label="Save"
+                      size="sm"
+                      onPress={() =>
+                        run(async () => {
+                          await useInventoryStore.getState().updateCategory(g.id, { name: renaming.name.trim(), description: g.description, icon: g.icon, color: g.color, parentId: g.parentId, coverImageUri: g.coverImageUri });
+                          setRenaming(null);
+                        }, 'Could not rename the group.')
+                      }
+                      testID="category-group-rename-save"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <AppText variant="body" style={styles.flex} numberOfLines={1}>
+                      {g.name}
+                    </AppText>
+                    <IconButton icon="arrow-up" size="sm" variant="plain" disabled={index === 0} accessibilityLabel={`Move ${g.name} up`} onPress={() => run(() => useInventoryStore.getState().moveCategory(g.id, -1), 'Could not move the group.')} testID={`category-group-up-${g.name}`} />
+                    <IconButton icon="arrow-down" size="sm" variant="plain" disabled={index === subcategories.length - 1} accessibilityLabel={`Move ${g.name} down`} onPress={() => run(() => useInventoryStore.getState().moveCategory(g.id, 1), 'Could not move the group.')} testID={`category-group-down-${g.name}`} />
+                    <IconButton icon="pencil-outline" size="sm" variant="plain" accessibilityLabel={`Rename ${g.name}`} onPress={() => setRenaming({ id: g.id, name: g.name })} testID={`category-group-rename-${g.name}`} />
+                    {g.systemKey ? null : (
+                      <IconButton icon="trash-can-outline" size="sm" variant="plain" accessibilityLabel={`Delete ${g.name}`} onPress={() => setDeletingGroup({ id: g.id, name: g.name })} testID={`category-group-delete-${g.name}`} />
+                    )}
+                  </>
+                )}
+              </View>
+            ))}
+            <View style={styles.groupRow}>
+              <View style={styles.flex}>
+                <TextField label="New group" placeholder="e.g. Sleepwear" value={newGroup} onChangeText={setNewGroup} maxLength={40} testID="category-group-input" />
+              </View>
+              <Button
+                label="Add"
+                size="sm"
+                variant="secondary"
+                disabled={!newGroup.trim()}
+                onPress={() =>
+                  run(async () => {
+                    await useInventoryStore.getState().createCategory({ name: newGroup.trim(), description: '', icon: category.icon, color: category.color, parentId: category.id, coverImageUri: null });
+                    setNewGroup('');
+                  }, 'Could not add the group.')
+                }
+                testID="category-group-add"
+              />
+            </View>
+            <AppText variant="caption" tone="textMuted">
+              Groups are shared with My Inventory, so they are ready on your next trip too. Deleting a group never deletes items.
+            </AppText>
+          </View>
+        </Collapsible>
+      ) : null}
+
       {error ? <Notice tone="danger" title="Not updated" message={error} /> : null}
       {info ? (
         <Notice
@@ -266,7 +354,21 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
         />
       ) : (
         <View style={styles.list} testID="category-items">
-          {visible.map((entry) => (
+          {(category && !subId && subcategories.length > 0
+            ? [
+                ...subcategories.map((g) => ({ key: g.id, title: g.name as string | null, list: visible.filter((e) => e.categoryId === g.id) })),
+                { key: 'none', title: subcategories.length ? 'Not in a group' : null, list: visible.filter((e) => !subcategories.some((g) => g.id === e.categoryId)) },
+              ].filter((b) => b.list.length > 0)
+            : [{ key: 'all', title: null, list: visible }]
+          ).flatMap((block) => [
+            ...(block.title
+              ? [
+                  <AppText key={`h-${block.key}`} variant="label" tone="textMuted" testID={`category-block-${block.title}`}>
+                    {block.title} · {block.list.length}
+                  </AppText>,
+                ]
+              : []),
+            ...block.list.map((entry) => (
             <EntryRow
               key={entry.id}
               entry={entry}
@@ -278,7 +380,8 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
               onToggle={(e) => run(() => store().togglePacked(trip.id, e.id), 'Could not update the item.')}
               onMenu={setMenuFor}
             />
-          ))}
+            )),
+          ])}
         </View>
       )}
 
@@ -349,6 +452,29 @@ function Body({ trip, categoryKey, initialTraveller }: { trip: TripSummary; cate
       ) : null}
 
       <ActionSheet
+        visible={moving !== null}
+        title={moving ? `Move “${moving.name}” to` : ''}
+        actions={[
+          ...subcategories.map((g) => ({ key: g.id, label: g.name, icon: 'folder-outline' as const, onPress: () => { const e = moving; setMoving(null); if (e) run(() => store().updateEntry(trip.id, e.id, { categoryId: g.id }), 'Could not move it.'); } })),
+          ...(category ? [{ key: 'none', label: `No group (${category.name})`, icon: 'tray' as const, onPress: () => { const e = moving; setMoving(null); if (e) run(() => store().updateEntry(trip.id, e.id, { categoryId: category.id }), 'Could not move it.'); } }] : []),
+        ]}
+        onClose={() => setMoving(null)}
+        testID="entry-move-group"
+      />
+      <ActionSheet
+        visible={deletingGroup !== null}
+        title={deletingGroup ? `Delete “${deletingGroup.name}”?` : ''}
+        subtitle="Its items are kept. Where should they go?"
+        actions={[
+          ...(category ? [{ key: 'parent', label: `Keep them in ${category.name}`, icon: 'tray' as const, onPress: () => { const g = deletingGroup; setDeletingGroup(null); if (g) run(() => useUnifiedPackingStore.getState().deleteCategoryMoving(trip.id, g.id, null), 'Could not delete the group.'); } }] : []),
+          ...subcategories
+            .filter((g) => g.id !== deletingGroup?.id)
+            .map((g) => ({ key: g.id, label: `Move them to ${g.name}`, icon: 'folder-move-outline' as const, onPress: () => { const d = deletingGroup; setDeletingGroup(null); if (d) run(() => useUnifiedPackingStore.getState().deleteCategoryMoving(trip.id, d.id, g.id), 'Could not delete the group.'); } })),
+        ]}
+        onClose={() => setDeletingGroup(null)}
+        testID="category-group-delete-sheet"
+      />
+      <ActionSheet
         visible={menuFor !== null}
         title={menuFor?.name ?? ''}
         subtitle="This trip only"
@@ -402,5 +528,13 @@ const styles = StyleSheet.create({
   },
   quick: {
     gap: spacing.sm,
+  },
+  groupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  flex: {
+    flex: 1,
   },
 });

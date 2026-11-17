@@ -27,6 +27,9 @@ import { useTrip } from '../trips/hooks';
 import type { TripSummary } from '../trips/model';
 import { ENTRY_UNITS, LUGGAGE_META, PACKING_LIMITS, UNIT_META, type EntryPatch, type PackingEntry } from './model';
 import { usePackingStore, useTripPacking } from './packingStore';
+import { useTripPackingExtras, useUnifiedPackingStore } from './unifiedPackingStore';
+import { PrioritySelector } from '../preparation/components/Priority';
+import type { Priority } from '../preparation/model';
 
 function ChipRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -55,6 +58,9 @@ function Form({ trip, entry }: { trip: TripSummary; entry: PackingEntry }) {
     isPacked: entry.isPacked,
     notes: entry.notes,
   });
+  const extras = useTripPackingExtras(trip.id);
+  const [priority, setPriority] = useState<Priority | null>(null);
+  const shownPriority = priority ?? extras.priorities[entry.id] ?? 'recommended';
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const patch = (value: Partial<EntryPatch>) => setDraft((current) => ({ ...current, ...value }));
@@ -66,6 +72,7 @@ function Form({ trip, entry }: { trip: TripSummary; entry: PackingEntry }) {
     setError(null);
     try {
       await usePackingStore.getState().updateEntry(trip.id, entry.id, { ...draft, name: draft.name.trim() });
+      if (priority !== null && priority !== extras.priorities[entry.id]) await useUnifiedPackingStore.getState().setPriority(trip.id, entry.id, priority);
       successFeedback();
       goBackOrHome();
     } catch (err) {
@@ -211,6 +218,13 @@ function Form({ trip, entry }: { trip: TripSummary; entry: PackingEntry }) {
           />
         ))}
       </ChipRow>
+
+      <View testID="entry-priority">
+        <AppText variant="label" tone="textSecondary">
+          Priority
+        </AppText>
+        <PrioritySelector value={shownPriority} onChange={setPriority} />
+      </View>
 
       <TextField
         label="Notes (optional)"

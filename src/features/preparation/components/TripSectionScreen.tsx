@@ -29,7 +29,7 @@ import { useOwner, useOwnerChecklist } from '../hooks';
 import { emptyTaskDraft, SECTION_META, sortByPosition, type ChecklistTask } from '../model';
 import { completionPercent, computeStats, openCount } from '../readiness';
 import { AddItemBar } from './AddItemBar';
-import { isClothingSection, supportsInventory } from '../sectionExtrasRepository';
+import { isClothingSection, isOldPackingSection, supportsInventory } from '../sectionExtrasRepository';
 import { useSectionExtras, useSectionExtrasStore } from '../sectionExtrasStore';
 import { CategoryShortcut, GroupChips, GroupsManager, InventoryPicker } from './SectionTools';
 import { TaskRow } from './TaskRow';
@@ -200,7 +200,18 @@ function SectionBody({ trip, sectionId }: { trip: TripSummary; sectionId: string
 
       {section ? <CategoryShortcut tripId={trip.id} section={section} /> : null}
 
-      {reordering ? null : (
+      {section && isOldPackingSection(section) ? (
+        <Notice
+          tone="info"
+          icon="bag-suitcase-outline"
+          title="Packing now lives in the Packing list"
+          message="Add new packing items there. These remaining tasks can be moved, kept or removed from Packing → “From your old checklist”."
+          action={{ label: 'Open Packing', icon: 'bag-suitcase-outline', onPress: () => router.push({ pathname: '/trips/[tripId]/packing', params: { tripId: trip.id } }) }}
+          testID="section-old-packing"
+        />
+      ) : null}
+
+      {reordering || (section && isOldPackingSection(section)) ? null : (
         <View style={styles.group}>
           <GroupChips groups={extras.groups} value={addGroup && groupIds.has(addGroup) ? addGroup : null} onChange={setAddGroup} />
           <AddItemBar

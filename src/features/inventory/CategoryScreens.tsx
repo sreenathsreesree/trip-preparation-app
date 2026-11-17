@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Screen } from '@/components/layout/Screen';
 import { goBackOrHome, ScreenHeader } from '@/components/layout/ScreenHeader';
 import {
+  ActionSheet,
   AppText,
   Button,
   Card,
@@ -17,6 +18,7 @@ import {
   ReorderControls,
   SegmentedControl,
   TextField,
+  type SheetAction,
 } from '@/components/ui';
 import { getRepositories } from '@/db/repositories';
 import { confirmAction } from '@/lib/confirm';
@@ -26,6 +28,7 @@ import { colors, radii, spacing } from '@/theme';
 
 import { ImagePickerField } from './components/ImagePickerField';
 import { useCategoryMaps, useEnsureInventoryLoaded } from './hooks';
+import { useUnifiedPackingStore } from '../packing/unifiedPackingStore';
 import { useInventoryStore } from './inventoryStore';
 import { ItemCollection } from './InventoryScreen';
 import {
@@ -310,31 +313,46 @@ function CategoryForm({ category, parent }: { category?: InventoryCategory; pare
     }
   }
 
+  const allCategories = useInventoryStore((state) => state.categories);
+  const [choosingTarget, setChoosingTarget] = useState(false);
+  // Where its items go: another group of the same category (or the category itself), or another category.
+  const targets: SheetAction[] = !category
+    ? []
+    : isSub
+      ? [
+          { key: 'parent', label: `Keep them in ${allCategories.find((c) => c.id === category.parentId)?.name ?? 'the category'}`, icon: 'tray', onPress: () => void finish(null) },
+          ...allCategories
+            .filter((c) => c.parentId === category.parentId && c.id !== category.id)
+            .map((c) => ({ key: c.id, label: `Move them to ${c.name}`, icon: 'folder-move-outline' as const, onPress: () => void finish(c.id) })),
+        ]
+      : allCategories
+          .filter((c) => !c.parentId && c.id !== category.id)
+          .map((c) => ({ key: c.id, label: `Move them to ${c.name}`, icon: 'folder-move-outline' as const, onPress: () => void finish(c.id) }));
+
   async function remove() {
     if (!category || isProtected) return;
     let packingEntries = 0;
     try {
       packingEntries = (await (await getRepositories()).inventory.categoryUsage(category.id)).packingEntries;
     } catch {
-      // The count is only informative; deleting still never removes items or entries.
+      // The count is only informative; deleting never removes items or entries.
     }
     const confirmed = await confirmAction({
       title: `Delete “${category.name}”?`,
-      message: `${isSub ? 'The subcategory' : 'The category and its subcategories'} will be removed. Its ${itemCount} ${
-        itemCount === 1 ? 'item stays' : 'items stay'
-      } in your inventory${isSub ? ' under the parent category' : ' as uncategorised'}. ${
-        packingEntries === 0
-          ? 'No trip packing items use it.'
-          : `${packingEntries} trip packing ${packingEntries === 1 ? 'item stays' : 'items stay'} on ${
-              packingEntries === 1 ? 'its trip' : 'their trips'
-            }${isSub ? '' : ' under “Uncategorised”'}.`
-      }`,
-      confirmLabel: 'Delete category',
+      message: `${isSub ? 'The group' : 'The category and its groups'} will be removed. Nothing else is deleted: next, choose where its ${itemCount} Inventory ${
+        itemCount === 1 ? 'item' : 'items'
+      } and ${packingEntries} trip packing ${packingEntries === 1 ? 'item' : 'items'} should go.`,
+      confirmLabel: 'Choose where items go',
       destructive: true,
     });
-    if (!confirmed) return;
+    if (confirmed) setChoosingTarget(true);
+  }
+
+  async function finish(moveTo: string | null) {
+    if (!category) return;
+    setChoosingTarget(false);
     try {
-      await useInventoryStore.getState().deleteCategory(category.id);
+      await useUnifiedPackingStore.getState().deleteCategoryMoving(null, category.id, moveTo);
       router.back();
     } catch (err) {
       setError(toErrorMessage(err, 'Could not delete the category.'));
@@ -453,6 +471,7 @@ function CategoryForm({ category, parent }: { category?: InventoryCategory; pare
           testID="category-delete"
         />
       ) : null}
+      <ActionSheet visible={choosingTarget} title={category ? `Delete “${category.name}”` : ''} subtitle="Where should its items go?" actions={targets} onClose={() => setChoosingTarget(false)} testID="category-delete-target" />
     </Screen>
   );
 }

@@ -28,7 +28,9 @@ import { useTripsStore } from '../../trips/tripsStore';
 import { useChecklistStore } from '../checklistStore';
 import { useEnsureTemplatesLoaded, useOwner, useOwnerChecklist } from '../hooks';
 import { groupTasksBySection, SECTION_META, tripOwner } from '../model';
-import { checklistProgress, completionPercent, computeStats, openCount } from '../readiness';
+import { completionPercent, computeStats, openCount, preparationProgress } from '../readiness';
+import { isOldPackingSection } from '../sectionExtrasRepository';
+import { usePackingStore, useTripPacking } from '../../packing/packingStore';
 import { buildStarterSection } from '../starter';
 import { useTemplatesStore } from '../templatesStore';
 
@@ -45,7 +47,10 @@ function TripChecklistCard({ trip, expanded, onToggle }: { trip: TripSummary; ex
   const owner = useOwner('trip', trip.id);
   const checklist = useOwnerChecklist(owner);
   const grouped = groupTasksBySection(checklist.tasks);
-  const progress = checklistProgress(checklist.tasks);
+  const packing = useTripPacking(trip.id);
+  const progress = preparationProgress(checklist.tasks, packing.entries);
+  // Old Packing / Clothing sections stay listed only while they still have tasks.
+  const sections = checklist.sections.filter((section) => !isOldPackingSection(section) || (grouped.get(section.id)?.length ?? 0) > 0);
   const [addingVehicle, setAddingVehicle] = useState(false);
   const [toolError, setToolError] = useState<string | null>(null);
   const ready = checklist.status === 'ready';
@@ -79,7 +84,7 @@ function TripChecklistCard({ trip, expanded, onToggle }: { trip: TripSummary; ex
           <ProgressBar value={progress.percent / 100} height={4} />
           <View style={styles.metaRow}>
             <AppText variant="caption" tone="textSecondary" style={styles.flex} testID={`checklist-trip-count-${trip.id}`}>
-              {ready ? (progress.total === 0 ? 'No tasks yet' : `${progress.done}/${progress.total} tasks done`) : 'Loading…'}
+              {ready ? (progress.total === 0 ? 'Nothing to prepare yet' : `${progress.done}/${progress.total} done`) : 'Loading…'}
             </AppText>
             {progress.essentialsOpen > 0 ? (
               <View style={styles.essential} testID={`checklist-trip-essentials-${trip.id}`}>
@@ -107,12 +112,29 @@ function TripChecklistCard({ trip, expanded, onToggle }: { trip: TripSummary; ex
             <AppText variant="caption" tone="textMuted" style={styles.message}>
               Loading…
             </AppText>
-          ) : checklist.sections.length === 0 ? (
-            <AppText variant="caption" tone="textMuted" style={styles.message}>
-              No sections yet. Add one with Manage sections, or copy a template.
-            </AppText>
           ) : (
-            checklist.sections.map((section) => {
+            [
+              <Pressable
+                key="packing"
+                accessibilityRole="button"
+                accessibilityLabel={`${trip.name}, Packing: ${progress.packing.done} of ${progress.packing.total} packed`}
+                onPress={() => router.push({ pathname: '/trips/[tripId]/packing', params: { tripId: trip.id } })}
+                style={({ pressed }) => [styles.sectionRow, pressed && styles.pressed]}
+                testID="checklist-packing-row"
+              >
+                <Icon name="bag-suitcase-outline" color={colors.accent} size={18} />
+                <AppText variant="body" style={styles.sectionTitle} numberOfLines={1}>
+                  Packing
+                </AppText>
+                <View style={styles.bar}>
+                  <ProgressBar value={progress.packing.total ? progress.packing.done / progress.packing.total : 0} height={4} />
+                </View>
+                <AppText variant="caption" tone="textMuted" style={styles.count}>
+                  {progress.packing.done}/{progress.packing.total}
+                </AppText>
+                <Icon name="chevron-right" size={18} tone="textMuted" />
+              </Pressable>,
+              ...sections.map((section) => {
               const meta = SECTION_META[section.kind];
               const stats = computeStats(grouped.get(section.id) ?? []);
               const essentials = openCount(stats.essential);
@@ -139,7 +161,8 @@ function TripChecklistCard({ trip, expanded, onToggle }: { trip: TripSummary; ex
                   <Icon name="chevron-right" size={18} tone="textMuted" />
                 </Pressable>
               );
-            })
+            }),
+            ]
           )}
 
           {needsVehicle && owner ? (
@@ -202,7 +225,11 @@ function TripsTab({ expandedId, setExpandedId, focusTripId }: { expandedId: stri
 
   const ids = trips.map((trip) => trip.id).join(',');
   useEffect(() => {
-    for (const id of ids.split(',')) if (id) void loadChecklist(tripOwner(id));
+    for (const id of ids.split(',')) {
+      if (!id) continue;
+      void loadChecklist(tripOwner(id));
+      void usePackingStore.getState().load(id);
+    }
   }, [ids, loadChecklist]);
 
   if (status === 'error') {

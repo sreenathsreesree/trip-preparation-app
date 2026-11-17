@@ -6,13 +6,11 @@ import { ScreenHeader } from '@/components/layout/ScreenHeader';
 import { ErrorState, LoadingState } from '@/components/ui';
 import { toErrorMessage } from '@/lib/errors';
 
-import { tripOwner } from '../model';
-import { useSectionExtrasStore } from '../sectionExtrasStore';
+import { useInventoryStore } from '../../inventory/inventoryStore';
 
 /**
- * The dashboard's Clothing entry: opens the trip's Clothing checklist section — the same
- * screen (tasks, groups, Add from Inventory) the Checklist tab opens — creating it the
- * first time. No second clothing list is kept anywhere.
+ * Every Clothing entry point (the dashboard tile and the old Clothing organiser links) opens the
+ * Clothing category of the trip's Packing list — the single place for packing items.
  */
 export function ClothingSectionLauncher({ tripId }: { tripId: string | undefined }) {
   const [error, setError] = useState<string | null>(null);
@@ -20,11 +18,14 @@ export function ClothingSectionLauncher({ tripId }: { tripId: string | undefined
   useEffect(() => {
     if (!tripId) return;
     let live = true;
-    useSectionExtrasStore
-      .getState()
-      .ensureClothingSection(tripOwner(tripId))
-      .then((sectionId) => live && router.replace({ pathname: '/trips/[tripId]/sections/[sectionId]', params: { tripId, sectionId } }))
-      .catch((e: unknown) => live && setError(toErrorMessage(e, 'Could not open Clothing.')));
+    (async () => {
+      const inventory = useInventoryStore.getState();
+      if (inventory.status !== 'ready') await inventory.load();
+      const clothing = useInventoryStore.getState().categories.find((c) => c.systemKey === 'clothing' && !c.parentId);
+      if (!live) return;
+      if (clothing) router.replace({ pathname: '/trips/[tripId]/packing/category/[categoryId]', params: { tripId, categoryId: clothing.id } });
+      else router.replace({ pathname: '/trips/[tripId]/packing', params: { tripId } });
+    })().catch((e: unknown) => live && setError(toErrorMessage(e, 'Could not open Clothing.')));
     return () => {
       live = false;
     };
