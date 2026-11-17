@@ -6,6 +6,7 @@ import type { IconName } from '@/theme/icons';
 import { AppText } from './AppText';
 import { Button } from './Button';
 import { Icon } from './Icon';
+import { IconButton } from './IconButton';
 
 type Tone = 'info' | 'warning' | 'danger' | 'success';
 
@@ -23,11 +24,13 @@ export interface NoticeProps {
   icon?: IconName;
   /** Optional real action; omit rather than showing a non-functional button. */
   action?: { label: string; onPress: () => void; icon?: IconName; loading?: boolean };
+  /** Shows a close button; hiding the notice never undoes what it reports. */
+  onDismiss?: () => void;
   testID?: string;
 }
 
 /** Inline status message (errors, results, suggestions). */
-export function Notice({ tone = 'info', title, message, icon, action, testID }: NoticeProps) {
+export function Notice({ tone = 'info', title, message, icon, action, onDismiss, testID }: NoticeProps) {
   const { color, icon: defaultIcon } = TONES[tone];
   return (
     <View
@@ -48,6 +51,9 @@ export function Notice({ tone = 'info', title, message, icon, action, testID }: 
             </AppText>
           ) : null}
         </View>
+        {onDismiss ? (
+          <IconButton icon="close" size="sm" variant="plain" accessibilityLabel="Dismiss" onPress={onDismiss} testID={testID ? `${testID}-dismiss` : undefined} />
+        ) : null}
       </View>
       {action ? (
         <Button

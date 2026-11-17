@@ -3,6 +3,7 @@ import { useState } from 'react';
 
 import { AppText, Button, Card, Notice } from '@/components/ui';
 import { confirmAction } from '@/lib/confirm';
+import { useTransientMessage } from '@/lib/useTransientMessage';
 import { toErrorMessage } from '@/lib/errors';
 import { colors, spacing } from '@/theme';
 
@@ -18,8 +19,10 @@ import { useTripPackingExtras, useUnifiedPackingStore } from '../unifiedPackingS
 export function OldChecklistTasks({ tripId }: { tripId: string }) {
   const { oldTasks } = useTripPackingExtras(tripId);
   const [busy, setBusy] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
-  if (oldTasks.length === 0 && !message) return null;
+  // Success dismisses itself after 3 s (or on close); an error stays until the next action.
+  const [success, notify] = useTransientMessage();
+  const [failure, setFailure] = useState<string | null>(null);
+  if (oldTasks.length === 0 && !success && !failure) return null;
 
   const act = async (task: OldChecklistTask, action: 'convert' | 'keep' | 'remove') => {
     const confirm =
@@ -39,15 +42,16 @@ export function OldChecklistTasks({ tripId }: { tripId: string }) {
             };
     if (!(await confirmAction(confirm))) return;
     setBusy(task.taskId);
-    setMessage(null);
+    notify.dismiss();
+    setFailure(null);
     try {
       const store = useUnifiedPackingStore.getState();
       if (action === 'convert') await store.convertTask(tripId, task.taskId);
       else if (action === 'keep') await store.keepTask(tripId, task.taskId);
       else await store.removeTask(tripId, task.taskId);
-      setMessage({ tone: 'success', text: action === 'convert' ? `“${task.title}” is now on the packing list.` : action === 'keep' ? `“${task.title}” stays in the checklist.` : `“${task.title}” was removed.` });
+      notify.show(action === 'convert' ? `“${task.title}” is now on the packing list.` : action === 'keep' ? `“${task.title}” stays in the checklist.` : `“${task.title}” was removed.`);
     } catch (e) {
-      setMessage({ tone: 'danger', text: toErrorMessage(e, 'That did not work; nothing was changed.') });
+      setFailure(toErrorMessage(e, 'That did not work; nothing was changed.'));
     } finally {
       setBusy(null);
     }
@@ -60,7 +64,8 @@ export function OldChecklistTasks({ tripId }: { tripId: string }) {
         <AppText variant="caption" tone="textSecondary">
           Packing now lives here. These tasks are still in the checklist’s {oldTasks[0]?.sectionTitle ?? 'Packing'} section — decide for each one.
         </AppText>
-        {message ? <Notice tone={message.tone} title={message.text} testID="old-checklist-message" /> : null}
+        {success ? <Notice tone="success" title={success} onDismiss={notify.dismiss} testID="old-checklist-message" /> : null}
+        {failure ? <Notice tone="danger" title={failure} onDismiss={() => setFailure(null)} testID="old-checklist-error" /> : null}
         {oldTasks.map((task) => (
           <View key={task.taskId} style={styles.task} testID={`old-task-${task.title}`}>
             <AppText variant="bodyStrong" numberOfLines={2}>

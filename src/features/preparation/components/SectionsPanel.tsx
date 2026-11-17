@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ActionSheet, AppText, Button, Icon, IconButton, Notice, OptionTile, ProgressBar, TextField, ToggleRow, type SheetAction } from '@/components/ui';
 import { confirmAction } from '@/lib/confirm';
+import { useTransientMessage } from '@/lib/useTransientMessage';
 import { toErrorMessage } from '@/lib/errors';
 import { colors, radii, spacing } from '@/theme';
 import type { IconName } from '@/theme/icons';
@@ -68,7 +69,14 @@ export function SectionsPanel({
   const [mode, setMode] = useState<Mode>({ kind: 'none' });
   const [menuFor, setMenuFor] = useState<ChecklistSection | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  // Success messages dismiss themselves after 3 s (or on close); failures show an error instead.
+  const [message, notify] = useTransientMessage();
+  const setMessage = (text: string) => notify.show(text);
+  /** Opening a form clears an earlier success message, so a later failure never sits next to it. */
+  const openMode = (next: Mode) => {
+    notify.dismiss();
+    setMode(next);
+  };
   const ids = sections.map((s) => s.id).join(',');
   useEffect(() => {
     if (ids) void useSectionSettingsStore.getState().load(ids.split(','));
@@ -76,7 +84,7 @@ export function SectionsPanel({
 
   const run = (fn: () => Promise<unknown>, fallback: string) => {
     setError(null);
-    setMessage(null);
+    notify.dismiss();
     fn().catch((e: unknown) => setError(toErrorMessage(e, fallback)));
   };
   /** The full order after reordering only the shown sections (hidden ones keep their place at the end). */
@@ -96,7 +104,7 @@ export function SectionsPanel({
 
   const menu: SheetAction[] = menuFor
     ? [
-        { key: 'edit', label: 'Rename, icon and settings', icon: 'pencil-outline', onPress: () => setMode({ kind: 'edit', section: menuFor }) },
+        { key: 'edit', label: 'Rename, icon and settings', icon: 'pencil-outline', onPress: () => openMode({ kind: 'edit', section: menuFor }) },
         { key: 'up', label: 'Move up', icon: 'arrow-up', onPress: () => reorder(moved(sections.map((s) => s.id), menuFor.id, -1)) },
         { key: 'down', label: 'Move down', icon: 'arrow-down', onPress: () => reorder(moved(sections.map((s) => s.id), menuFor.id, 1)) },
         { key: 'delete', label: 'Delete section', icon: 'delete-outline', destructive: true, onPress: () => void remove(menuFor) },
@@ -143,7 +151,7 @@ export function SectionsPanel({
       />
 
       {error ? <Notice tone="danger" title={error} testID="sections-error" /> : null}
-      {message ? <Notice tone="success" title={message} testID="sections-message" /> : null}
+      {message ? <Notice tone="success" title={message} onDismiss={notify.dismiss} testID="sections-message" /> : null}
 
       {mode.kind === 'add' || mode.kind === 'edit' ? (
         <SectionForm
@@ -183,8 +191,8 @@ export function SectionsPanel({
         </View>
       ) : (
         <View style={styles.actions}>
-          <Button label="Add section" icon="plus" variant="ghost" size="sm" onPress={() => setMode({ kind: 'add' })} testID="section-add-open" />
-          <Button label="From Inventory category" icon="archive-arrow-down-outline" variant="ghost" size="sm" onPress={() => setMode({ kind: 'category' })} testID="section-from-category" />
+          <Button label="Add section" icon="plus" variant="ghost" size="sm" onPress={() => openMode({ kind: 'add' })} testID="section-add-open" />
+          <Button label="From Inventory category" icon="archive-arrow-down-outline" variant="ghost" size="sm" onPress={() => openMode({ kind: 'category' })} testID="section-from-category" />
         </View>
       )}
 
