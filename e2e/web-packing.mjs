@@ -4,7 +4,7 @@
 //   npx expo export --platform web --output-dir dist && npm run e2e:packing
 //   SCREENSHOT_DIR=/tmp/shots npm run e2e:packing
 
-import { BASE, byId, check, dragElement, expand, iso, launch, run, setStep, shot, text, waitText, within } from './harness.mjs';
+import { BASE, byId, check, dragElement, expand, iso, launch, run, setStep, shot, text, touchDragElement, touchTap, waitText, within } from './harness.mjs';
 
 async function waitFor(fn, timeout = 15_000) {
   const end = Date.now() + timeout;
@@ -572,6 +572,112 @@ await run('Packing categories test', async () => {
   await byId(page, 'section-inventory-add').click();
   await waitText(page, 'section-message', (v) => v.includes('1 added from Inventory'));
   check(true, 'the chosen item is added, linked to Inventory');
+
+  setStep('Success notifications: dismiss after 3 s or on close; data stays');
+  await page.goto(`${BASE}/checklists`);
+  await byId(page, `checklist-trip-toggle-${tripAId}`).waitFor({ timeout: 60_000 });
+  await byId(page, `checklist-trip-toggle-${tripAId}`).click();
+  await panel.waitFor();
+  const addSection = async (name) => {
+    await byId(page, 'section-add-open').click();
+    await byId(page, 'section-form-name').fill(name);
+    await byId(page, 'section-form-save').click();
+  };
+  await addSection('Snacks');
+  await waitText(page, 'sections-message', (v) => v.includes('Snacks'));
+  await byId(page, 'sections-message-dismiss').click();
+  await waitFor(async () => (await byId(page, 'sections-message').count()) === 0);
+  check((await byId(page, 'section-card-snacks').count()) === 1, 'closing the message keeps the new section');
+  await addSection('Maps');
+  await waitText(page, 'sections-message', (v) => v.includes('Maps'));
+  const shownAt = Date.now();
+  await waitFor(async () => (await byId(page, 'sections-message').count()) === 0, 8000);
+  const shownFor = Date.now() - shownAt;
+  check(shownFor > 2000 && shownFor < 5000, `the message dismisses itself after about 3 s (${shownFor} ms)`);
+  check((await byId(page, 'section-card-maps').count()) === 1, 'and the section stays');
+  await addSection('Tolls');
+  await waitText(page, 'sections-message', (v) => v.includes('Tolls'));
+  await addSection('Fuel');
+  await waitText(page, 'sections-message', (v) => v.includes('Fuel'));
+  check((await byId(page, 'sections-message').count()) === 1 && !(await text(page, 'sections-message')).includes('Tolls'), 'a second operation replaces the first message (never two)');
+  await page.waitForTimeout(3600);
+  check((await byId(page, 'sections-message').count()) === 0, 'and its own timer still hides it');
+  await addSection('fuel');
+  await byId(page, 'section-form-error').waitFor();
+  check((await byId(page, 'sections-message').count()) === 0, 'a failed operation shows an error, not a success message');
+  await byId(page, 'section-form').getByRole('button', { name: 'Cancel' }).click();
+  await addSection('Ferry');
+  await waitText(page, 'sections-message', (v) => v.includes('Ferry'));
+  await byId(page, `checklist-trip-toggle-${tripAId}`).click();
+  await byId(page, `checklist-trip-toggle-${tripAId}`).click();
+  await panel.waitFor();
+  check((await byId(page, 'sections-message').count()) === 0 && (await byId(page, 'section-card-ferry').count()) === 1, 'reopening the trip card shows no old message; the section is there');
+  for (const name of ['Snacks', 'Maps', 'Tolls', 'Fuel', 'Ferry']) {
+    await byId(page, `section-menu-${name}`).click();
+    await byId(page, 'sheet-action-delete').click();
+    await waitFor(async () => (await byId(page, `section-card-${name.toLowerCase()}`).count()) === 0);
+  }
+
+  setStep('Documents: groups, add here, fold, counts, move, safe delete');
+  await byId(page, 'section-card-documents').click();
+  await byId(page, 'section-screen-documents').waitFor();
+  await byId(page, 'section-add-group').click();
+  for (const g of ['Identity documents', 'Tickets and bookings']) {
+    await byId(page, 'section-group-input').fill(g);
+    await byId(page, 'section-group-add').click();
+    await byId(page, `section-group-block-${g}`).waitFor();
+  }
+  await byId(page, 'section-group-up-Tickets and bookings').click();
+  const blocks = async () => page.evaluate(() => [...document.querySelectorAll('[data-testid^="section-group-block-"]')].map((e) => e.getAttribute('data-testid').slice('section-group-block-'.length)));
+  await waitFor(async () => (await blocks())[0] === 'Tickets and bookings');
+  check(true, 'Move up reorders the groups');
+  await byId(page, 'section-group-addhere-Identity documents').click();
+  await byId(page, 'add-item-input').fill('Passport copy');
+  await byId(page, 'add-item-button').click();
+  await waitFor(async () => /Passport copy/.test(await text(page, 'section-group-block-Identity documents')));
+  check(true, '“+” on a group adds the next task there');
+  check((await text(page, 'section-group-count-Identity documents')) === '0/1', 'the group shows its count');
+  await byId(page, 'section-group-toggle-Identity documents').click();
+  await waitFor(async () => !/Passport copy/.test(await text(page, 'section-group-block-Identity documents')));
+  await byId(page, 'section-group-toggle-Identity documents').click();
+  await waitFor(async () => /Passport copy/.test(await text(page, 'section-group-block-Identity documents')));
+  check(true, 'a group folds and unfolds');
+  await byId(page, 'task-menu-Passport copy').click();
+  await byId(page, 'sheet-action-group').click();
+  await byId(page, 'task-move-sheet').getByText('Tickets and bookings', { exact: true }).click();
+  await waitFor(async () => /Passport copy/.test(await text(page, 'section-group-block-Tickets and bookings')));
+  check(true, 'a task moves between groups from its menu');
+  await byId(page, 'section-group-delete-Tickets and bookings').click();
+  await byId(page, 'section-group-delete-sheet').waitFor();
+  check(/It has 1 task/.test(await text(page, 'section-group-delete-sheet')), 'deleting a group with tasks says how many and asks where they go');
+  await byId(page, 'sheet-action-none').click();
+  await waitFor(async () => (await byId(page, 'section-group-block-Tickets and bookings').count()) === 0);
+  check(/Passport copy/.test(await text(page, 'section-screen-documents')), 'its task is kept, ungrouped');
+  const before4 = dialogs.length;
+  await byId(page, 'section-group-delete-Identity documents').click();
+  await waitFor(async () => (await byId(page, 'section-group-block-Identity documents').count()) === 0);
+  check(dialogs.length > before4 && /Delete the empty group/.test(dialogs.at(-1) ?? ''), 'an empty group is deleted after a confirmation');
+
+  setStep('Documents Arrange with touch input (drag handle and arrows)');
+  if ((await byId(page, 'section-group-input').count()) === 0) await byId(page, 'section-add-group').click();
+  await byId(page, 'section-group-input').fill('Visas');
+  await byId(page, 'section-group-add').click();
+  await byId(page, 'section-group-block-Visas').waitFor();
+  await byId(page, 'toggle-reorder').click();
+  await byId(page, 'section-arrange').waitFor();
+  const arrangedDocs = async () => page.evaluate(() => [...document.querySelectorAll('[data-testid^="arrange-group-"], [data-testid^="arrange-task-"]')].map((e) => e.getAttribute('data-testid').replace(/^arrange-(group|task)-/, '')));
+  await touchDragElement(page, byId(page, 'arrange-task-Passport copy').locator('[data-testid^="drag-"]'), byId(page, 'arrange-group-Visas'), 'inside');
+  await waitFor(async () => { const o = await arrangedDocs(); return o.indexOf('Passport copy') === o.indexOf('Visas') + 1; });
+  check(true, 'a touch drag on the handle moves a task into a group');
+  const loose = (await arrangedDocs()).filter((n) => n !== 'Visas' && n !== 'Passport copy');
+  if (loose.length >= 2) {
+    await touchTap(page, page.getByRole('button', { name: `Move ${loose[0]} down` }).or(byId(page, `arrange-down-${loose[0]}`)).first());
+    await waitFor(async () => { const o = await arrangedDocs(); return o.indexOf(loose[0]) > o.indexOf(loose[1]); });
+    check(true, 'tapping Move down reorders tasks');
+  }
+  await byId(page, 'toggle-reorder').click();
+  await waitFor(async () => /Passport copy/.test(await text(page, 'section-group-block-Visas')));
+  check(true, 'the touch arrangement is saved');
 
   setStep('Dashboard 2.0: overview only, six shortcuts, weather folded');
   await page.goto(tripA);

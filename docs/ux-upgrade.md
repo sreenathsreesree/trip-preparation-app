@@ -197,3 +197,28 @@ this phase; nothing was deployed.
   drag out), task menu (group, other section, remove), task editor (quantity, link, unlink), and the
   Inventory picker (browse by category, no duplicates). The harness can decline the next
   confirmation with `dismissNext()`.
+
+## Checklist repair (Nov 2026): transient notifications, groups everywhere
+
+- **Success notifications** (trip card sections panel, section screen, *From your old checklist*)
+  show at once, dismiss themselves after **3 s**, and have a close (×) button
+  (`useTransientMessage` / `createTransientMessage`, `Notice onDismiss`). One timer at a time: a
+  new success replaces the old message and restarts it; the timer stops when the screen goes away.
+  The state is in memory only (never the database or local storage), so reopening a trip card
+  never shows an old message. Opening a form clears an earlier success; a failure shows an error
+  (errors stay until the next action or until closed). Closing a message never undoes anything.
+- **Groups in every section** (Documents, Vehicle, Preparation tasks, Shopping, Home, custom; the
+  existing `checklist_groups`, local v15 — no new table, no migration). The section screen has an
+  *Add group* button and a *Groups* panel (add, rename, Move up / down, delete with task counts).
+  Each group heading folds its tasks and shows done/total and a progress bar; its **+** makes it
+  the target for the next task. Deleting an empty group asks first; deleting one with tasks says
+  how many and asks where they go (another group or ungrouped) — tasks are never deleted.
+  Arrange mode, the task menu and the task editor (phase 3) work the same in every section.
+  Packing keeps its own Inventory category/subcategory groups.
+- **Data:** moving or reordering keeps title, description, notes, priority, done, Inventory link
+  and quantity; a task is never copied. Group organisation (groups, task ↔ group/Inventory links,
+  section settings) is **local-only**; tasks, their order and sections sync as before. Shared
+  trips are unchanged: checklist tasks stay personal, so nothing here reaches other members.
+- **Touch:** web E2E drives the Arrange drag handle with Chromium touch emulation (touch events,
+  not a mouse) and taps Move down. That is still a browser; it has not been verified on an
+  Android device here.

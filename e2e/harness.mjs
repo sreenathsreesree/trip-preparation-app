@@ -289,6 +289,52 @@ export async function dragElement(page, handle, target, position) {
   await page.waitForTimeout(500);
 }
 
+/**
+ * The same drag with touch input (Chromium touch emulation over CDP): press, hold, move and lift
+ * like a finger, so the handle is exercised with pointerType "touch" rather than a mouse. This is
+ * still a browser, not an Android device.
+ */
+export async function touchDragElement(page, handle, target, position) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+  await handle.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await page.waitForTimeout(200);
+  const hb = await handle.boundingBox();
+  const tb = await target.boundingBox();
+  if (!hb || !tb) throw new Error('touch drag: element not visible');
+  const fraction = position === 'before' ? 0.1 : position === 'inside' ? 0.5 : 0.92;
+  const x = hb.x + hb.width / 2;
+  const y0 = hb.y + hb.height / 2;
+  const y1 = tb.y + tb.height * fraction;
+  const touch = (type, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 }] });
+  await touch('touchStart', y0);
+  await page.waitForTimeout(120);
+  for (let i = 1; i <= 16; i += 1) {
+    await touch('touchMove', y0 + ((y1 - y0) * i) / 16);
+    await page.waitForTimeout(16);
+  }
+  await page.waitForTimeout(150);
+  await touch('touchEnd', y1);
+  await page.waitForTimeout(500);
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  await cdp.detach();
+}
+
+/** Taps an element with a touch (not a mouse click). */
+export async function touchTap(page, locator) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+  await locator.scrollIntoViewIfNeeded();
+  const b = await locator.boundingBox();
+  if (!b) throw new Error('touch tap: element not visible');
+  const pt = { x: b.x + b.width / 2, y: b.y + b.height / 2, id: 1 };
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [pt] });
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(300);
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  await cdp.detach();
+}
+
 /** Drags a route stop onto another stop ('before' or 'after'). */
 export async function dragRouteStop(page, from, to, position) {
   const handle = byId(page, `route-stop-${from}`).locator('[data-testid^="drag-"]');
