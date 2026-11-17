@@ -185,3 +185,15 @@ this phase; nothing was deployed.
   Declining adds none of them; the other sections are applied as before.
 - No schema change in this phase. Group order and links stay device-only as in phase 2; task
   order and section changes sync as before.
+
+## Unified Packing and Checklist — tests
+
+- Jest: `unifiedPacking.test.ts` (phase 1), `sectionSettings.test.ts` (phase 2),
+  `sectionArrange.test.ts` (phase 3: layout helpers, atomic arrange, Inventory link guards,
+  template packing items).
+- Web E2E (`e2e/web-packing.mjs`): Clothing in Packing, old checklist move / keep, template packing
+  approval (decline, approve, no duplicates), inline sections (add, duplicate name, rename, Move up,
+  reload, drag, from Inventory category, delete), section Arrange (drag into a group, Move down,
+  drag out), task menu (group, other section, remove), task editor (quantity, link, unlink), and the
+  Inventory picker (browse by category, no duplicates). The harness can decline the next
+  confirmation with `dismissNext()`.

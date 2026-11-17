@@ -559,6 +559,20 @@ await run('Packing categories test', async () => {
   await waitFor(async () => (await page.getByRole('button', { name: 'Power bank. Edit task' }).count()) === 0);
   check(dialogs.length > before3 && /Remove this task from the trip/.test(dialogs.at(-1) ?? ''), 'removing a task asks first');
 
+  setStep('Inventory picker: browse by category, no duplicates');
+  await byId(page, 'section-add-from-inventory').click();
+  await byId(page, 'section-inventory').waitFor();
+  await byId(page, 'section-inventory-category-Clothing').click();
+  await byId(page, 'section-inventory-item-Merino T-shirt').waitFor();
+  check((await byId(page, 'section-inventory-item-Phone charger').count()) === 0, 'browsing Clothing shows only Clothing items');
+  await byId(page, 'section-inventory-category-all').click();
+  check(await byId(page, 'section-inventory-item-Phone charger').isDisabled(), 'an item already in the section cannot be picked again');
+  await byId(page, 'section-inventory-category-Clothing').click();
+  await byId(page, 'section-inventory-item-Merino T-shirt').click();
+  await byId(page, 'section-inventory-add').click();
+  await waitText(page, 'section-message', (v) => v.includes('1 added from Inventory'));
+  check(true, 'the chosen item is added, linked to Inventory');
+
   setStep('Dashboard 2.0: overview only, six shortcuts, weather folded');
   await page.goto(tripA);
   await byId(page, 'trip-dashboard').waitFor();
