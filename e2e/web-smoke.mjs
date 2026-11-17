@@ -101,31 +101,33 @@ await run('Web smoke test', async () => {
   await byId(page, 'open-checklist').click();
   await byId(page, 'checklists-screen').waitFor();
   await byId(page, `checklist-trip-sections-${tripId}`).waitFor();
-  for (const kind of ['packing', 'documents', 'vehicle', 'tasks', 'shopping', 'home']) {
+  for (const kind of ['documents', 'vehicle', 'tasks', 'shopping', 'home']) {
     await byId(page, `section-card-${kind}`).waitFor();
   }
-  check(true, 'six standard sections for a car trip, on the Checklist tab');
+  check((await byId(page, 'section-card-packing').count()) === 0, 'a new trip has no Packing checklist section (packing lives in Packing)');
+  await byId(page, 'checklist-packing-row').waitFor();
+  check(true, 'five standard sections for a car trip, plus the Packing list, on the Checklist tab');
   check((await text(page, `checklist-trip-percent-${tripId}`)) === dashboardPercent0, `the Checklist shows the dashboard’s figure (${dashboardPercent0})`);
   await shot(page, '04b-checklist');
   await page.goto(`${BASE}/checklists`);
   await byId(page, `checklist-trip-toggle-${tripId}`).waitFor({ timeout: 60_000 });
   check((await byId(page, `checklist-trip-sections-${tripId}`).count()) === 0, 'a single trip starts compact');
-  check(/%/.test(await text(page, `checklist-trip-percent-${tripId}`)) && /tasks done/.test(await text(page, `checklist-trip-count-${tripId}`)), 'its overall progress shows without expanding');
+  check(/%/.test(await text(page, `checklist-trip-percent-${tripId}`)) && /done/.test(await text(page, `checklist-trip-count-${tripId}`)), 'its overall progress shows without expanding');
   check(/Show sections/.test(await text(page, `checklist-trip-toggle-${tripId}`)), 'expanding is obvious');
   await byId(page, `checklist-trip-toggle-${tripId}`).click();
   await byId(page, `checklist-trip-sections-${tripId}`).waitFor();
 
   setStep('section: add, edit details, reorder');
-  await byId(page, 'section-card-packing').click();
-  await byId(page, 'section-screen-packing').waitFor();
+  await byId(page, 'section-card-documents').click();
+  await byId(page, 'section-screen-documents').waitFor();
   const packing0 = await text(page, 'section-progress-text');
   await byId(page, 'add-item-priority-essential').click();
   await byId(page, 'add-item-input').fill('Spare bike chain');
   await byId(page, 'add-item-button').click();
-  await within(page, 'section-screen-packing', 'Spare bike chain').waitFor();
+  await within(page, 'section-screen-documents', 'Spare bike chain').waitFor();
   const packing1 = await waitText(page, 'section-progress-text', (v) => v !== packing0);
   check(true, `essential task added (${packing0} → ${packing1})`);
-  const sectionScreen = byId(page, 'section-screen-packing');
+  const sectionScreen = byId(page, 'section-screen-documents');
   await sectionScreen.locator('[data-testid^="task-open-"]', { hasText: 'Spare bike chain' }).click();
   await byId(page, 'task-editor').waitFor();
   await byId(page, 'task-description-input').fill('Pre-stretched, 520 pitch');
@@ -133,8 +135,8 @@ await run('Web smoke test', async () => {
   await byId(page, 'priority-optional').click();
   await shot(page, '05-task-editor');
   await byId(page, 'task-save').click();
-  await byId(page, 'section-screen-packing').waitFor();
-  await within(page, 'section-screen-packing', 'Pre-stretched, 520 pitch').waitFor();
+  await byId(page, 'section-screen-documents').waitFor();
+  await within(page, 'section-screen-documents', 'Pre-stretched, 520 pitch').waitFor();
   check(true, 'description shown on the row');
   const firstBefore = await sectionScreen.locator('[data-testid^="task-open-"]').first().innerText();
   await byId(page, 'toggle-reorder').click();
@@ -307,8 +309,8 @@ await run('Web smoke test', async () => {
     'ticks persisted',
   );
   await byId(page, 'open-checklist').click();
-  await byId(page, 'section-card-packing').click();
-  await within(page, 'section-screen-packing', 'Pre-stretched, 520 pitch').waitFor();
+  await byId(page, 'section-card-documents').click();
+  await within(page, 'section-screen-documents', 'Pre-stretched, 520 pitch').waitFor();
   check(true, 'task details persisted');
   await page.goto(templateUrl);
   await byId(page, 'template-editor').waitFor();

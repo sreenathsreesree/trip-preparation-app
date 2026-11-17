@@ -205,13 +205,15 @@ await run('Packing categories test', async () => {
   await categoryRow(page, 'Camera Kit').click();
   await byId(page, 'category-edit').click();
   await byId(page, 'category-delete').click();
+  await byId(page, 'category-delete-target').waitFor();
+  check(dialogs.some((d) => d.includes('1 trip packing item')), 'delete explains that items are kept and asks where they go');
+  await page.getByText('Move them to Miscellaneous', { exact: true }).click();
   await page.waitForTimeout(500);
-  check(dialogs.some((d) => d.includes('1 trip packing item stays on its trip under “Uncategorised”')), 'delete explains what happens to trip items');
   await page.goto(`${tripA}/packing`);
   await byId(page, 'items-tab').waitFor();
-  await categoryRow(page, 'Uncategorised').click();
+  await categoryRow(page, 'Miscellaneous').click();
   await within(page, 'packing-category-screen', 'Lens cloth').waitFor();
-  check(true, 'trip item kept under Uncategorised');
+  check(true, 'trip item moved to the chosen category, nothing deleted');
   await page.goto(`${tripA}/packing`);
   await byId(page, 'items-tab').waitFor();
 
@@ -287,91 +289,77 @@ await run('Packing categories test', async () => {
   await within(page, 'inventory-screen', '3 items · 7 units', { exact: false }).waitFor();
   check(true, 'inventory has the 2 original items and the bought shampoo; removing entries deleted nothing');
 
-  setStep('checklist section: groups, add manually and from Inventory');
+  setStep('Clothing lives in Packing: groups, filters, move to group');
+  const tripBId = new URL(tripB).pathname.split('/').pop();
+  await page.goto(tripB);
+  await byId(page, 'trip-clothing').click();
+  await byId(page, 'packing-category-screen').waitFor({ timeout: 60_000 });
+  check(/Clothing/.test(await text(page, 'packing-category-screen')) && page.url().includes(tripBId), 'the dashboard’s Clothing opens Packing → Clothing for this trip');
+  await byId(page, 'quick-owned-Merino T-shirt').click();
+  await within(page, 'packing-category-screen', 'Merino T-shirt').waitFor();
+  await byId(page, 'category-groups-toggle').click();
+  await byId(page, 'category-group-input').fill('Sleepwear');
+  await byId(page, 'category-group-add').click();
+  await byId(page, 'category-group-rename-Sleepwear').click();
+  await byId(page, 'category-group-rename-input').fill('Nightwear');
+  await byId(page, 'category-group-rename-save').click();
+  await byId(page, 'category-group-Nightwear').waitFor();
+  check(true, 'a group is created and renamed with the user’s own name');
+  await byId(page, 'packing-category-screen').locator('[data-testid^="entry-menu-"]').first().click();
+  await byId(page, 'sheet-action-move').click();
+  await page.getByText('Nightwear', { exact: true }).last().click();
+  await byId(page, 'category-block-Nightwear').waitFor();
+  check(/Nightwear · 1/i.test(await text(page, 'category-block-Nightwear')), 'the item moved into the group');
+  await byId(page, 'category-filter-packed').click();
+  check((await byId(page, 'packing-category-screen').locator('[data-testid^="entry-menu-"]').count()) === 0, 'Packed shows only packed items');
+  await byId(page, 'category-filter-all').click();
+  await byId(page, 'category-group-delete-Nightwear').click();
+  await page.getByText('Keep them in Clothing', { exact: true }).click();
+  await page.waitForTimeout(400);
+  check((await byId(page, 'category-group-Nightwear').count()) === 0 && (await within(page, 'packing-category-screen', 'Merino T-shirt').count()) > 0, 'deleting a group keeps its items');
+
+  setStep('From your old checklist: move or keep, each confirmed');
+  // An old-style Clothing checklist section, as earlier versions created it.
+  await page.goto(`${BASE}/checklists`);
+  await byId(page, 'segment-templates').click();
+  await byId(page, 'templates-new').click();
+  await byId(page, 'template-name-input').fill('Old clothes');
+  await byId(page, 'template-save').click();
+  await byId(page, 'template-editor').waitFor();
+  await byId(page, 'add-section-input').fill('Clothing');
+  await byId(page, 'add-section-button').click();
+  for (const task of ['Rain jacket', 'Sun hat']) {
+    await byId(page, 'add-task-Clothing-input').fill(task);
+    await byId(page, 'add-task-Clothing-button').click();
+    await within(page, 'template-editor', task).waitFor();
+  }
   await page.goto(tripB);
   await byId(page, 'open-checklist').click();
-  await byId(page, 'section-card-packing').click();
-  await byId(page, 'section-screen-packing').waitFor();
-  await byId(page, 'section-groups-section-toggle').click();
-  await byId(page, 'section-group-input').fill('Tops');
-  await byId(page, 'section-group-add').click();
-  await byId(page, 'section-group-rename-Tops').waitFor();
-  await byId(page, 'section-group-input').fill('Gadgets');
-  await byId(page, 'section-group-add').click();
-  await byId(page, 'section-add-to-Tops').click();
-  await byId(page, 'section-add-from-inventory').click();
-  await byId(page, 'section-inventory-item-Merino T-shirt').click();
-  await byId(page, 'section-inventory-add').click();
-  await byId(page, 'section-message').waitFor();
-  check(/1 added from Inventory/.test(await text(page, 'section-message')), 'added from Inventory into the chosen group');
-  check(/From Inventory · ×1/.test(await text(page, 'section-group-block-Tops')), 'the task shows it is linked to Inventory');
-  await byId(page, 'section-add-from-inventory').click();
-  check(/Already in this section/.test(await text(page, 'section-inventory-item-Merino T-shirt')), 'an item is not added twice');
-  await byId(page, 'section-add-from-inventory').click();
-  await byId(page, 'section-group-delete-Tops').click();
-  await page.getByText('Move them to Gadgets').click();
-  await page.waitForTimeout(300);
-  check(/Merino T-shirt/.test(await text(page, 'section-group-block-Gadgets')), 'deleting a group moved its tasks, none were deleted');
-  await page.goto(`${BASE}/inventory`);
-  await byId(page, 'inventory-screen').waitFor();
-  await byId(page, 'segment-list').click();
-  await page.locator('[data-testid^="item-row-"]', { hasText: 'Merino T-shirt' }).first().waitFor();
-  check((await page.locator('[data-testid^="item-row-"]', { hasText: 'Merino T-shirt' }).count()) === 1, 'the Inventory item is still there, once (not duplicated)');
-
-  setStep('Clothing: the same organised section from the dashboard and the Checklist tab');
-  await page.goto(tripB);
-  await byId(page, 'trip-clothing').click();
-  await byId(page, 'section-screen-custom').waitFor({ timeout: 60_000 });
-  check(/Clothing/.test(await text(page, 'section-screen-custom')), 'the dashboard opens the Clothing checklist section');
-  await byId(page, 'section-add-from-inventory').waitFor();
-  await byId(page, 'section-shortcut').waitFor();
-  check(true, 'Clothing has Add from Inventory, and still links to bags and packed status');
-  await byId(page, 'section-group-input').fill('Footwear');
-  await byId(page, 'section-group-add').click();
-  await byId(page, 'section-group-rename-Footwear').click();
-  await byId(page, 'section-group-rename-input').fill('Shoes');
-  await byId(page, 'section-group-rename-save').click();
-  await byId(page, 'section-group-rename-Shoes').waitFor();
-  await byId(page, 'section-group-input').fill('Tops');
-  await byId(page, 'section-group-add').click();
-  await byId(page, 'section-group-rename-Tops').waitFor();
-  check(true, 'groups are created and renamed with the user’s own names');
-  await byId(page, 'section-add-to-Shoes').click();
-  await page.getByPlaceholder('Add a task').first().fill('Sandals');
-  await page.getByPlaceholder('Add a task').first().press('Enter');
-  await page.waitForTimeout(300);
-  check(/Sandals/.test(await text(page, 'section-group-block-Shoes')), 'a task is added straight into the chosen group');
-  await byId(page, 'section-add-to-Tops').click();
-  await byId(page, 'section-add-from-inventory').click();
-  await byId(page, 'section-inventory-item-Merino T-shirt').click();
-  await byId(page, 'section-inventory-add').click();
-  await byId(page, 'section-message').waitFor();
-  check(/From Inventory · ×1/.test(await text(page, 'section-group-block-Tops')), 'Inventory items are linked into Clothing groups');
-  await byId(page, 'task-move-Sandals').click();
-  await page.getByText('No group', { exact: true }).last().click();
-  await page.waitForTimeout(300);
-  check(/Sandals/.test(await text(page, 'section-group-block-Not in a group')), 'a task moves back to no group');
-  await byId(page, 'task-move-Sandals').click();
-  await page.getByText('Tops', { exact: true }).last().click();
-  await page.waitForTimeout(300);
-  check(/Sandals/.test(await text(page, 'section-group-block-Tops')), 'and between groups');
-
-  await page.goto(`${BASE}/checklists`);
-  const tripBId = new URL(tripB).pathname.split('/').pop();
-  await byId(page, `checklist-trip-toggle-${tripBId}`).click();
-  const row = page.getByRole('button', { name: /^Gokarna, Clothing:/ });
-  await row.first().waitFor({ timeout: 60_000 });
-  check((await row.count()) === 1, 'the Checklist tab lists one Clothing section (no copy was made)');
-  await row.first().click();
-  await byId(page, 'section-screen-custom').waitFor();
-  check(/Sandals/.test(await text(page, 'section-group-block-Tops')) && /Merino T-shirt/.test(await text(page, 'section-group-block-Tops')), 'the Checklist tab shows the same tasks and groups');
-  await page.goto(tripB);
-  await byId(page, 'trip-clothing').click();
-  await byId(page, 'section-screen-custom').waitFor();
+  await byId(page, 'apply-templates').click();
+  await page.locator('[data-testid^="template-option-"]').first().click();
+  await byId(page, 'apply-templates-confirm').click();
+  await byId(page, 'apply-result').waitFor();
+  await page.goto(`${tripB}/packing`);
+  await byId(page, 'old-checklist').waitFor({ timeout: 60_000 });
+  const asked = dialogs.length;
+  await byId(page, 'old-task-move-Rain jacket').click();
+  await byId(page, 'old-checklist-message').waitFor();
+  check(dialogs.length > asked && /Move “Rain jacket” to the packing list/.test(dialogs.at(-1) ?? ''), 'moving asks for confirmation first');
+  check((await byId(page, 'old-task-Rain jacket').count()) === 0, 'the moved task is no longer offered');
+  await byId(page, 'old-task-keep-Sun hat').click();
+  await page.waitForTimeout(400);
+  check((await byId(page, 'old-checklist').count()) === 0 || (await byId(page, 'old-task-Sun hat').count()) === 0, 'a kept task is not offered again');
+  await categoryRow(page, 'Clothing').click();
+  await within(page, 'packing-category-screen', 'Rain jacket').waitFor();
+  check(true, 'the moved task is now a Clothing packing item');
   await page.goto(`${BASE}/checklists`);
   await byId(page, `checklist-trip-toggle-${tripBId}`).click();
-  await page.getByRole('button', { name: /^Gokarna, Clothing:/ }).first().waitFor();
-  check((await page.getByRole('button', { name: /^Gokarna, Clothing:/ }).count()) === 1, 'opening Clothing again does not create a second section');
+  const kept = page.getByRole('button', { name: /^Gokarna, Clothing:/ });
+  await kept.first().waitFor();
+  check(/1 essential|0 of 1|of 1 done/.test((await kept.first().getAttribute('aria-label')) ?? '') || (await kept.count()) === 1, 'the old Clothing section stays while it still has a (kept) task');
+  await kept.first().click();
+  await byId(page, 'section-old-packing').waitFor();
+  check(/Sun hat/.test(await text(page, 'section-screen-custom')) && !/Rain jacket/.test(await text(page, 'section-screen-custom')), 'the kept task is still in the checklist; the moved one is not');
 
   setStep('Checklist: compact trip cards, one open at a time');
   const tripAId = new URL(tripA).pathname.split('/').pop();
@@ -381,7 +369,7 @@ await run('Packing categories test', async () => {
   const collapsedCount = await text(page, `checklist-trip-count-${tripAId}`);
   await byId(page, `checklist-trip-toggle-${tripAId}`).click();
   await byId(page, `checklist-trip-sections-${tripAId}`).waitFor();
-  const sums = await byId(page, `checklist-trip-sections-${tripAId}`).locator('[data-testid^="section-card-"]').allInnerTexts();
+  const sums = await byId(page, `checklist-trip-sections-${tripAId}`).locator('[data-testid^="section-card-"], [data-testid="checklist-packing-row"]').allInnerTexts();
   const totals = sums.map((t) => /(\d+)\/(\d+)/.exec(t)).filter(Boolean).reduce((a, m) => [a[0] + Number(m[1]), a[1] + Number(m[2])], [0, 0]);
   check(collapsedCount.startsWith(`${totals[0]}/${totals[1]}`), `collapsed figure ${collapsedCount} matches the sections (${totals[0]}/${totals[1]})`);
   await byId(page, `checklist-trip-toggle-${tripBId}`).click();
@@ -411,7 +399,7 @@ await run('Packing categories test', async () => {
   check(true, 'weather expands inline and folds again');
   for (const [id, screen] of [
     ['trip-calculator', 'calc-quick'],
-    ['trip-clothing', 'section-screen-custom'],
+    ['trip-clothing', 'packing-category-screen'],
     ['journal-open', 'journal-screen'],
     ['trip-memories', 'memories-screen'],
     ['trip-group', 'group-trip-screen'],

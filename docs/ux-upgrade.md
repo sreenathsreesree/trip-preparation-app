@@ -113,3 +113,31 @@ this phase; nothing was deployed.
   template, Add vehicle checks). *Open preparation checklist* opens the Checklist tab with that
   trip expanded (listed even if it has ended).
 - Both screens use `checklistProgress()` on the same loaded checklist, so the figures always match.
+
+## Unified Packing and Checklist (Nov 2026) — phase 1: Packing is the single source
+
+- **Packing list = all packing items.** Categories (Clothing, Footwear, Toiletries…) are the
+  Inventory categories; **groups inside a category are its subcategories** (Tops, Bottoms…), so
+  there is no second grouping system. Category screen: All / To pack / Packed, groups (create,
+  rename, reorder, delete — items stay: keep in the category or move to another group), *Move to
+  group*, priority (Essential / Recommended / Optional) in the item editor.
+- **Deleting a custom category or group never deletes items:** the user chooses where its packing
+  and Inventory items go (`deleteCategoryMoving`). Starter categories stay protected.
+- **Clothing organiser → Clothing groups:** its categories that hold items become Clothing groups
+  (repeat-safe; ids derived from the name; the organiser's tables are kept, unused). All Clothing
+  entry points (dashboard tile, old links) open Packing → Clothing.
+- **Old Packing / Clothing checklist tasks** appear in Packing under *From your old checklist*:
+  *Move to packing list* (item created and verified first, then the task is removed; recorded so
+  it can never convert twice), *Keep in checklist*, *Remove from trip* — each confirmed. The old
+  section stays in the Checklist while it has tasks; adding new tasks there points to Packing.
+  Checklist tasks are personal (shared trips use the separate group workspace), so converting
+  never moves group data into a private list.
+- **New trips** no longer get a Packing checklist section; templates that contain one still work
+  (their tasks arrive as an old-style section and can be moved into Packing).
+- **Readiness** (dashboard and Checklist) = checklist tasks + packing items, each counted once
+  (`preparationProgress`); the Checklist card lists *Packing* with packed/total.
+- **Local schema v17** (create-only): `packing_entry_meta` (item priority) and
+  `checklist_task_resolutions` (decisions on old tasks). **Device-only** — they do not sync yet.
+  Future sync path: add matching cloud tables (owner-scoped, RLS like `packing_entries`) and list
+  them in the personal backup registry; until then a second device shows default priorities and
+  offers old tasks again (converting there is still safe: the task is gone once synced).
